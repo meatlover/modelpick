@@ -12,15 +12,16 @@ import (
 	"github.com/meatlover/modelpick/internal/core"
 )
 
-// report collects doctor findings, dropping exact repeats (same severity and
-// message) so a problem shared by several accounts prints once.
+// report collects doctor findings, dropping exact repeats (same subject,
+// severity and message). Messages need not name their account, so the
+// subject is part of the key.
 type report struct {
 	findings []adapter.Finding
 	seen     map[string]bool
 }
 
 func (r *report) add(sev adapter.Severity, subject, msg string) {
-	key := string(sev) + "\x00" + msg
+	key := string(sev) + "\x00" + subject + "\x00" + msg
 	if r.seen[key] {
 		return
 	}
@@ -93,16 +94,19 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 			r.add(adapter.SeverityError, n, err.Error())
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		for _, f := range a.Check(ctx, acct) {
+		checkCtx, cancelCheck := context.WithTimeout(context.Background(), 10*time.Second)
+		findings := a.Check(checkCtx, acct)
+		cancelCheck()
+		for _, f := range findings {
 			subject := f.Account
 			if subject == "" {
 				subject = n
 			}
 			r.add(f.Severity, subject, f.Message)
 		}
-		ms, err := a.Models(ctx, acct)
-		cancel()
+		modelsCtx, cancelModels := context.WithTimeout(context.Background(), 10*time.Second)
+		ms, err := a.Models(modelsCtx, acct)
+		cancelModels()
 		if err != nil {
 			r.add(adapter.SeverityWarning, n, "cannot list models, thinking values not checked: "+usageError(acct.Vendor, err).Error())
 			continue
@@ -135,7 +139,7 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 		}
 	}
 	for _, p := range profiles {
-		for _, c := range cfg.Profiles[p] {
+		for i, c := range cfg.Profiles[p] {
 			rd := peeked[c.Account]
 			if !c.Capped || rd == nil {
 				continue
@@ -143,7 +147,7 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 			ordered := core.OrderWindows(rd.Windows, c.Model)
 			_, warns := core.EffectiveCaps(c.Account, c.Cap, ordered, cfg.Settings.DefaultCap)
 			for _, w := range warns {
-				r.add(adapter.SeverityWarning, c.Account, w)
+				r.add(adapter.SeverityWarning, fmt.Sprintf("profile %s[%d]", p, i), w)
 			}
 		}
 	}

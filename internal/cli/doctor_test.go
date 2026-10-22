@@ -61,11 +61,10 @@ func TestDoctorMissingBinaryIsError(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if got := strings.Count(stdout, "codex not found on PATH"); got != 1 {
-		t.Errorf("binary finding printed %d times, want 1:\n%s", got, stdout)
-	}
+	// Same message, different accounts: one line per subject.
 	if !strings.Contains(stdout, "ERROR  codex-main: codex not found on PATH\n") ||
-		!strings.Contains(stdout, "1 error(s), 0 warning(s)\n") {
+		!strings.Contains(stdout, "ERROR  codex-two: codex not found on PATH\n") ||
+		!strings.Contains(stdout, "2 error(s), 0 warning(s)\n") {
 		t.Errorf("unexpected output:\n%s", stdout)
 	}
 }
@@ -130,7 +129,7 @@ func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
 		t.Fatalf("exit %d, want 0:\n%s", code, stdout)
 	}
 	for _, want := range []string{
-		"WARN   codex-main: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap",
+		"WARN   profile p[0]: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 98\n",
 		"WARN   codex-main: unrecognised window group \"x\"",
 		"0 error(s), 2 warning(s)",
 	} {
@@ -163,5 +162,47 @@ func TestDoctorRejectsArguments(t *testing.T) {
 	_, stderr, code := run(testDeps(t, doctorConfig), "doctor", "x")
 	if code != 1 || !strings.Contains(stderr, "doctor: unexpected argument") {
 		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+}
+
+func TestDoctorSameFindingSameSubjectPrintsOnce(t *testing.T) {
+	claude, codex := doctorFakes()
+	f := adapter.Finding{Severity: adapter.SeverityWarning, Account: "codex-main", Message: "token expired — open Codex with this account to refresh it"}
+	codex.checks["codex-main"] = []adapter.Finding{f, f}
+	stdout, _, code := run(testDeps(t, doctorConfig, claude, codex), "doctor")
+	if code != 0 || strings.Count(stdout, "token expired") != 1 || !strings.Contains(stdout, "0 error(s), 1 warning(s)\n") {
+		t.Fatalf("exit %d:\n%s", code, stdout)
+	}
+}
+
+func TestDoctorIdenticalMessageTwoAccountsTwoLines(t *testing.T) {
+	claude, codex := doctorFakes()
+	msg := "token expired — open Claude Code with this account to refresh it"
+	for _, n := range []string{"codex-main", "codex-two"} {
+		codex.checks[n] = []adapter.Finding{{Severity: adapter.SeverityWarning, Account: n, Message: msg}}
+	}
+	stdout, _, _ := run(testDeps(t, doctorConfig, claude, codex), "doctor")
+	if strings.Count(stdout, msg) != 2 || !strings.Contains(stdout, "codex-main: "+msg) || !strings.Contains(stdout, "codex-two: "+msg) {
+		t.Fatalf("want one line per account:\n%s", stdout)
+	}
+}
+
+func TestDoctorCannotListModelsWarns(t *testing.T) {
+	claude, codex := doctorFakes()
+	delete(codex.models, "codex-two") // fake returns an error
+	stdout, _, code := run(testDeps(t, doctorConfig, claude, codex), "doctor")
+	want := "WARN   codex-two: cannot list models, thinking values not checked: fake: no models\n"
+	if code != 0 || !strings.Contains(stdout, want) {
+		t.Fatalf("exit %d, want %q in:\n%s", code, want, stdout)
+	}
+}
+
+func TestDoctorCannotReadStoredUsageWarns(t *testing.T) {
+	claude, codex := doctorFakes()
+	d := testDeps(t, doctorConfig, claude, codex)
+	writeStored(t, d, "codex-main", "{not json")
+	stdout, _, code := run(d, "doctor")
+	if code != 0 || !strings.Contains(stdout, "WARN   codex-main: cannot read stored usage: ") {
+		t.Fatalf("exit %d:\n%s", code, stdout)
 	}
 }
