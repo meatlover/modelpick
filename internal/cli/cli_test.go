@@ -31,6 +31,7 @@ type fakeAdapter struct {
 	errs      map[string]error
 	usage     map[string]int // Usage calls per account
 	credCalls map[string]int
+	models    map[string][]adapter.Model // Models per account; missing = error
 }
 
 func newFake(vendor string) *fakeAdapter {
@@ -40,6 +41,7 @@ func newFake(vendor string) *fakeAdapter {
 		errs:      map[string]error{},
 		usage:     map[string]int{},
 		credCalls: map[string]int{},
+		models:    map[string][]adapter.Model{},
 	}
 }
 
@@ -61,7 +63,10 @@ func (f *fakeAdapter) Usage(_ context.Context, acct adapter.Account) (adapter.Re
 	return adapter.Reading{}, adapter.ErrShape
 }
 
-func (f *fakeAdapter) Models(context.Context, adapter.Account) ([]adapter.Model, error) {
+func (f *fakeAdapter) Models(_ context.Context, acct adapter.Account) ([]adapter.Model, error) {
+	if m, ok := f.models[acct.Name]; ok {
+		return m, nil
+	}
 	return nil, errors.New("fake: no models")
 }
 

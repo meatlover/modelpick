@@ -32,6 +32,9 @@ var errNoHome = errors.New("cannot determine the home directory: $HOME is not se
 
 const usageText = `usage:
   modelpick pick <profile> [--refresh]
+  modelpick ls [--refresh] [--json]
+  modelpick ls models [--json]
+  modelpick config
 `
 
 // DefaultDeps returns the real environment, clock and vendor adapters.
@@ -88,6 +91,10 @@ func Main(args []string, stdout, stderr io.Writer, d Deps) int {
 	switch args[0] {
 	case "pick":
 		return runPick(args[1:], stdout, stderr, d)
+	case "ls":
+		return runLs(args[1:], stdout, stderr, d)
+	case "config":
+		return runConfig(args[1:], stdout, stderr, d)
 	}
 	return badUsage(stderr, fmt.Sprintf("unknown command %q", args[0]))
 }
