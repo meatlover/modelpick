@@ -1,0 +1,118 @@
+// Package archtest enforces the import layering between the module's packages.
+package archtest
+
+import (
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+// allowed lists, per restricted package (path relative to the module root),
+// the module packages it may import. A restricted package with an empty list
+// imports no module package. cmd/... and internal/cli are unrestricted.
+var allowed = map[string][]string{
+	"internal/platform": {},
+	"internal/adapter":  {},
+	"internal/core":     {"internal/adapter"},
+	"internal/usage":    {"internal/adapter", "internal/platform"},
+}
+
+// vendorAllowed is the allowance for internal/adapter/<vendor>.
+var vendorAllowed = []string{"internal/adapter", "internal/platform"}
+
+func rulesFor(rel string) (allow []string, restricted bool) {
+	if a, ok := allowed[rel]; ok {
+		return a, true
+	}
+	if strings.HasPrefix(rel, "internal/adapter/") {
+		return vendorAllowed, true
+	}
+	return nil, false
+}
+
+// violations returns one message per forbidden import edge. imports maps a
+// package import path to the import paths it imports.
+func violations(module string, imports map[string][]string) []string {
+	var out []string
+	for pkg, deps := range imports {
+		rel := strings.TrimPrefix(pkg, module+"/")
+		allow, restricted := rulesFor(rel)
+		for _, dep := range deps {
+			inModule := dep == module || strings.HasPrefix(dep, module+"/")
+			if !inModule {
+				if first, _, _ := strings.Cut(dep, "/"); strings.Contains(first, ".") {
+					out = append(out, pkg+" imports third-party package "+dep)
+				}
+				continue
+			}
+			if !restricted {
+				continue
+			}
+			depRel := strings.TrimPrefix(dep, module+"/")
+			ok := false
+			for _, a := range allow {
+				if depRel == a {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				out = append(out, pkg+" must not import "+dep)
+			}
+		}
+	}
+	return out
+}
+
+func TestViolationsDetectsForbiddenEdge(t *testing.T) {
+	const m = "github.com/meatlover/modelpick"
+	got := violations(m, map[string][]string{
+		m + "/internal/core": {m + "/internal/usage"},
+	})
+	if len(got) != 1 || !strings.Contains(got[0], m+"/internal/core") || !strings.Contains(got[0], m+"/internal/usage") {
+		t.Fatalf("want exactly 1 violation naming core and usage, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/adapter/claude": {"github.com/x/y"},
+	})
+	if len(got) != 1 {
+		t.Fatalf("want exactly 1 violation for third-party import, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/adapter/claude": {m + "/internal/adapter", m + "/internal/platform", "fmt"},
+		m + "/internal/cli":            {m + "/internal/core", m + "/internal/usage"},
+	})
+	if len(got) != 0 {
+		t.Fatalf("allowed edges flagged: %q", got)
+	}
+}
+
+func TestModuleHasNoViolations(t *testing.T) {
+	run := func(args ...string) string {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = "../.."
+		b, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	module := run("list", "-m")
+	listing := run("list", "-f", "{{.ImportPath}}{{range .Imports}} {{.}}{{end}}", "./...")
+	imports := map[string][]string{}
+	for _, line := range strings.Split(listing, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		imports[f[0]] = f[1:]
+	}
+	if len(imports) == 0 {
+		t.Fatal("go list returned no packages")
+	}
+	if v := violations(module, imports); len(v) != 0 {
+		t.Fatalf("layer violations:\n%s", strings.Join(v, "\n"))
+	}
+}
