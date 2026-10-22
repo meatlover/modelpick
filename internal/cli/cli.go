@@ -35,6 +35,7 @@ const usageText = `usage:
   modelpick ls [--refresh] [--json]
   modelpick ls models [--json]
   modelpick config
+  modelpick doctor
 `
 
 // DefaultDeps returns the real environment, clock and vendor adapters.
@@ -95,6 +96,8 @@ func Main(args []string, stdout, stderr io.Writer, d Deps) int {
 		return runLs(args[1:], stdout, stderr, d)
 	case "config":
 		return runConfig(args[1:], stdout, stderr, d)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr, d)
 	}
 	return badUsage(stderr, fmt.Sprintf("unknown command %q", args[0]))
 }
