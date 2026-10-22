@@ -11,9 +11,10 @@ import (
 // the module packages it may import. A restricted package with an empty list
 // imports no module package. cmd/... and internal/cli are unrestricted.
 var allowed = map[string][]string{
-	"internal/platform": {},
+	"internal/pathx":    {},
+	"internal/platform": {"internal/pathx"},
 	"internal/adapter":  {},
-	"internal/core":     {"internal/adapter"},
+	"internal/core":     {"internal/adapter", "internal/pathx"},
 	"internal/usage":    {"internal/adapter", "internal/platform"},
 }
 
@@ -71,6 +72,14 @@ func TestViolationsDetectsForbiddenEdge(t *testing.T) {
 	})
 	if len(got) != 1 || !strings.Contains(got[0], m+"/internal/core") || !strings.Contains(got[0], m+"/internal/usage") {
 		t.Fatalf("want exactly 1 violation naming core and usage, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/pathx": {m + "/internal/adapter"},
+		m + "/internal/core":  {m + "/internal/platform"},
+	})
+	if len(got) != 2 {
+		t.Fatalf("want 2 violations (pathx->adapter, core->platform), got %q", got)
 	}
 
 	got = violations(m, map[string][]string{

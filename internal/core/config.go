@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/pathx"
 )
 
 //go:embed defaults.json
@@ -120,20 +121,20 @@ func (p parser) strict(raw []byte, v any, prefix string) error {
 	}
 	var te *json.UnmarshalTypeError
 	if errors.As(err, &te) {
-		return p.fail(join(prefix, te.Field), "must be %s", jsonKind(te.Type.String()))
+		return p.fail(join(prefix, te.Field), "must be %s", jsonKind(te.Type.Kind()))
 	}
 	return p.fail(prefix, "invalid JSON: %v", err)
 }
 
-func jsonKind(goType string) string {
-	switch {
-	case strings.HasPrefix(goType, "[]"):
+func jsonKind(k reflect.Kind) string {
+	switch k {
+	case reflect.Slice, reflect.Array:
 		return "an array"
-	case strings.HasPrefix(goType, "map["), strings.HasPrefix(goType, "struct"):
+	case reflect.Map, reflect.Struct, reflect.Pointer:
 		return "an object"
-	case goType == "string":
+	case reflect.String:
 		return "a string"
-	case goType == "bool":
+	case reflect.Bool:
 		return "a boolean"
 	}
 	return "a number"
@@ -211,9 +212,9 @@ func (p parser) accounts(raws map[string]json.RawMessage, home string) (map[stri
 		if err := p.checkVendorFields(a, prefix); err != nil {
 			return nil, err
 		}
-		a.ConfigDir = expandHome(a.ConfigDir, home)
-		a.CodexHome = expandHome(a.CodexHome, home)
-		a.KeyFile = expandHome(a.KeyFile, home)
+		a.ConfigDir = pathx.ExpandHome(a.ConfigDir, home)
+		a.CodexHome = pathx.ExpandHome(a.CodexHome, home)
+		a.KeyFile = pathx.ExpandHome(a.KeyFile, home)
 		out[name] = a
 	}
 	return out, nil
@@ -349,11 +350,17 @@ func (p parser) choice(raw json.RawMessage, prefix string, cfg *Config) (Choice,
 			return c, p.fail(join(prefix, "cap"), "cap must not be null: omit cap for no limit")
 		}
 		c.Capped = true
-		c.Cap = []float64{}
-		if err := json.Unmarshal(rc.Cap, &c.Cap); err != nil {
+		var vals []*float64
+		if err := json.Unmarshal(rc.Cap, &vals); err != nil {
 			return c, p.fail(join(prefix, "cap"), "must be an array of numbers")
 		}
-		for j, v := range c.Cap {
+		c.Cap = make([]float64, 0, len(vals))
+		for j, pv := range vals {
+			if pv == nil {
+				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "must be a number")
+			}
+			v := *pv
+			c.Cap = append(c.Cap, v)
 			if v < 0 || v > 100 {
 				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "must be between 0 and 100")
 			}
@@ -366,22 +373,4 @@ func (p parser) choice(raw json.RawMessage, prefix string, cfg *Config) (Choice,
 	}
 	c.SkipDuring = rc.SkipDuring
 	return c, nil
-}
-
-// expandHome mirrors platform.ExpandHome. It is duplicated because the layer
-// rule (internal/archtest) lets core import only internal/adapter. Removable
-// by moving path expansion to the caller (cli) and passing Parse expanded
-// paths, deferred because the Parse(data, path, home) signature is fixed by
-// the plan.
-func expandHome(p, home string) string {
-	if p == "" {
-		return ""
-	}
-	if p == "~" {
-		return filepath.Clean(home)
-	}
-	if rest, ok := strings.CutPrefix(p, "~/"); ok {
-		return filepath.Join(home, rest)
-	}
-	return filepath.Clean(p)
 }
