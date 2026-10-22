@@ -390,3 +390,91 @@ func TestFailedHasEmptyListsNotNull(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownUsageWithoutErrIsAnError(t *testing.T) {
+	cfg := inlineConfig(t, `{"p": [
+		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
+		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+	r := Pick(cfg, "p", noon, &fakeEnv{}) // claude-main: Reading nil, Err nil
+	if r.Status != StatusOKWithErrors || *r.Account != "claude-rec" {
+		t.Fatalf("status %s account %v", r.Status, r.Account)
+	}
+	wantSkip := []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "usage unknown (see errors)"}}
+	wantErrs := []RunError{{Account: "claude-main", Error: "usage unavailable"}}
+	if fmt.Sprint(r.Skipped) != fmt.Sprint(wantSkip) || fmt.Sprint(r.Errors) != fmt.Sprint(wantErrs) {
+		t.Errorf("skipped %v errors %v, want %v %v", r.Skipped, r.Errors, wantSkip, wantErrs)
+	}
+}
+
+func TestFailedCallStillJudgesOlderReading(t *testing.T) {
+	cfg := inlineConfig(t, `{"p": [
+		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
+		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+	older := noon.Add(-hour)
+	cases := []struct {
+		session     float64
+		wantAccount string
+		wantSkipped []Skip
+	}{
+		{40, "claude-main", nil},
+		{92, "claude-rec", []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "5h window 92% >= cap 90"}}},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprint(tc.session), func(t *testing.T) {
+			env := &fakeEnv{usage: map[string]AccountState{"claude-main": {
+				Reading: reading(older, win("session", 5*hour, tc.session), win("weekly", 7*day, 50)),
+				Err:     errors.New("usage endpoint returned HTTP 503"),
+			}}}
+			r := Pick(cfg, "p", noon, env)
+			if r.Status != StatusOKWithErrors || *r.Account != tc.wantAccount {
+				t.Fatalf("status %s account %v, want ok_with_errors %s", r.Status, *r.Account, tc.wantAccount)
+			}
+			if fmt.Sprint(r.Skipped) != fmt.Sprint(tc.wantSkipped) {
+				t.Errorf("skipped %v, want %v", r.Skipped, tc.wantSkipped)
+			}
+			wantErrs := []RunError{{Account: "claude-main", Error: "usage endpoint returned HTTP 503"}}
+			if fmt.Sprint(r.Errors) != fmt.Sprint(wantErrs) {
+				t.Errorf("errors %v, want %v", r.Errors, wantErrs)
+			}
+		})
+	}
+}
+
+func TestNoApplicableWindowsIsUnknownUsage(t *testing.T) {
+	fableOnly := win("fable", 7*day, 10)
+	fableOnly.ScopeModelName = "Fable"
+	cases := map[string]*adapter.Reading{
+		"empty":         reading(noon),
+		"other's scope": reading(noon, fableOnly),
+	}
+	for name, rd := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := inlineConfig(t, `{"p": [
+				{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
+				{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+			env := &fakeEnv{usage: map[string]AccountState{"claude-main": {Reading: rd}}}
+			r := Pick(cfg, "p", noon, env)
+			if r.Status != StatusOKWithErrors || *r.Account != "claude-rec" {
+				t.Fatalf("status %s account %v", r.Status, r.Account)
+			}
+			wantSkip := []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "usage unknown (no windows reported)"}}
+			wantErrs := []RunError{{Account: "claude-main", Error: "usage response had no windows"}}
+			if fmt.Sprint(r.Skipped) != fmt.Sprint(wantSkip) || fmt.Sprint(r.Errors) != fmt.Sprint(wantErrs) {
+				t.Errorf("skipped %v errors %v, want %v %v", r.Skipped, r.Errors, wantSkip, wantErrs)
+			}
+			if len(r.Warnings) != 0 {
+				t.Errorf("warnings %v, want none", r.Warnings)
+			}
+		})
+	}
+}
+
+func TestPickedThinkingIsACopy(t *testing.T) {
+	cfg := inlineConfig(t, `{"p": [
+		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+	r := Pick(cfg, "p", noon, &fakeEnv{})
+	*r.Thinking = "changed"
+	if got := *cfg.Profiles["p"][0].Thinking; got != "medium" {
+		t.Errorf("config thinking became %q through the result", got)
+	}
+}

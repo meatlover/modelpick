@@ -80,6 +80,11 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 		return "usage unknown (see errors)", false
 	}
 	ordered := OrderWindows(ApplyResets(*st.Reading, p.now).Windows, c.Model)
+	if len(ordered) == 0 {
+		// No window applies to this model: usage is unknown, never 0%.
+		p.addError(c.Account, "usage response had no windows")
+		return "usage unknown (no windows reported)", false
+	}
 	caps, warnings := EffectiveCaps(c.Account, c.Cap, ordered, p.cfg.Settings.DefaultCap)
 	p.addWarnings(warnings)
 	for i, w := range ordered {
@@ -98,8 +103,12 @@ func (p *picker) usage(account string) AccountState {
 	}
 	st := p.env.Usage(account)
 	p.states[account] = st
-	if st.Err != nil {
+	switch {
+	case st.Err != nil:
 		p.addError(account, st.Err.Error())
+	case st.Reading == nil:
+		// Keeps "usage unknown (see errors)" from pointing at nothing.
+		p.addError(account, "usage unavailable")
 	}
 	p.addWarnings(st.Warnings)
 	return st
@@ -130,7 +139,10 @@ func (p *picker) picked(c Choice) Result {
 	r.Vendor = &acct.Vendor
 	r.Account = &acct.Name
 	r.Model = &c.Model
-	r.Thinking = c.Thinking
+	if c.Thinking != nil {
+		thinking := *c.Thinking
+		r.Thinking = &thinking
+	}
 	r.AccountRef = &acct
 	return r
 }
