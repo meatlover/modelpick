@@ -1,4 +1,12 @@
 // Command modelpick picks which vendor account and model to use next.
 package main
 
-func main() {}
+import (
+	"os"
+
+	"github.com/meatlover/modelpick/internal/cli"
+)
+
+func main() {
+	os.Exit(cli.Main(os.Args[1:], os.Stdout, os.Stderr, cli.DefaultDeps()))
+}
