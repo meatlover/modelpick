@@ -1,0 +1,19 @@
+{
+  "status": "ok_with_errors",
+  "profile": "coder-difficult",
+  "vendor": "claude",
+  "account": "claude-rec",
+  "model": "claude-sonnet-5-5",
+  "thinking": "medium",
+  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude-rec"},
+  "reason": null,
+  "skipped": [
+    {"account": "claude-main", "model": "claude-opus-5-5", "why": "7d window 98% >= cap 98"},
+    {"account": "claude-main", "model": "claude-fable-5-1", "why": "7d window 98% >= cap 98"},
+    {"account": "codex-main", "model": "gpt-6.1-sol", "why": "usage unknown (see errors)"}
+  ],
+  "errors": [
+    {"account": "codex-main", "error": "usage endpoint returned HTTP 401; log in to Codex with this account"}
+  ],
+  "warnings": []
+}

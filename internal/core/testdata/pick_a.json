@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "profile": "coder-difficult",
+  "vendor": "claude",
+  "account": "claude-main",
+  "model": "claude-opus-5-5",
+  "thinking": "high",
+  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude"},
+  "reason": null,
+  "skipped": [],
+  "errors": [],
+  "warnings": []
+}

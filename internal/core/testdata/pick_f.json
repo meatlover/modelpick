@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "profile": "reviewer",
+  "vendor": null,
+  "account": null,
+  "model": null,
+  "thinking": null,
+  "account_ref": null,
+  "reason": "no choice available",
+  "skipped": [
+    {"account": "claude-main", "model": "claude-opus-5-5", "why": "5h window 92% >= cap 90"}
+  ],
+  "errors": [],
+  "warnings": []
+}

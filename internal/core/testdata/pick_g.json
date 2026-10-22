@@ -1,0 +1,13 @@
+{
+  "status": "failed",
+  "profile": "coder-hard",
+  "vendor": null,
+  "account": null,
+  "model": null,
+  "thinking": null,
+  "account_ref": null,
+  "reason": "unknown profile \"coder-hard\"; configured: coder-difficult, tester",
+  "skipped": [],
+  "errors": [],
+  "warnings": []
+}

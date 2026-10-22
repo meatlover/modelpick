@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "profile": "tester",
+  "vendor": "claude",
+  "account": "claude-main",
+  "model": "claude-sonnet-5-5",
+  "thinking": "medium",
+  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude"},
+  "reason": null,
+  "skipped": [
+    {"account": "go-1", "model": "opencode-go/deepseek-v4.1", "why": "in schedule deepseek-peak"},
+    {"account": "go-2", "model": "opencode-go/deepseek-v4.1", "why": "in schedule deepseek-peak"}
+  ],
+  "errors": [],
+  "warnings": []
+}
