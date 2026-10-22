@@ -129,7 +129,7 @@ func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
 		t.Fatalf("exit %d, want 0:\n%s", code, stdout)
 	}
 	for _, want := range []string{
-		"WARN   profile p[0]: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 98\n",
+		"WARN   profile p[0]: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95\n",
 		"WARN   codex-main: unrecognised window group \"x\"",
 		"0 error(s), 2 warning(s)",
 	} {
