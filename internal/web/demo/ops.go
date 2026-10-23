@@ -327,7 +327,8 @@ func accountLocation(vendor string, f map[string]any) (loc, src string) {
 	case "claude":
 		return dir, "Keychain: Claude Code-credentials"
 	case "codex":
-		return dir, "file: " + dir + "/auth.json"
+		home, _ := f["codex_home"].(string)
+		return home, "file: " + home + "/auth.json"
 	}
 	file, _ := f["key_file"].(string)
 	line := "1"

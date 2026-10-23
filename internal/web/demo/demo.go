@@ -53,10 +53,10 @@ type Demo struct {
 func New(now func() time.Time) *Demo {
 	d := &Demo{now: now, counter: 1, defaultCap: 95}
 	d.buildAccounts()
+	d.buildReadings(now())
 	d.buildModels()
 	d.buildSchedules()
 	d.buildProfiles()
-	d.buildReadings(now())
 	return d
 }
 
@@ -78,7 +78,7 @@ func (d *Demo) buildAccounts() {
 		acct("claude-rec", "claude", "~/.claude-rec", "Keychain: Claude Code-credentials-6a4e8c1e",
 			map[string]any{"config_dir": "~/.claude-rec"}),
 		acct("codex-main", "codex", "~/.codex", "file: ~/.codex/auth.json",
-			map[string]any{"config_dir": "~/.codex"}),
+			map[string]any{"codex_home": "~/.codex"}),
 		goAcct(1), goAcct(2), goAcct(3),
 	}
 }
@@ -101,10 +101,8 @@ func vendorModels(vendor string) []web.Model {
 	return mk(nil, "opencode-go/deepseek-v4.1-flash", "opencode-go/deepseek-v4.1")
 }
 
-func vendorWindows(vendor, account, model string) []string {
+func vendorWindows(vendor, model string) []string {
 	switch {
-	case account == "claude-rec":
-		return nil
 	case vendor == "claude" && model == "claude-fable-5-1":
 		return []string{"5h", "7d", "7d Fable"}
 	case vendor == "claude":
@@ -126,7 +124,11 @@ func (d *Demo) buildModels() {
 func (d *Demo) addAccountModels(a web.Account) {
 	d.models[a.Name] = vendorModels(a.Vendor)
 	for _, m := range d.models[a.Name] {
-		if w := vendorWindows(a.Vendor, a.Name, m.ID); w != nil {
+		// windows[account] exists only for accounts with a stored reading.
+		if r := d.readings[a.Name]; r == nil || !r.hasReading {
+			continue
+		}
+		if w := vendorWindows(a.Vendor, m.ID); w != nil {
 			if d.windows[a.Name] == nil {
 				d.windows[a.Name] = map[string][]string{}
 			}
@@ -246,7 +248,8 @@ func (d *Demo) row(a web.Account) web.UsageRow {
 	}
 	row.State, row.CanRefresh = r.state, r.canRefresh
 	if r.hasReading {
-		row.ReadingAgeSeconds = int(d.now().Sub(r.readAt).Seconds())
+		age := int(d.now().Sub(r.readAt).Seconds())
+		row.ReadingAgeSeconds = &age
 	}
 	for _, w := range r.windows {
 		row.Windows = append(row.Windows, web.UsageWindow{Label: w.label,
@@ -320,8 +323,13 @@ func (d *Demo) HandEdit() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for i := range d.profiles {
-		if d.profiles[i].Name == "tester" && len(d.profiles[i].Choices) > 3 {
-			d.profiles[i].Choices[3].Thinking = str("low")
+		if d.profiles[i].Name != "tester" || len(d.profiles[i].Choices) < 4 {
+			continue
+		}
+		c := &d.profiles[i].Choices[3]
+		// Only a level the model offers keeps the state valid.
+		if contains(d.modelThinking(c.Account, c.Model), "low") {
+			c.Thinking = str("low")
 		}
 	}
 	d.bump()

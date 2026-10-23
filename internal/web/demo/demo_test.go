@@ -100,9 +100,9 @@ func TestChoiceSetRefusals(t *testing.T) {
 		{"range", "cap", []any{120}, "profiles.coder-difficult[0].cap[0]: 120 is outside 0–100"},
 		{"pace zero", "cap", []any{90, "pace+0"}, `profiles.coder-difficult[0].cap[1]: "pace+0": 0 must be 1-100`},
 		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number or pace+N`},
-		{"both lists", "skip_during", []string{"deepseek-peak"}, ""},
+		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number or pace+N"},
 	}
-	for _, c := range cases[:3] {
+	for _, c := range cases {
 		if got := refusal(t, d, "choice.set", set(c.field, c.value)).Reason; got != c.want {
 			t.Errorf("%s: got %q want %q", c.name, got, c.want)
 		}
@@ -277,14 +277,14 @@ func TestRefreshRules(t *testing.T) {
 	}
 	now = t0.Add(time.Hour)
 	row, err := d.Refresh("go-1")
-	if err != nil || row.ReadingAgeSeconds != 0 || !row.CanRefresh {
+	if err != nil || row.ReadingAgeSeconds == nil || *row.ReadingAgeSeconds != 0 || !row.CanRefresh {
 		t.Fatalf("got %+v, %v", row, err)
 	}
 }
 
 func TestUsageFixture(t *testing.T) {
 	rows := newDemo().Usage()
-	if len(rows) != 6 || rows[0].ReadingAgeSeconds != 240 || len(rows[1].Windows) != 0 {
+	if len(rows) != 6 || *rows[0].ReadingAgeSeconds != 240 || len(rows[1].Windows) != 0 {
 		t.Fatalf("rows: %+v", rows)
 	}
 	w := rows[0].Windows[2]
@@ -292,7 +292,7 @@ func TestUsageFixture(t *testing.T) {
 		w.Length != "168h0m0s" || w.ResetsAt != "2026-10-25T20:50:00Z" {
 		t.Fatalf("fable window: %+v", w)
 	}
-	if rows[5].CanRefresh || rows[5].ReadingAgeSeconds != 38*60 {
+	if rows[5].CanRefresh || *rows[5].ReadingAgeSeconds != 38*60 {
 		t.Fatalf("go-3: %+v", rows[5])
 	}
 }
@@ -347,5 +347,65 @@ func TestNoCredentialFields(t *testing.T) {
 		if strings.Contains(string(raw), bad) {
 			t.Errorf("state contains %q", bad)
 		}
+	}
+}
+
+func TestCodexFieldsAndLocation(t *testing.T) {
+	d := newDemo()
+	var a web.Account
+	for _, x := range d.State().Accounts {
+		if x.Name == "codex-main" {
+			a = x
+		}
+	}
+	if a.Fields["codex_home"] != "~/.codex" || len(a.Fields) != 1 {
+		t.Fatalf("fixture fields: %v", a.Fields)
+	}
+	must(t, d, "account.add", map[string]any{"name": "codex-2", "vendor": "codex",
+		"fields": map[string]any{"codex_home": "~/.codex2"}})
+	for _, x := range d.State().Accounts {
+		if x.Name == "codex-2" && (x.Location != "~/.codex2" || x.Source != "file: ~/.codex2/auth.json") {
+			t.Fatalf("built from codex_home wrongly: %+v", x)
+		}
+	}
+}
+
+func TestNoReadingIsNullAndHasNoWindows(t *testing.T) {
+	d := newDemo()
+	raw := string(mustJSON(t, d.Usage()[1]))
+	if !strings.Contains(raw, `"reading_age_seconds":null`) {
+		t.Fatalf("claude-rec: %s", raw)
+	}
+	must(t, d, "account.add", map[string]any{"name": "go-4", "vendor": "opencode-go",
+		"fields": map[string]any{"key_file": "~/.ssh/opencode-go-api", "key_line": 4}})
+	w := d.State().Windows
+	if _, ok := w["claude-rec"]; ok {
+		t.Error("claude-rec has windows")
+	}
+	if _, ok := w["go-4"]; ok {
+		t.Error("new account has windows")
+	}
+	if _, ok := w["go-1"]; !ok {
+		t.Error("go-1 lost its windows")
+	}
+}
+
+func TestHandEditKeepsStateValid(t *testing.T) {
+	d := newDemo()
+	d.HandEdit()
+	if th := profileOf(t, d, "tester").Choices[3].Thinking; th == nil || *th != "low" {
+		t.Fatalf("claude model should get low, got %v", th)
+	}
+	d = newDemo()
+	must(t, d, "choice.set", map[string]any{"profile": "tester", "index": 3, "field": "account",
+		"value": "go-1", "expect": choiceJSON(t, d, "tester", 3)})
+	before := d.State()
+	d.HandEdit()
+	after := d.State()
+	if th := profileOf(t, d, "tester").Choices[3].Thinking; th != nil {
+		t.Fatalf("model without levels got thinking %q", *th)
+	}
+	if after.SHA256 == before.SHA256 {
+		t.Fatal("sha unchanged")
 	}
 }

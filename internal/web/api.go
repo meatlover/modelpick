@@ -60,7 +60,7 @@ type UsageRow struct {
 	Account           string        `json:"account"`
 	Vendor            string        `json:"vendor"`
 	State             string        `json:"state"`
-	ReadingAgeSeconds int           `json:"reading_age_seconds"`
+	ReadingAgeSeconds *int          `json:"reading_age_seconds"`
 	CanRefresh        bool          `json:"can_refresh"`
 	Windows           []UsageWindow `json:"windows"`
 }

@@ -12,7 +12,7 @@ import (
 func capElement(where string, raw json.RawMessage) (any, error) {
 	text := strings.TrimSpace(string(raw))
 	var n float64
-	if json.Unmarshal(raw, &n) == nil {
+	if text != "null" && json.Unmarshal(raw, &n) == nil {
 		if n < 0 || n > 100 {
 			return nil, refuse("%s: %s is outside 0–100", where, text)
 		}
