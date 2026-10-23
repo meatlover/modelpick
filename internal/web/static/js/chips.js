@@ -125,7 +125,8 @@ function unpeek(pop) {
 
 // peek shows schedule name's week beside the picker, level with the option
 // opt: on the right when it fits in the viewport, else on the left, else
-// below, so it never covers the options or widens the page.
+// below, shifted left as far as it must to stay inside the viewport, so it
+// never covers the options or widens the page.
 function peek(opt, name) {
   const pop = opt.closest(".sched-pop");
   const sched = store.state ? store.state.schedules.find((s) => s.name === name) : null;
@@ -141,6 +142,7 @@ function peek(opt, name) {
   else if (r.left - gap - el.offsetWidth >= 8) side = "left";
   el.classList.add(`is-${side}`);
   if (side !== "below") el.style.top = `${Math.max(0, Math.min(opt.offsetTop, pop.clientHeight - el.offsetHeight))}px`;
+  else el.style.left = `${Math.min(0, Math.max(8 - r.left, room - 8 - r.left - el.offsetWidth))}px`;
 }
 
 function pickOption(ctx, shown, name) {

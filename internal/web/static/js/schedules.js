@@ -1,9 +1,10 @@
 // Schedules tab: the schedule list and the selected schedule's week grid
 // (#schedules/<name>; the first schedule when the name is missing or
-// unknown). The grid shows the UTC cells in the header's zone. A pointer
-// drag, or Space on the keyboard cell, sends one schedule.paint; Clear
-// sends one that turns every cell off. The title row's readout names the
-// cell under the pointer (or the keyboard cell).
+// unknown). The grid shows the UTC cells in the header's zone: 24 hours
+// across, 7 days down. A pointer drag, or Space on the keyboard cell, sends
+// one schedule.paint; Clear sends one that turns every cell off. The row
+// above the grid holds Clear and a readout naming the cell under the
+// pointer (or the keyboard cell); the schedule's name is not repeated there.
 import { h, clear, trashIcon } from "./dom.js";
 import { store, sendOp, notApplied } from "./api.js";
 import { confirmDialog } from "./notice.js";
@@ -13,7 +14,8 @@ import { zone, localOffsetMinutes, utcCellsFor, shownFraction } from "./time.js"
 export const uses = ["state", "doctor"];
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MOVES = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+// MOVES are [day, hour] steps: ←/→ move by hour (across), ↑/↓ by day (down).
+const MOVES = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
 
 let host = null;
 // focusKey is the data-key of the element that had focus; paint puts focus
@@ -98,7 +100,7 @@ function readout() {
 // current cells without rebuilding them.
 function mark() {
   const r = previewRect();
-  grid.cells.forEach((col, d) => col.forEach((el, hr) => {
+  grid.cells.forEach((row, d) => row.forEach((el, hr) => {
     el.classList.toggle("is-preview", inRect(r, d, hr));
     el.classList.toggle("is-active", d === grid.active[0] && hr === grid.active[1]);
   }));
@@ -132,11 +134,12 @@ function index(boxes, pos) {
 }
 
 // cellAt maps a pointer position to the nearest shown cell, so a drag past
-// the grid's edge keeps the edge row or column.
+// the grid's edge keeps the edge row or column. Days are rows (y), hours
+// columns (x).
 function cellAt(x, y) {
-  const cols = grid.cells.map((col) => col[0].getBoundingClientRect().left);
-  const rows = grid.cells[0].map((el) => el.getBoundingClientRect().top);
-  return [index(cols, x), index(rows, y)];
+  const days = grid.cells.map((row) => row[0].getBoundingClientRect().top);
+  const hours = grid.cells[0].map((el) => el.getBoundingClientRect().left);
+  return [index(days, y), index(hours, x)];
 }
 
 // hoverAt tracks the cell under the pointer; a gap between cells counts
@@ -208,6 +211,8 @@ function onGridKey(e) {
     else if (!grid.anchor) grid.anchor = grid.active;
     grid.active = clampMove(grid.active, MOVES[e.key]);
     mark();
+    // A narrow window scrolls the week inside its panel; keep the cell in view.
+    grid.cells[grid.active[0]][grid.active[1]].scrollIntoView({ block: "nearest", inline: "nearest" });
   } else if (e.key === " ") {
     e.preventDefault();
     if (e.repeat || grid.pending || grid.drag) return;
@@ -265,14 +270,19 @@ function cell(sched, d, hr) {
   return el;
 }
 
+// week lays the grid out row by row: a header row of hour labels (every
+// 3 h), then one row per day, its name first.
 function week(sched) {
   grid.cells = DAYS.map(() => []);
-  const kids = [h("span", { "aria-hidden": "true" }), DAYS.map((d) => h("span", { class: "s-day" }, d))];
+  const kids = [h("span", { "aria-hidden": "true" })];
   for (let hr = 0; hr < 24; hr++) {
     kids.push(h("span", { class: "mono s-hour", "aria-hidden": "true" },
       hr % 3 === 0 ? String(hr).padStart(2, "0") : ""));
-    for (let d = 0; d < 7; d++) kids.push(cell(sched, d, hr));
   }
+  DAYS.forEach((name, d) => {
+    kids.push(h("span", { class: "s-day" }, name));
+    for (let hr = 0; hr < 24; hr++) kids.push(cell(sched, d, hr));
+  });
   grid.el = h("div", { class: "s-grid", tabindex: "0", role: "group", "aria-label": "Week",
     "data-key": "week", onKeyDown: onGridKey, onPointerDown: startDrag, onPointerMove: hoverAt,
     onPointerLeave: unhover, onFocus: readout, onBlur: readout }, kids);
@@ -415,7 +425,7 @@ function clearSchedule(name) {
 
 function scheduleMain(sched) {
   grid.out = h("span", { class: "mono s-readout" });
-  const title = h("div", { class: "p-title s-title" }, h("h1", {}, sched.name),
+  const title = h("div", { class: "p-title s-title" },
     h("button", { type: "button", class: "btn btn-quiet", "data-key": "clear-schedule",
       "aria-label": `Clear schedule ${sched.name}`, disabled: !painted(sched),
       onClick: () => clearSchedule(sched.name) }, "Clear"),

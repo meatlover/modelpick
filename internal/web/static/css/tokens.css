@@ -30,6 +30,9 @@
   --accent-line: #9DB3E3;
   --accent-mid: #2B5FD0;
   --paint: #C2560F;
+  /* An editable area under the pointer (round 3, owner): a shade off
+     --track. */
+  --hover-bg: #E2E1DB;
   /* The cap editor's pace bar: time elapsed (yellow), beside the token
      usage blue (--fill); owner ruling 2026-10-23, no mockup. */
   --time: #C99A06;
@@ -91,6 +94,7 @@
     --accent-line: #4C6499;
     --accent-mid: #7099EE;
     --paint: #E3803F;
+    --hover-bg: #3F3F3A;
     --time: #E0B53A;
     --time-soft: #4A3F17;
 

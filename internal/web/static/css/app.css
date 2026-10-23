@@ -1357,15 +1357,17 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 /* The hover preview (weekpeek.js): one schedule's week beside the picker,
-   7 day columns, 24 hour rows. chips.js picks the side (is-right, is-left,
-   is-below) and sets top level with the hovered option (CSSOM). */
+   24 hour columns, 7 day rows, as on the Schedules tab. Twice the earlier
+   preview's size each way (it was 69 × 144, upright; now 286 × 140, on its
+   side). chips.js picks the side (is-right, is-left, is-below) and sets top
+   level with the hovered option, or left inside the viewport (CSSOM). */
 .sched-peek {
   position: absolute;
   z-index: 3;
   display: grid;
-  grid-template-columns: repeat(7, 7px);
-  grid-template-rows: 10px;
-  grid-auto-rows: 4px;
+  grid-template-columns: 8px repeat(24, 10px);
+  grid-template-rows: 14px;
+  grid-auto-rows: 15px;
   gap: 1px;
   padding: 6px;
   border: 1px solid var(--border);
@@ -1388,10 +1390,34 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   top: calc(100% + 6px);
 }
 
-/* The initials fill the first, 10px row; the hours are 4px rows. */
+/* The top row: a tick at each hour's start (in the gap before its
+   column), longer and labelled every 6 h. */
+.sched-peek-hour {
+  position: relative;
+  color: var(--muted);
+  font: 500 8px/9px var(--font-mono);
+  white-space: nowrap;
+}
+
+.sched-peek-hour::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  bottom: 0;
+  width: 1px;
+  height: 2px;
+  background: var(--border);
+}
+
+.sched-peek-hour.is-major::after {
+  height: 4px;
+  background: var(--muted);
+}
+
+/* The initials column, 8px wide; each day row is 15px tall. */
 .sched-peek-day {
   color: var(--muted);
-  font: 600 8px/10px var(--font-mono);
+  font: 600 8px/15px var(--font-mono);
   text-align: center;
 }
 
@@ -1474,18 +1500,22 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -2px;
 }
 
-/* Week geometry: a cell is 34 × 21 px (≈ the golden ratio), so the whole
-   week fits a 1280 × 900 window. The panel's width follows from the cells:
-   hour column, seven cells and their gaps, padding, border. */
+/* Week geometry: hours across, days down; a cell is 34 × 21 px (≈ the
+   golden ratio). The panel's width follows from the cells: day column, 24
+   cells and their gaps, padding, border (920 px, inside the 1280 window's
+   924 px main column). A narrower window scrolls the week inside its
+   panel, never the page. */
 .s-title,
 .s-week {
   --s-cell-w: 34px;
-  --s-hour-w: 36px;
-  --s-col-gap: 3px;
-  --s-week-w: calc(var(--s-hour-w) + 7 * (var(--s-cell-w) + var(--s-col-gap)) + 2 * 18px + 2px);
+  --s-day-w: 30px;
+  --s-col-gap: 2px;
+  --s-pad-x: 12px;
+  --s-week-w: calc(var(--s-day-w) + 24 * (var(--s-cell-w) + var(--s-col-gap)) + 2 * var(--s-pad-x) + 2px);
 }
 
-/* The title row is as wide as the week, so the readout ends at its edge. */
+/* The row above the week (Clear, then the readout) is as wide as the
+   week, so the readout ends at its edge. */
 .s-title {
   max-width: var(--s-week-w);
 }
@@ -1505,19 +1535,23 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .s-week {
   align-self: flex-start;
+  box-sizing: border-box;
   width: 100%;
   max-width: var(--s-week-w);
-  padding: 16px 18px;
+  padding: 16px var(--s-pad-x);
+  overflow-x: auto;
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* touch-action is on the cells only, so on a touch screen a swipe on the
+   labels still scrolls a narrow week while one on the cells paints. */
 .s-grid {
   display: grid;
-  grid-template-columns: var(--s-hour-w) repeat(7, minmax(0, var(--s-cell-w)));
+  grid-template-columns: var(--s-day-w) repeat(24, var(--s-cell-w));
   column-gap: var(--s-col-gap);
   row-gap: 2px;
-  touch-action: none;
+  width: max-content;
 }
 
 /* The keyboard focus shows on the active cell instead. */
@@ -1525,22 +1559,27 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline: none;
 }
 
+/* Centred on its row. */
 .s-day {
-  padding-bottom: 6px;
-  text-align: center;
+  align-self: center;
   font-size: 12px;
   font-weight: 600;
+  line-height: 14px;
   color: var(--text-2);
 }
 
-/* Centred on its row. */
+/* Centred over its column. */
 .s-hour {
-  align-self: center;
+  padding-bottom: 6px;
+  text-align: center;
   font-size: 10px;
   line-height: 11px;
   color: var(--text-3);
 }
 
+/* Editable: a pointing hand, and the cell under it a shade darker
+   (--hover-bg, or for a painted cell --paint mixed toward --text). The
+   drag preview below wins over it. */
 .s-cell {
   position: relative;
   display: block;
@@ -1548,7 +1587,16 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border-radius: 3px;
   overflow: hidden;
   background: var(--track);
-  cursor: crosshair;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.s-cell:hover {
+  background: var(--hover-bg);
+}
+
+.s-cell:hover .s-fill {
+  background: color-mix(in srgb, var(--paint) 82%, var(--text));
 }
 
 .s-fill {
