@@ -67,9 +67,7 @@ func (d *Demo) buildAccounts() {
 		return web.Account{Name: name, Vendor: vendor, Fields: f, Location: loc, Source: src}
 	}
 	goAcct := func(n int) web.Account {
-		line := strconv.Itoa(n)
-		return acct("go-"+line, "opencode-go",
-			"~/.ssh/opencode-go-api · line "+line, "key line "+line+" of 3",
+		return acct("go-"+strconv.Itoa(n), "opencode-go", "", "",
 			map[string]any{"key_file": "~/.ssh/opencode-go-api", "key_line": float64(n)})
 	}
 	d.accounts = []web.Account{
@@ -81,6 +79,7 @@ func (d *Demo) buildAccounts() {
 			map[string]any{"codex_home": "~/.codex"}),
 		goAcct(1), goAcct(2), goAcct(3),
 	}
+	d.relabel()
 }
 
 func vendorModels(vendor string) []web.Model {
@@ -203,6 +202,24 @@ func (d *Demo) buildReadings(t0 time.Time) {
 	}
 }
 
+// freshWindows is a first reading for vendor taken at t0: the fixture's
+// windows for that vendor, lightly used, each resetting a full length on.
+func freshWindows(vendor string, t0 time.Time) []window {
+	day := 24 * time.Hour
+	w := func(label string, l time.Duration, used float64) window {
+		return window{label: label, length: l, used: used, resetAt: t0.Add(l)}
+	}
+	switch vendor {
+	case "claude":
+		fable := w("7d Fable", 7*day, 0)
+		fable.scope = str("claude-fable-5-1")
+		return []window{w("5h", 5*time.Hour, 2), w("7d", 7*day, 1), fable}
+	case "codex":
+		return []window{w("7d", 7*day, 1)}
+	}
+	return []window{w("5h", 5*time.Hour, 0), w("7d", 7*day, 1), w("30d", 30*day, 1)}
+}
+
 func (d *Demo) sha() string {
 	sum := sha256.Sum256([]byte(strconv.Itoa(d.counter)))
 	return hex.EncodeToString(sum[:])
@@ -244,6 +261,7 @@ func (d *Demo) row(a web.Account) web.UsageRow {
 	row := web.UsageRow{Account: a.Name, Vendor: a.Vendor, State: "no reading",
 		Windows: []web.UsageWindow{}}
 	if r == nil {
+		row.CanRefresh = true // nothing blocks a first reading
 		return row
 	}
 	row.State, row.CanRefresh = r.state, r.canRefresh
@@ -280,12 +298,16 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 			continue
 		}
 		r := d.readings[account]
-		if r == nil || !r.canRefresh {
-			state := "no reading"
-			if r != nil {
-				state = r.state
-			}
-			return web.UsageRow{}, web.Refused{Reason: account + ": " + state}
+		if r == nil {
+			// A first reading: fixture-like windows, and windows[account]
+			// appears as it does for an account with a stored reading.
+			d.readings[account] = &reading{state: "ok", canRefresh: true, hasReading: true,
+				readAt: d.now(), windows: freshWindows(a.Vendor, d.now())}
+			d.addAccountModels(a)
+			return d.row(a), nil
+		}
+		if !r.canRefresh {
+			return web.UsageRow{}, web.Refused{Reason: account + ": " + r.state}
 		}
 		r.readAt = d.now()
 		return d.row(a), nil

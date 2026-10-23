@@ -409,3 +409,80 @@ func TestHandEditKeepsStateValid(t *testing.T) {
 		t.Fatal("sha unchanged")
 	}
 }
+
+func sourceOf(t *testing.T, d *Demo, name string) string {
+	t.Helper()
+	for _, a := range d.State().Accounts {
+		if a.Name == name {
+			return a.Source
+		}
+	}
+	t.Fatalf("no account %s", name)
+	return ""
+}
+
+func TestKeyLineSourceCountsAccountsOnTheFile(t *testing.T) {
+	d := newDemo()
+	if got := sourceOf(t, d, "go-2"); got != "key line 2 of 3" {
+		t.Fatalf("fixture go-2: %q", got)
+	}
+	must(t, d, "account.add", map[string]any{"name": "go-4", "vendor": "opencode-go",
+		"fields": map[string]any{"key_file": "~/.ssh/opencode-go-api", "key_line": 4}})
+	must(t, d, "account.add", map[string]any{"name": "other-1", "vendor": "opencode-go",
+		"fields": map[string]any{"key_file": "~/.ssh/other-key", "key_line": 1}})
+	for name, want := range map[string]string{"go-4": "key line 4 of 4", "go-1": "key line 1 of 4",
+		"other-1": "key line 1 of 1"} {
+		if got := sourceOf(t, d, name); got != want {
+			t.Errorf("%s: %q want %q", name, got, want)
+		}
+	}
+	must(t, d, "account.remove", map[string]any{"name": "go-4"})
+	if got := sourceOf(t, d, "go-1"); got != "key line 1 of 3" {
+		t.Errorf("after remove go-1: %q", got)
+	}
+}
+
+func usageOf(t *testing.T, d *Demo, name string) web.UsageRow {
+	t.Helper()
+	for _, r := range d.Usage() {
+		if r.Account == name {
+			return r
+		}
+	}
+	t.Fatalf("no usage row %s", name)
+	return web.UsageRow{}
+}
+
+func TestNoReadingIsRefreshableUnlessBlocked(t *testing.T) {
+	d := newDemo()
+	if usageOf(t, d, "claude-rec").CanRefresh {
+		t.Error("expired claude-rec refreshable")
+	}
+	if usageOf(t, d, "go-3").CanRefresh {
+		t.Error("rate-limited go-3 refreshable")
+	}
+	must(t, d, "account.add", map[string]any{"name": "go-4", "vendor": "opencode-go",
+		"fields": map[string]any{"key_file": "~/.ssh/opencode-go-api", "key_line": 4}})
+	if r := usageOf(t, d, "go-4"); !r.CanRefresh || r.ReadingAgeSeconds != nil {
+		t.Fatalf("new go-4: %+v", r)
+	}
+	row, err := d.Refresh("go-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := []string{}
+	for _, w := range row.Windows {
+		labels = append(labels, w.Label)
+	}
+	if row.State != "ok" || !row.CanRefresh || row.ReadingAgeSeconds == nil || *row.ReadingAgeSeconds != 0 ||
+		strings.Join(labels, ",") != "5h,7d,30d" {
+		t.Fatalf("refreshed go-4: %+v", row)
+	}
+	w, ok := d.State().Windows["go-4"]
+	if !ok || strings.Join(w["opencode-go/deepseek-v4.1-flash"], ",") != "5h,7d,30d" {
+		t.Fatalf("windows[go-4] after refresh: %v", d.State().Windows)
+	}
+	if _, err := d.Refresh("claude-rec"); err == nil {
+		t.Error("claude-rec refreshed")
+	}
+}

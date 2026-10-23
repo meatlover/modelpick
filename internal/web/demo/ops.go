@@ -321,7 +321,9 @@ func (d *Demo) hasAccount(name string) bool {
 	return false
 }
 
-func accountLocation(vendor string, f map[string]any) (loc, src string) {
+// accountLocation builds the display strings; onFile is how many accounts
+// read the same key file (opencode-go only).
+func accountLocation(vendor string, f map[string]any, onFile int) (loc, src string) {
 	dir, _ := f["config_dir"].(string)
 	switch vendor {
 	case "claude":
@@ -335,7 +337,23 @@ func accountLocation(vendor string, f map[string]any) (loc, src string) {
 	if n, ok := f["key_line"].(float64); ok {
 		line = strconv.Itoa(int(n))
 	}
-	return file + " · line " + line, "key line " + line + " of 3"
+	return file + " · line " + line, "key line " + line + " of " + strconv.Itoa(onFile)
+}
+
+// relabel rebuilds every account's location and source, since an
+// opencode-go source counts the accounts on its key file.
+func (d *Demo) relabel() {
+	onFile := map[string]int{}
+	for _, a := range d.accounts {
+		if f, ok := a.Fields["key_file"].(string); ok && a.Vendor == "opencode-go" {
+			onFile[f]++
+		}
+	}
+	for i := range d.accounts {
+		a := &d.accounts[i]
+		file, _ := a.Fields["key_file"].(string)
+		a.Location, a.Source = accountLocation(a.Vendor, a.Fields, onFile[file])
+	}
 }
 
 func (d *Demo) opAccountAdd(a opArgs) error {
@@ -348,9 +366,9 @@ func (d *Demo) opAccountAdd(a opArgs) error {
 	if a.Fields == nil {
 		a.Fields = map[string]any{}
 	}
-	loc, src := accountLocation(a.Vendor, a.Fields)
-	acct := web.Account{Name: a.Name, Vendor: a.Vendor, Fields: a.Fields, Location: loc, Source: src}
+	acct := web.Account{Name: a.Name, Vendor: a.Vendor, Fields: a.Fields}
 	d.accounts = append(d.accounts, acct)
+	d.relabel()
 	d.addAccountModels(acct)
 	return nil
 }
@@ -372,6 +390,7 @@ func (d *Demo) opAccountRemove(a opArgs) error {
 			break
 		}
 	}
+	d.relabel()
 	delete(d.models, a.Name)
 	delete(d.windows, a.Name)
 	delete(d.readings, a.Name)
