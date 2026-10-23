@@ -985,7 +985,18 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border-radius: 8px;
   border: 1px solid var(--input-border);
   background: var(--surface);
-  cursor: text;
+  cursor: default;
+}
+
+/* A card's box that opens the frame: a pointing hand and the hover
+   background, no I-beam (owner, round 3). Locked boxes and the Example
+   boxes keep the default cursor and no hover change. */
+.p-caps .cap-box:not(.is-locked) {
+  cursor: pointer;
+}
+
+.p-caps .cap-box:not(.is-locked):hover {
+  background: var(--hover-bg);
 }
 
 .cap-box.is-default {
@@ -1008,6 +1019,10 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text);
 }
 
+.cap-val {
+  cursor: inherit;
+}
+
 /* "pace+10%" is wider than "90%". */
 .cap-box.is-wide .cap-val {
   width: 88px;
@@ -1018,11 +1033,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--muted);
 }
 
-/* A default box after the first default one: shown, not editable. */
-.cap-box.is-locked,
-.cap-box.is-locked .cap-val {
-  cursor: default;
-}
+/* A default box after the first default one: shown, not editable (the
+   default cursor comes from .cap-box). */
 
 .cap-add {
   min-width: 54px;
@@ -1052,8 +1064,19 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--accent-strong);
 }
 
+/* Line 2, "Cap at 90%" / "Cap at time elapsed + 10%", in the value's
+   font; only the number is an input, sized to its text by caps.js (ch,
+   with tabular digits so each digit is 1ch). */
+.cap-edit-line {
+  font: 600 15px var(--font);
+  color: var(--text);
+}
+
 .cap-edit-val {
-  width: 120px;
+  min-width: 1ch;
+  border-bottom: 1px solid var(--accent-line);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .cap-edit:focus,
@@ -1216,11 +1239,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   margin-top: -6px;
   font-size: 12px;
   color: var(--text-3);
-}
-
-.cap-effect {
-  font-size: 12px;
-  color: var(--text-2);
 }
 
 @media (max-width: 720px) {
