@@ -32,3 +32,26 @@ export function h(tag, attrs, ...children) {
 export function clear(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
+
+const SVG = "http://www.w3.org/2000/svg";
+
+// svg(w, view, attrs, ...parts) draws a w×w stroked icon; each part is
+// [tag, attrs]. It is decorative (aria-hidden): the button carries the label.
+export function svg(w, view, attrs, ...parts) {
+  const el = document.createElementNS(SVG, "svg");
+  const all = { width: w, height: w, viewBox: view, fill: "none", stroke: "currentColor",
+    "aria-hidden": "true", ...attrs };
+  for (const [k, v] of Object.entries(all)) el.setAttribute(k, String(v));
+  for (const [tag, a] of parts) {
+    const c = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(a)) c.setAttribute(k, String(v));
+    el.append(c);
+  }
+  return el;
+}
+
+// trashIcon is the delete glyph shared by the caps frame and the schedule list.
+export function trashIcon() {
+  return svg(16, "0 0 16 16", { "stroke-width": "1.5", "stroke-linecap": "round" },
+    ["path", { d: "M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" }]);
+}

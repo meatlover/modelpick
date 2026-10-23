@@ -3,10 +3,9 @@
 // the one editing frame on the page (value, % / time-pace switch, trash,
 // drag bar, effect line). Edits apply on Enter, on leaving the frame and on
 // the bar's release, as one choice.set field=cap; a refusal reverts.
-import { h, clear } from "./dom.js";
+import { h, clear, svg, trashIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
 
-const SVG = "http://www.w3.org/2000/svg";
 const BAR = 240; // drawn bar width, px
 const ELAPSED = 25; // the bar's fixed fill, standing for time elapsed (%)
 const PACE_MAX = 100 - ELAPSED; // the largest N the bar covers
@@ -293,28 +292,10 @@ function afterLeave(key, p) {
 
 // ---------- drawing ----------
 
-function svg(w, view, attrs, ...parts) {
-  const el = document.createElementNS(SVG, "svg");
-  const all = { width: w, height: w, viewBox: view, fill: "none", stroke: "currentColor",
-    "aria-hidden": "true", ...attrs };
-  for (const [k, v] of Object.entries(all)) el.setAttribute(k, String(v));
-  for (const [tag, a] of parts) {
-    const c = document.createElementNS(SVG, tag);
-    for (const [k, v] of Object.entries(a)) c.setAttribute(k, String(v));
-    el.append(c);
-  }
-  return el;
-}
-
 function clock(w) {
   return svg(w, "0 0 12 12", { "stroke-width": "1.4" },
     ["circle", { cx: 6, cy: 6.5, r: 4.3 }], ["path", { d: "M6 4.3v2.3l1.5 1" }],
     ["path", { d: "M2.2 2.2l1.3-1M9.8 2.2l-1.3-1" }]);
-}
-
-function trashIcon() {
-  return svg(16, "0 0 16 16", { "stroke-width": "1.5", "stroke-linecap": "round" },
-    ["path", { d: "M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" }]);
 }
 
 // place draws shown on the frame: switch state, handle, tint, alarm clock,

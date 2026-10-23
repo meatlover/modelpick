@@ -1,8 +1,10 @@
 // Schedules tab: the schedule list and the selected schedule's week grid
 // (#schedules/<name>; the first schedule when the name is missing or
 // unknown). The grid shows the UTC cells in the header's zone. A pointer
-// drag, or Space on the keyboard cell, sends one schedule.paint.
-import { h, clear } from "./dom.js";
+// drag, or Space on the keyboard cell, sends one schedule.paint; Clear
+// sends one that turns every cell off. The title row's readout names the
+// cell under the pointer (or the keyboard cell).
+import { h, clear, trashIcon } from "./dom.js";
 import { store, sendOp, notApplied } from "./api.js";
 import { confirmDialog } from "./notice.js";
 import { currentTab } from "./header.js";
@@ -26,9 +28,10 @@ let newDraft = "";
 // grid is the week grid's state, kept across repaints: the schedule and
 // zone it is for, the keyboard cell (active, [day, hour] as shown), the Shift anchor,
 // the pointer drag, and the rectangle whose paint op is in flight
-// (pending). el and cells are the elements of the latest repaint.
-const grid = { name: null, zone: null, active: [0, 0], anchor: null, drag: null, pending: null, el: null,
-  cells: [] };
+// (pending), and the cell under the pointer (hover). el, cells and out
+// (the readout) are the elements of the latest repaint.
+const grid = { name: null, zone: null, active: [0, 0], anchor: null, drag: null, pending: null,
+  hover: null, el: null, cells: [], out: null };
 
 function offset() {
   return zone() === "local" ? localOffsetMinutes() : 0;
@@ -64,14 +67,40 @@ function previewRect() {
   return grid.anchor ? rect(grid.anchor, grid.active) : null;
 }
 
-// mark redraws the preview and the active cell on the current cells
-// without rebuilding them.
+// cellLabel names a shown cell: "Tue 14:00–15:00".
+function cellLabel([d, hr]) {
+  const hh = (n) => `${String(n).padStart(2, "0")}:00`;
+  return `${DAYS[d]} ${hh(hr)}–${hh(hr + 1)}`;
+}
+
+// keyboardFocus: the grid has focus and shows the active cell's ring
+// (:focus-visible, as in app.css).
+function keyboardFocus() {
+  try {
+    return grid.el !== null && grid.el.matches(":focus-visible");
+  } catch {
+    return grid.el !== null && document.activeElement === grid.el;
+  }
+}
+
+// readout shows the cell under a drag or the pointer, else the keyboard
+// cell while it is shown, else nothing.
+function readout() {
+  if (!grid.out) return;
+  let c = grid.drag ? grid.drag.end : grid.hover;
+  if (!c && keyboardFocus()) c = grid.active;
+  grid.out.textContent = c ? cellLabel(c) : "";
+}
+
+// mark redraws the preview, the active cell and the readout on the
+// current cells without rebuilding them.
 function mark() {
   const r = previewRect();
   grid.cells.forEach((col, d) => col.forEach((el, hr) => {
     el.classList.toggle("is-preview", inRect(r, d, hr));
     el.classList.toggle("is-active", d === grid.active[0] && hr === grid.active[1]);
   }));
+  readout();
 }
 
 function current() {
@@ -106,6 +135,23 @@ function cellAt(x, y) {
   const cols = grid.cells.map((col) => col[0].getBoundingClientRect().left);
   const rows = grid.cells[0].map((el) => el.getBoundingClientRect().top);
   return [index(cols, x), index(rows, y)];
+}
+
+// hoverAt tracks the cell under the pointer; a gap between cells counts
+// as the cell before it, so the readout does not flicker.
+function hoverAt(e) {
+  if (!grid.cells.length) return;
+  const first = grid.cells[0][0].getBoundingClientRect();
+  const last = grid.cells[6][23].getBoundingClientRect();
+  const inside = e.clientX >= first.left && e.clientX < last.right && e.clientY >= first.top &&
+    e.clientY < last.bottom;
+  grid.hover = inside ? cellAt(e.clientX, e.clientY) : null;
+  readout();
+}
+
+function unhover() {
+  grid.hover = null;
+  readout();
 }
 
 function startDrag(e) {
@@ -226,7 +272,8 @@ function week(sched) {
     for (let d = 0; d < 7; d++) kids.push(cell(sched, d, hr));
   }
   grid.el = h("div", { class: "s-grid", tabindex: "0", role: "group", "aria-label": "Week",
-    "data-key": "week", onKeyDown: onGridKey, onPointerDown: startDrag }, kids);
+    "data-key": "week", onKeyDown: onGridKey, onPointerDown: startDrag, onPointerMove: hoverAt,
+    onPointerLeave: unhover, onFocus: readout, onBlur: readout }, kids);
   mark();
   return h("section", { class: "panel s-week" }, grid.el);
 }
@@ -304,12 +351,21 @@ function openNew() {
   paint();
 }
 
+// listRow is a schedule's link with its Delete button beside it (a link
+// cannot hold a button); the button shows on hover or focus in the row.
+function listRow(s, sel, red) {
+  return h("div", { class: "s-row" },
+    h("a", { href: `#schedules/${encodeURIComponent(s.name)}`,
+      class: ["p-link", red.has(`schedule ${s.name}`) && "is-error"],
+      "aria-current": s === sel ? "true" : null, "data-key": `sl-${s.name}` }, s.name),
+    h("button", { type: "button", class: "s-del", "data-key": `sl-del-${s.name}`,
+      "aria-label": `Delete schedule ${s.name}`, onClick: () => deleteSchedule(s.name) }, trashIcon()));
+}
+
 function scheduleList(schedules, sel, red) {
   return h("aside", { class: "p-list", "aria-label": "Schedules" },
     h("h2", { class: "p-list-title" }, "Schedules"),
-    schedules.map((s) => h("a", { href: `#schedules/${encodeURIComponent(s.name)}`,
-      class: ["p-link", red.has(`schedule ${s.name}`) && "is-error"],
-      "aria-current": s === sel ? "true" : null, "data-key": `sl-${s.name}` }, s.name)),
+    schedules.map((s) => listRow(s, sel, red)),
     adding ? newInput()
       : h("button", { type: "button", class: "btn btn-lg btn-dashed p-new", "data-key": "new-schedule-btn",
         onClick: openNew }, "+ New schedule"));
@@ -325,16 +381,33 @@ async function deleteSchedule(name) {
   } else if (!r.ok && r.refused) {
     notApplied(r.reason);
   }
-  if (r.ok) history.replaceState(null, "", "#schedules");
+  if (r.ok && name === grid.name) history.replaceState(null, "", "#schedules");
+  if (r.ok && focusKey === `sl-del-${name}`) focusKey = "new-schedule-btn";
   paint();
 }
 
+// ALL is every UTC cell, the cells a Clear turns off.
+const ALL = DAYS.flatMap((_, d) => Array.from({ length: 24 }, (__, hr) => [d, hr]));
+
+function painted(sched) {
+  return sched.cells.some((row) => (row || []).some((v) => Number(v) > 0));
+}
+
+// clearSchedule turns every cell off, without asking (owner). The button
+// is then disabled, so keyboard focus moves to the grid.
+function clearSchedule(name) {
+  if (focusKey === "clear-schedule") focusKey = "week";
+  sendOp("schedule.paint", { name, cells: ALL, on: false });
+}
+
 function scheduleMain(sched) {
-  return h("div", { class: "p-main" },
-    h("div", { class: "p-title" }, h("h1", {}, sched.name),
-      h("button", { type: "button", class: "btn btn-quiet", "data-key": "del-schedule",
-        "aria-label": `Delete schedule ${sched.name}`, onClick: () => deleteSchedule(sched.name) }, "Delete")),
-    week(sched));
+  grid.out = h("span", { class: "mono s-readout" });
+  const title = h("div", { class: "p-title" }, h("h1", {}, sched.name),
+    h("button", { type: "button", class: "btn btn-quiet", "data-key": "clear-schedule",
+      "aria-label": `Clear schedule ${sched.name}`, disabled: !painted(sched),
+      onClick: () => clearSchedule(sched.name) }, "Clear"),
+    grid.out);
+  return h("div", { class: "p-main" }, title, week(sched));
 }
 
 function paint() {
@@ -345,8 +418,10 @@ function paint() {
   grid.cells = [];
   if (!st) return;
   const sched = selected(st.schedules);
+  grid.out = null;
   if (!sched || sched.name !== grid.name) {
-    Object.assign(grid, { name: sched ? sched.name : null, active: [0, 0], anchor: null, drag: null });
+    Object.assign(grid, { name: sched ? sched.name : null, active: [0, 0], anchor: null, drag: null,
+      hover: null });
   }
   // A Shift selection is in shown cells, which a zone switch moves.
   if (zone() !== grid.zone) Object.assign(grid, { zone: zone(), anchor: null });
