@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -117,6 +119,14 @@ func (e *Editor) Apply(base, op string, args json.RawMessage) (Snapshot, []Findi
 	if err != nil {
 		return cur, nil, err
 	}
+	// The gate can take seconds (adapter Check, Models): a hand edit made
+	// meanwhile is a conflict, not something to overwrite.
+	if now, err := e.load(); err != nil || now.SHA256 != cur.SHA256 {
+		if err != nil {
+			return cur, nil, err
+		}
+		return now, nil, &Conflict{SHA256: now.SHA256}
+	}
 	if err := e.write(cur.Bytes, data); err != nil {
 		return cur, nil, err
 	}
@@ -158,38 +168,71 @@ func (e *Editor) candidate(cur Snapshot, op string, args json.RawMessage, accoun
 	return data, after.list, nil
 }
 
-// newError is the first error finding of after in excess of before. Errors
-// are compared as a multiset of (subject, message) with a choice's position
-// dropped from the subject, so moving, inserting or removing choices does not
-// turn an existing error into a new one, while a second copy of it is new.
-// Findings from an adapter's Check (binary, credential) are machine state,
-// not config validity, and never block an edit.
+// newError is the first error finding of after, in document order, whose
+// key occurs more often in after than in before. Errors are keyed by
+// (subject, message) with a choice's position dropped from the subject, so
+// moving, inserting or removing choices does not turn an existing error into
+// a new one, while a second copy of it is new. Findings from an adapter's
+// Check (binary, credential) are machine state, not config validity, and
+// never block an edit.
 func newError(before, after findings) (Finding, bool) {
 	type key struct{ subject, message string }
-	gated := func(fs findings, f Finding) bool { return f.Severity == sevError && !fs.fromCheck[f] }
 	count := map[key]int{}
-	for _, f := range before.list {
-		if gated(before, f) {
-			count[key{gateSubject(f.Subject), f.Message}]++
-		}
+	for _, f := range gatedErrors(before) {
+		count[key{gateSubject(f.Subject), f.Message}]--
 	}
-	for _, f := range after.list {
-		if !gated(after, f) {
-			continue
-		}
-		k := key{gateSubject(f.Subject), f.Message}
-		if count[k] == 0 {
+	errs := gatedErrors(after)
+	for _, f := range errs {
+		count[key{gateSubject(f.Subject), f.Message}]++
+	}
+	sort.SliceStable(errs, func(i, j int) bool { return docLess(errs[i], errs[j]) })
+	for _, f := range errs {
+		if count[key{gateSubject(f.Subject), f.Message}] > 0 {
 			return f, true
 		}
-		count[k]--
 	}
 	return Finding{}, false
 }
 
+func gatedErrors(fs findings) []Finding {
+	var out []Finding
+	for _, f := range fs.list {
+		if f.Severity == sevError && !fs.fromCheck[f] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// docLess orders findings as the file lists them: by subject without the
+// choice position, then by choice number (so choice 9 precedes choice 10),
+// then by message.
+func docLess(a, b Finding) bool {
+	sa, sb := gateSubject(a.Subject), gateSubject(b.Subject)
+	if sa != sb {
+		return sa < sb
+	}
+	if na, nb := choiceNumber(a.Subject), choiceNumber(b.Subject); na != nb {
+		return na < nb
+	}
+	return a.Message < b.Message
+}
+
+// choiceNumber is n of "profile p, choice n"; 0 for any other subject.
+func choiceNumber(subject string) int {
+	if i := strings.Index(subject, choiceSep); strings.HasPrefix(subject, "profile ") && i >= 0 {
+		n, _ := strconv.Atoi(subject[i+len(choiceSep):])
+		return n
+	}
+	return 0
+}
+
+const choiceSep = ", choice "
+
 // gateSubject drops the choice position: "profile p, choice 3" -> "profile p".
 func gateSubject(subject string) string {
 	if strings.HasPrefix(subject, "profile ") {
-		if i := strings.Index(subject, ", choice "); i >= 0 {
+		if i := strings.Index(subject, choiceSep); i >= 0 {
 			return subject[:i]
 		}
 	}

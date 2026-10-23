@@ -2,12 +2,14 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,7 +176,7 @@ func TestApplyGateNewError(t *testing.T) {
 	f := newEditorFx(t, editorConfig(badThinking))
 	s := f.load(t)
 	_, _, err := f.ed.Apply(s.SHA256, "test.dup", nil)
-	wantRefused(t, err, "Profile p, choice 2: "+badThinkingErr)
+	wantRefused(t, err, "Profile p, choice 1: "+badThinkingErr) // the first in document order
 	if string(f.bytes(t)) != editorConfig(badThinking) {
 		t.Fatal("file changed")
 	}
@@ -184,6 +186,93 @@ func TestApplyGateNewError(t *testing.T) {
 	}
 	if n := len(s1.Config.Profiles["p"]); n != 2 {
 		t.Fatalf("profile p has %d choices: the refused copy leaked", n)
+	}
+}
+
+// profileConfig is editorConfig with profile p's choices given in full.
+func profileConfig(choices ...string) string {
+	return `{"version":1,"settings":{"default_cap":95},
+ "accounts":{"codex-main":{"vendor":"codex","codex_home":"~/.codex"},
+  "claude-main":{"vendor":"claude","config_dir":"~/.claude"}},
+ "profiles":{"p":[` + strings.Join(choices, ",") + `]}}`
+}
+
+const uncappedCodex = `{"account":"codex-main","model":"gpt-6.1-sol","thinking":"high"}`
+
+// A copy inserted before the original is quoted at its own (earlier)
+// position: the gate walks findings by profile and choice number, so
+// choice 9 comes before choice 11.
+func TestApplyGateQuotesFirstInDocumentOrder(t *testing.T) {
+	cases := []struct {
+		name     string
+		choices  int // capped good choices before the bad one
+		from, at int // copy choice index from to index at
+		want     string
+	}{
+		{"original at 3, copy at 2", 2, 2, 1, "Profile p, choice 2: " + badThinkingErr},
+		{"original at 10, copy at 9", 9, 9, 8, "Profile p, choice 9: " + badThinkingErr},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			app.SetTestOp(t, "test.copy", func(doc *core.Doc) {
+				cs := doc.Profiles["p"]
+				out := append([]core.DocChoice{}, cs[:c.at]...)
+				out = append(append(out, cs[c.from]), cs[c.at:]...)
+				doc.Profiles["p"] = out
+			})
+			var list []string
+			for i := 0; i < c.choices; i++ {
+				list = append(list, goodFirst)
+			}
+			cfg := profileConfig(append(list, badThinking, uncappedCodex)...)
+			f := newEditorFx(t, cfg)
+			s := f.load(t)
+			_, _, err := f.ed.Apply(s.SHA256, "test.copy", nil)
+			wantRefused(t, err, c.want)
+			if string(f.bytes(t)) != cfg {
+				t.Fatal("file changed")
+			}
+		})
+	}
+}
+
+// checkHook runs onCheck inside the adapter's Check, i.e. mid-gate.
+type checkHook struct {
+	*apptest.Fake
+	onCheck func()
+}
+
+func (h checkHook) Check(ctx context.Context, acct adapter.Account) []adapter.Finding {
+	h.onCheck()
+	return h.Fake.Check(ctx, acct)
+}
+
+// A hand edit that lands while the gate runs is a conflict, not overwritten,
+// and no safety copy is taken for that attempt.
+func TestApplyEditDuringGate(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	hand := []byte(editorConfig(goodFirst) + "\n")
+	edited := false
+	f.d.Adapters["claude"] = checkHook{f.claude, func() {
+		if !edited {
+			edited = true
+			if err := os.WriteFile(f.path, hand, 0o600); err != nil {
+				t.Error(err)
+			}
+		}
+	}}
+	f.ed = app.NewEditor(f.d, f.path)
+	s := f.load(t)
+	_, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
+	var c *app.Conflict
+	if !edited || !errors.As(err, &c) || c.SHA256 != shaHex(hand) {
+		t.Fatalf("edited %v, err = %v, want Conflict with sha %s", edited, err, shaHex(hand))
+	}
+	if !bytes.Equal(f.bytes(t), hand) {
+		t.Fatal("the hand edit was overwritten")
+	}
+	if _, err := os.Stat(filepath.Join(f.cacheDir(), "config.before-ui.json")); !os.IsNotExist(err) {
+		t.Fatalf("safety copy taken for a conflicted attempt: %v", err)
 	}
 }
 

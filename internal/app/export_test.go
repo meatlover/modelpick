@@ -8,9 +8,13 @@ import (
 
 // SetTestOp registers an operation for one test, for doc states no real
 // operation can produce (a second identical doctor error, a Doc core.Parse
-// rejects), so the editor's gate and Parse fallback stay covered.
+// rejects), so the editor's gate and Parse fallback stay covered. It writes
+// the package-level ops map: a test that uses it must not call t.Parallel.
 func SetTestOp(t *testing.T, name string, fn func(doc *core.Doc)) {
 	t.Helper()
+	if _, real := ops[name]; real {
+		t.Fatalf("SetTestOp: %s is a real operation", name)
+	}
 	ops[name] = func(doc *core.Doc, _ opArgs, _ OpEnv) error {
 		fn(doc)
 		return nil
