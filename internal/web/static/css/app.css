@@ -1381,15 +1381,29 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -2px;
 }
 
-/* The title row is as wide as the week, so the readout ends at its edge. */
-.s-title {
-  max-width: 640px;
+/* Week geometry: a cell is 34 × 21 px (≈ the golden ratio), so the whole
+   week fits a 1280 × 900 window. The panel's width follows from the cells:
+   hour column, seven cells and their gaps, padding, border. */
+.s-title,
+.s-week {
+  --s-cell-w: 34px;
+  --s-hour-w: 36px;
+  --s-col-gap: 3px;
+  --s-week-w: calc(var(--s-hour-w) + 7 * (var(--s-cell-w) + var(--s-col-gap)) + 2 * 18px + 2px);
 }
 
-/* Fixed width, so the title row never shifts as the text changes. */
+/* The title row is as wide as the week, so the readout ends at its edge. */
+.s-title {
+  max-width: var(--s-week-w);
+}
+
+/* Fixed size, so the title row never shifts as the text changes, also
+   when the readout wraps onto a line of its own. */
 .s-readout {
   margin-left: auto;
   width: 15ch;
+  height: 18px;
+  line-height: 18px;
   white-space: nowrap;
   text-align: right;
   font-size: 13px;
@@ -1399,7 +1413,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .s-week {
   align-self: flex-start;
   width: 100%;
-  max-width: 640px;
+  max-width: var(--s-week-w);
   padding: 16px 18px;
   user-select: none;
   -webkit-user-select: none;
@@ -1407,8 +1421,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .s-grid {
   display: grid;
-  grid-template-columns: 36px repeat(7, minmax(0, 1fr));
-  column-gap: 3px;
+  grid-template-columns: var(--s-hour-w) repeat(7, minmax(0, var(--s-cell-w)));
+  column-gap: var(--s-col-gap);
   row-gap: 2px;
   touch-action: none;
 }
@@ -1426,7 +1440,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text-2);
 }
 
+/* Centred on its row. */
 .s-hour {
+  align-self: center;
   font-size: 10px;
   line-height: 11px;
   color: var(--text-3);
@@ -1435,8 +1451,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .s-cell {
   position: relative;
   display: block;
-  height: 11px;
-  border-radius: 2px;
+  aspect-ratio: 34 / 21;
+  border-radius: 3px;
   overflow: hidden;
   background: var(--track);
   cursor: crosshair;
