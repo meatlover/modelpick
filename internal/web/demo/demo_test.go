@@ -98,7 +98,7 @@ func TestChoiceSetRefusals(t *testing.T) {
 		want  string
 	}{
 		{"range", "cap", []any{120}, "profiles.coder-difficult[0].cap[0]: 120 is outside 0–100"},
-		{"pace zero", "cap", []any{90, "pace+0"}, `profiles.coder-difficult[0].cap[1]: "pace+0": 0 must be 1-100`},
+		{"pace over 50", "cap", []any{90, "pace+51"}, `profiles.coder-difficult[0].cap[1]: "pace+51": 51 must be 0-50`},
 		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number or pace+N`},
 		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number or pace+N"},
 	}
@@ -113,6 +113,24 @@ func TestChoiceSetRefusals(t *testing.T) {
 	want := "profiles.coder-difficult[0]: use skip_during or allow_during, not both"
 	if got := refusal(t, d, "choice.set", args).Reason; got != want {
 		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+// Owner ruling 2026-10-23 (round 3): pace N is 0–50; both ends are saved.
+func TestChoiceSetPaceRange(t *testing.T) {
+	d := newDemo()
+	for _, v := range []string{"pace+0", "pace+50"} {
+		must(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 0, "field": "cap",
+			"value": []any{v}, "expect": choiceJSON(t, d, "coder-difficult", 0)})
+		var got struct {
+			Cap []any `json:"cap"`
+		}
+		if err := json.Unmarshal(choiceJSON(t, d, "coder-difficult", 0), &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Cap) != 1 || got.Cap[0] != v {
+			t.Errorf("%s: stored cap %v", v, got.Cap)
+		}
 	}
 }
 
