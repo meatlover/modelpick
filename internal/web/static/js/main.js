@@ -1,6 +1,6 @@
 // Entry point: header, router, reload loop, stopped and read-only notices.
 import { clear } from "./dom.js";
-import { load, ping, store } from "./api.js";
+import { reload, ping, store } from "./api.js";
 import { renderHeader, currentTab } from "./header.js";
 import { stopped, readOnly } from "./notice.js";
 import { onZone, tick } from "./time.js";
@@ -39,15 +39,6 @@ function onStore(changed) {
   applyReadOnly();
   const uses = MODULES[currentTab()].uses;
   if (!uses || uses.some((k) => changed.includes(k))) renderTab();
-}
-
-async function reload() {
-  try {
-    await load();
-    stopped(false);
-  } catch {
-    stopped(!(await ping()));
-  }
 }
 
 async function checkPing() {

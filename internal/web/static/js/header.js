@@ -69,9 +69,18 @@ function statusButton() {
   parts.wrap = h("div", { class: "status-wrap", hidden: true }, parts.btn, parts.pop);
   const show = () => { parts.pop.hidden = parts.findings.length === 0; };
   const hide = () => { parts.pop.hidden = true; };
+  // A pointer press focuses the button too; its click, not that focus,
+  // decides, so a tap opens and a second tap closes.
+  let pressing = false;
+  parts.btn.addEventListener("pointerdown", () => { pressing = true; });
+  parts.btn.addEventListener("click", () => {
+    pressing = false;
+    if (parts.pop.hidden) show();
+    else hide();
+  });
   parts.wrap.addEventListener("mouseenter", show);
   parts.wrap.addEventListener("mouseleave", hide);
-  parts.btn.addEventListener("focus", show);
+  parts.btn.addEventListener("focus", () => { if (!pressing) show(); });
   parts.btn.addEventListener("blur", hide);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
   return parts;

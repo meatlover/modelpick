@@ -52,14 +52,23 @@ function toDate(x) {
   return x instanceof Date ? x : new Date(x);
 }
 
+// valid is the time in ms, or NaN for null, "" and anything unparseable.
+function valid(x) {
+  if (x === null || x === undefined || x === "") return NaN;
+  return toDate(x).getTime();
+}
+
 function words(list) {
   return list.filter(Boolean).join(" ");
 }
 
 // fmtLeft: under a day, floored to minutes (in 1h 50m, in 4h, in 12m); from a
-// day, rounded to the nearest hour (in 2d 12h, in 3d). Past times are in 0m.
+// day, rounded to the nearest hour (in 2d 12h, in 3d). Past times are in 0m;
+// an invalid time is "".
 export function fmtLeft(resetsAt, now = new Date()) {
-  const ms = Math.max(0, toDate(resetsAt) - toDate(now));
+  const diff = valid(resetsAt) - valid(now);
+  if (Number.isNaN(diff)) return "";
+  const ms = Math.max(0, diff);
   if (ms < DAY) {
     const m = Math.floor(ms / MIN);
     const hh = Math.floor(m / 60);
@@ -87,12 +96,14 @@ function parts(date) {
 }
 
 // fmtReset: "Fri 09:00" less than 7 days from now, else "Oct 29 00:00", in
-// the chosen zone, without a zone suffix.
+// the chosen zone, without a zone suffix; an invalid time is "".
 export function fmtReset(resetsAt, now = new Date()) {
-  const t = toDate(resetsAt);
-  const p = parts(t);
+  const t = valid(resetsAt);
+  const diff = t - valid(now);
+  if (Number.isNaN(diff)) return "";
+  const p = parts(new Date(t));
   const hm = `${p.hour}:${p.minute}`;
-  return t - toDate(now) < 7 * DAY ? `${p.weekday} ${hm}` : `${p.month} ${p.day} ${hm}`;
+  return diff < 7 * DAY ? `${p.weekday} ${hm}` : `${p.month} ${p.day} ${hm}`;
 }
 
 function ago(n, unit) {

@@ -147,14 +147,15 @@ a:hover {
   border-radius: 50%;
 }
 
+/* "config ok" is green (spec 8.3); the ok chips elsewhere stay blue. */
 .status-ok {
-  border-color: var(--accent-ring);
-  background: var(--ok-bg);
-  color: var(--ok-text);
+  border-color: var(--good-border);
+  background: var(--good-bg);
+  color: var(--good-text);
 }
 
 .status-ok .dot {
-  background: var(--accent);
+  background: var(--good-dot);
 }
 
 .status-warn {

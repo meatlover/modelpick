@@ -1,6 +1,6 @@
 // Cases for js/time.js. In the browser, time.test.html writes the verdict
 // into <output id="result">; elsewhere run() returns it.
-import { zone, setZone, fmtLeft, fmtReset, fmtAge } from "../js/time.js";
+import { setZone, fmtLeft, fmtReset, fmtAge } from "../js/time.js";
 
 const NOW = "2026-10-23T07:10:00Z";
 
@@ -14,6 +14,13 @@ export const cases = [
   ["fmtReset Nov 17 00:00", () => fmtReset("2026-11-17T00:00:00Z", NOW), "Nov 17 00:00"],
   ["fmtAge 240", () => fmtAge(240), "4 mins ago"],
   ["fmtAge null", () => fmtAge(null), "never"],
+  ["fmtLeft exactly 3d", () => fmtLeft("2026-10-26T07:10:00Z", NOW), "in 3d"],
+  ["fmtLeft 30 s", () => fmtLeft("2026-10-23T07:10:30Z", NOW), "in 0m"],
+  ["fmtLeft 23h 59m", () => fmtLeft("2026-10-24T07:09:00Z", NOW), "in 23h 59m"],
+  ["fmtLeft 24h", () => fmtLeft("2026-10-24T07:10:00Z", NOW), "in 1d"],
+  ["fmtReset exactly 7 days", () => fmtReset("2026-10-30T07:10:00Z", NOW), "Oct 30 07:10"],
+  ["fmtLeft invalid", () => fmtLeft("not a time", NOW), ""],
+  ["fmtReset invalid", () => fmtReset("", NOW), ""],
 ];
 
 function check([name, fn, want]) {
@@ -26,13 +33,29 @@ function check([name, fn, want]) {
   return got === want ? null : `${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`;
 }
 
-// run returns "PASS n" or "FAIL <case>; <case>…". It restores the zone the
-// page had, since the test shares the app's localStorage.
+function storedZone() {
+  try {
+    return localStorage.getItem("modelpick.tz");
+  } catch {
+    return null;
+  }
+}
+
+// run returns "PASS n" or "FAIL <case>; <case>…". The test shares the app's
+// localStorage: a stored zone is put back, and none stored stays none.
 export function run() {
-  const before = zone();
+  const before = storedZone();
   setZone("utc");
   const failed = cases.map(check).filter(Boolean);
-  setZone(before);
+  if (before !== null) {
+    setZone(before);
+  } else {
+    try {
+      localStorage.removeItem("modelpick.tz");
+    } catch {
+      // no storage: nothing was written either
+    }
+  }
   return failed.length ? "FAIL " + failed.join("; ") : `PASS ${cases.length}`;
 }
 
