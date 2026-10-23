@@ -45,7 +45,7 @@ function level(doctor) {
 function findingItem(f) {
   const err = f.severity === "error";
   return h("li", {},
-    h("strong", { class: err ? "sev sev-error" : "sev sev-warn" }, err ? "ERROR" : "WARN"),
+    h("strong", { class: err ? "sev sev-error" : "sev sev-warn" }, err ? "ERROR" : "WARNING"),
     ` ${f.subject}: ${f.message}`);
 }
 

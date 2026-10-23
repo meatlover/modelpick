@@ -31,11 +31,13 @@ export function stopped(on) {
   return true;
 }
 
-// readOnly shows state.read_only (the parse error) verbatim; "" removes it.
+// readOnly shows state.read_only (the parse error) after "Cannot edit — "
+// (owner, 2026-10-23); "" removes it.
 export function readOnly(text) {
   const old = document.getElementById("notice-readonly");
-  if (old && old.textContent === text) return;
-  banner("notice-readonly", text);
+  const shown = text ? `Cannot edit — ${text}` : "";
+  if (old && old.textContent === shown) return;
+  banner("notice-readonly", shown);
 }
 
 let toastTimer = 0;

@@ -329,7 +329,7 @@ function profileMain(st, prof, red) {
     capRow(st, true),
     cards(st, prof, red),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice",
-      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"));
+      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add Model"));
 }
 
 function paint() {

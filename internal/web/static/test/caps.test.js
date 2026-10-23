@@ -2,7 +2,7 @@
 // caps.test.html writes the verdict into <output id="result">; elsewhere
 // run() returns it.
 import { parseCap, capArg, writeCap, trashAction, positions, switchKind, barGeometry, scaleText, elementOf,
-  boundNumber, previewOf, capLine, lineParts, isSet, plusShown } from "../js/caps.js";
+  boundNumber, previewOf, capLine, lineParts, isSet } from "../js/caps.js";
 
 const json = (x) => JSON.stringify(x);
 
@@ -87,31 +87,22 @@ export const cases = [
   ["trashAction typed middle explicit → default", () => trashAction([90, 80, 70], 1, true), "default"],
   ["trashAction typed last explicit → default", () => trashAction([90, 80], 1, true), "default"],
   ["trashAction typed box 1, none explicit → uncap", () => trashAction([], 0, true), "uncap"],
-  ["positions labelled", () => json(positions([90, "pace+10"], ["5h", "7d"], 0)),
+  ["positions labelled", () => json(positions([90, "pace+10"], ["5h", "7d"])),
     `[{"label":"5h","explicit":true},{"label":"7d","explicit":true}]`],
-  ["positions labelled, all default", () => json(positions([], ["5h", "7d", "7d Fable"], 0)),
+  ["positions labelled, all default", () => json(positions([], ["5h", "7d", "7d Fable"])),
     `[{"label":"5h","explicit":false},{"label":"7d","explicit":false},{"label":"7d Fable","explicit":false}]`],
-  ["positions labelled, a default element", () => json(positions([90, "default", 95], ["5h", "7d", "7d Fable"], 0)),
+  ["positions labelled, a default element", () => json(positions([90, "default", 95], ["5h", "7d", "7d Fable"])),
     `[{"label":"5h","explicit":true},{"label":"7d","explicit":false},{"label":"7d Fable","explicit":true}]`],
-  ["positions labelled, longer cap numbered", () => json(positions([90, 80, 70], ["5h"], 0)),
+  ["positions labelled, longer cap numbered", () => json(positions([90, 80, 70], ["5h"])),
     `[{"label":"5h","explicit":true},{"label":"2","explicit":true},{"label":"3","explicit":true}]`],
-  ["positions no reading → one numbered", () => json(positions([], undefined, 0)),
+  ["positions no reading → one numbered", () => json(positions([], undefined)),
     `[{"label":"1","explicit":false}]`],
-  ["positions empty labels → numbered", () => json(positions([90], [], 0)),
+  ["positions empty labels → numbered", () => json(positions([90], [])),
     `[{"label":"1","explicit":true}]`],
-  ["positions numbered plus added → one default box", () => json(positions([90], null, 2)),
-    `[{"label":"1","explicit":true},{"label":"2","explicit":false}]`],
-  ["positions numbered, stale added count → still one default box", () => json(positions([90], null, 3)),
-    `[{"label":"1","explicit":true},{"label":"2","explicit":false}]`],
-  ["positions numbered, empty cap with added → one box", () => json(positions([], null, 3)),
-    `[{"label":"1","explicit":false}]`],
-  ["positions numbered, default elements", () => json(positions(["default", "default", 80], null, 0)),
+  ["positions numbered, configured count only (nothing adds one)", () => json(positions([90], null)),
+    `[{"label":"1","explicit":true}]`],
+  ["positions numbered, default elements", () => json(positions(["default", "default", 80], null)),
     `[{"label":"1","explicit":false},{"label":"2","explicit":false},{"label":"3","explicit":true}]`],
-  // + (numbered boxes only) shows when the last box is set.
-  ["plusShown last set", () => plusShown(positions(["default", 80], null, 0), false), true],
-  ["plusShown last default", () => plusShown(positions([80, "default"], null, 0), false), false],
-  ["plusShown one default box", () => plusShown(positions([], null, 0), false), false],
-  ["plusShown labelled → never", () => plusShown(positions([90, 80], ["5h", "7d"], 0), true), false],
   // elementOf shows a stored element as it is, in range or not.
   ["elementOf hand-written pace+60 stays 60", () => json(elementOf("pace+60")), `{"kind":"pace","n":60}`],
   ["elementOf hand-written pace+2 stays 2", () => json(elementOf("pace+2")), `{"kind":"pace","n":2}`],

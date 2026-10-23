@@ -98,7 +98,7 @@ function chip(ctx, a) {
   const key = cardKey(ctx);
   return h("span", { class: ["sched-chip", a.kind === "allow_during" && "is-allow"], title: chipTitle(a.kind, a.name) },
     icon(a.kind, 13), a.name,
-    h("button", { type: "button", class: "sched-x", "aria-label": `Remove ${a.name}`,
+    h("button", { type: "button", class: "sched-x", "aria-label": `Remove schedule '${a.name}'`,
       "data-key": `c${ctx.index}-sched-x-${a.kind}-${a.name}`,
       onClick: () => edit(key, a.kind, (list) => list.filter((n) => n !== a.name), true) }, cross()));
 }
@@ -172,8 +172,9 @@ function picker(ctx, names) {
   const locked = lockedKind(ctx.choice);
   const shown = locked || open.kind;
   return h("div", { class: "sched-pop", role: "dialog", "aria-label": "Add a schedule" },
-    names.length > 0 && h("div", { class: "sched-switch", role: "group", "aria-label": "Mode" },
+    names.length > 0 && h("div", { class: "sched-switch", role: "group", "aria-label": "Skip or allow" },
       KINDS.map((k) => modeButton(ctx, k, shown, locked))),
+    names.length > 0 && h("div", { class: "sched-pop-head" }, "Available schedules"),
     names.map((name) => pickOption(ctx, shown, name)),
     newOption(ctx));
 }

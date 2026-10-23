@@ -23,7 +23,7 @@ function cell(sched, d, hr, offset) {
 // with the hour's number every 6 h.
 function hourTick(hr) {
   const major = hr % 6 === 0;
-  return h("span", { class: ["sched-peek-hour", major && "is-major"] }, major ? String(hr) : "");
+  return h("span", { class: ["sched-peek-hour", major && "is-major"] }, major ? String(hr).padStart(2, "0") : "");
 }
 
 // weekPeek builds the preview of sched ({name, cells}). It is decoration

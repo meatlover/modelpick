@@ -10,7 +10,6 @@ export const uses = ["usage", "doctor", "state"];
 const BAR_PX = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RATE = "rate-limited until ";
-const EXPIRED_NOTE = "Open Claude Code with this account to refresh its login.";
 
 let host = null;
 const busy = new Set();
@@ -61,13 +60,6 @@ function windowRow(w) {
     h("div", { class: "bar", "aria-hidden": "true" }, fill),
     h("span", { class: "mono u-left", "data-left": w.resets_at }),
     h("span", { class: "mono u-reset", "data-reset": w.resets_at }));
-}
-
-function noteFor(row) {
-  // Only Claude Code refreshes a login itself; for others the chip says it.
-  if (row.state === "expired token") return row.vendor === "claude" ? EXPIRED_NOTE : "";
-  if (row.reading_age_seconds === null || row.reading_age_seconds === undefined) return "no reading yet";
-  return "";
 }
 
 // takenAt is when each row's reading was taken: the time the row object
@@ -122,13 +114,11 @@ function refreshButton(row) {
 }
 
 function accountRow(row, red) {
-  const note = noteFor(row);
   const warn = row.state !== "ok";
   return h("div", { class: ["u-grid", "u-row", red.has(row.account) && "is-error"] },
     h("span", { class: "u-name" }, row.account),
     h("div", {}, h("span", { class: ["chip", warn ? "chip-warn" : "chip-ok"] }, stateText(row.state))),
-    h("div", { class: "u-wins" }, (row.windows || []).map(windowRow),
-      note && h("span", { class: "u-note" }, note)),
+    h("div", { class: "u-wins" }, (row.windows || []).map(windowRow)),
     ageCell(row),
     h("div", { class: "u-act" }, refreshButton(row)));
 }

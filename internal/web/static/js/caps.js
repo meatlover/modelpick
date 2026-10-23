@@ -177,20 +177,15 @@ export function scaleText(kind) {
 }
 
 // positions lists the boxes: one per window label when the account has a
-// stored reading, else numbered (at least one; + adds one default box after
-// the array). A hand-written cap longer than that keeps a numbered box per
-// extra value. explicit: the position is set. Every box is editable.
-export function positions(cap, labels, extra) {
+// stored reading, else the configured positions numbered (at least one; a
+// model's cap count is fixed, so nothing adds a position: owner,
+// 2026-10-23). A hand-written cap longer than the labels keeps a numbered
+// box per extra value. explicit: the position is set. Every box is editable.
+export function positions(cap, labels) {
   const named = Array.isArray(labels) && labels.length > 0;
-  const n = named ? Math.max(labels.length, cap.length)
-    : Math.max(cap.length, Math.min(Math.max(1, extra), cap.length + 1));
+  const n = named ? Math.max(labels.length, cap.length) : Math.max(cap.length, 1);
   return Array.from({ length: n }, (_, i) => ({
     label: named && i < labels.length ? labels[i] : String(i + 1), explicit: isSet(cap[i]) }));
-}
-
-// plusShown says the numbered boxes end with + : the last box is set.
-export function plusShown(list, named) {
-  return !named && list.length > 0 && list[list.length - 1].explicit;
 }
 
 // ---------- state that survives repaints ----------
@@ -202,8 +197,6 @@ let edit = null;
 // pending: pendKey(card key, position) → text shown while its op is in
 // flight.
 const pending = new Map();
-// extra: card key → numbered positions shown (the + button adds one).
-const extra = new Map();
 // mounts: card key → {container, ctx} as last rendered.
 const mounts = new Map();
 // Cap ops run one after another, each built from the card as the previous
@@ -436,7 +429,7 @@ function place(els, shown) {
   r.min = String(g.range.min);
   r.max = String(g.range.max);
   r.value = String(g.range.value);
-  r.setAttribute("aria-label", pace ? `${els.label} cap above time elapsed` : `${els.label} cap`);
+  r.setAttribute("aria-label", pace ? `${capLabel(els.label)} above time elapsed` : capLabel(els.label));
   r.setAttribute("aria-valuetext", capLine(shown));
   els.scale.textContent = scaleText(shown.kind);
 }
@@ -460,7 +453,9 @@ function draft(ctx, p, els, text) {
 // trashState enables the frame's trash by the box as it shows now, so
 // typing a value into the first default box enables it at once.
 function trashState(ctx, p, els) {
-  els.trash.disabled = trashAction(ctx.choice.cap, p, drafted(cardKey(ctx), p)) === null;
+  const act = trashAction(ctx.choice.cap, p, drafted(cardKey(ctx), p));
+  els.trash.disabled = act === null;
+  els.trash.setAttribute("aria-label", act === "uncap" ? "Remove caps" : `Use default cap for ${els.label}`);
 }
 
 // keep stops a press on a frame button from taking focus from the value.
@@ -477,10 +472,10 @@ function switchRow(ctx, p, els) {
   };
   els.pct = h("button", { type: "button", class: "cap-sw", "data-key": `${boxKey(ctx, p)}-pct`,
     onMouseDown: keep, onClick: () => to("fixed") }, "%");
-  els.pace = h("button", { type: "button", class: "cap-sw cap-sw-pace", "aria-label": "Time pace",
+  els.pace = h("button", { type: "button", class: "cap-sw cap-sw-pace", "aria-label": "Time elapsed + N",
     "data-key": `${boxKey(ctx, p)}-pace`, onMouseDown: keep, onClick: () => to("pace") },
   clock(12), h("span", { class: "cap-raquo" }, "»"));
-  els.trash = h("button", { type: "button", class: "btn btn-trash cap-trash", "aria-label": "Delete this cap",
+  els.trash = h("button", { type: "button", class: "btn btn-trash cap-trash",
     "data-key": `${boxKey(ctx, p)}-trash`, onMouseDown: keep, onClick: () => trash(key, p) }, trashIcon());
   trashState(ctx, p, els);
   return h("div", { class: "cap-row" },
@@ -504,13 +499,18 @@ function bar(ctx, p, els) {
   return els.bar;
 }
 
+// capLabel names a cap box: a window box "5h cap", a numbered one "Cap 1".
+function capLabel(label) {
+  return /^\d+$/.test(label) ? `Cap ${label}` : `${label} cap`;
+}
+
 // valueLine is the frame's second line, "Cap at 90%" or "Cap at time
 // elapsed + 10%", with only the number editable.
 function valueLine(ctx, p, pos, els) {
   const key = cardKey(ctx);
   const [pre, post] = lineParts(frameKind(ctx, p));
   els.input = h("input", { type: "text", inputmode: "decimal", class: "cap-edit-val",
-    "aria-label": `${pos.label} cap`, "data-key": boxKey(ctx, p), value: frameText(ctx, p),
+    "aria-label": capLabel(pos.label), "data-key": boxKey(ctx, p), value: frameText(ctx, p),
     onInput: (e) => draft(ctx, p, els, e.target.value),
     onKeyDown: (e) => {
       if (e.key === "Enter") settle();
@@ -541,7 +541,7 @@ function box(ctx, p, pos) {
   const v = pos.explicit ? elementOf(ctx.choice.cap[p]) : null;
   return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-wide"] },
     h("span", { class: "mono cap-win" }, pos.label),
-    h("input", { type: "text", class: "cap-val", "aria-label": `${pos.label} cap`, "data-key": boxKey(ctx, p),
+    h("input", { type: "text", class: "cap-val", "aria-label": capLabel(pos.label), "data-key": boxKey(ctx, p),
       value: boxText(ctx, p), onFocus: () => openBox(ctx, p) }));
 }
 
@@ -558,30 +558,19 @@ function addCaps(ctx) {
     }) }, "+ caps");
 }
 
-function plus(ctx, n) {
-  const key = cardKey(ctx);
-  return h("button", { type: "button", class: "cap-add", "aria-label": "Add a position",
-    "data-key": `c${ctx.index}-cap-add`,
-    onClick: () => {
-      extra.set(key, n + 1);
-      rerender(key, boxKey(ctx, n));
-    } }, "+");
-}
-
 function fill(container, ctx) {
   clear(container);
   const c = ctx.choice;
   container.classList.toggle("is-uncapped", c.cap === null);
   if (c.cap === null) {
-    container.append(h("span", { class: "cap-none" }, "No cap: pick as the fallback model"), addCaps(ctx));
+    container.append(h("span", { class: "cap-none" }, "No cap"), addCaps(ctx));
     return;
   }
   const key = cardKey(ctx);
   const byModel = store.state && store.state.windows ? store.state.windows[c.account] : null;
   const labels = byModel ? byModel[c.model] : null;
-  const list = positions(c.cap, labels, extra.get(key) || 0);
+  const list = positions(c.cap, labels);
   list.forEach((pos, p) => container.append(isOpen(key, p) ? frame(ctx, p, pos) : box(ctx, p, pos)));
-  if (plusShown(list, Array.isArray(labels) && labels.length > 0)) container.append(plus(ctx, list.length));
 }
 
 // rerender redraws one card's caps in place. Focus goes to the element
@@ -613,14 +602,13 @@ export function renderCaps(container, ctx) {
 
 // prune runs once a repaint has rendered every card: it forgets the cards
 // that were not rendered again (another profile selected, a choice gone),
-// with their pending texts and added positions. A card with ops queued or
+// with their pending texts. A card with ops queued or
 // the open frame is kept until those finish.
 function prune() {
   pruning = false;
   for (const [key, m] of mounts) {
     if (m.container.isConnected || busy.has(key) || (edit && edit.key === key)) continue;
     mounts.delete(key);
-    extra.delete(key);
     for (const k of pending.keys()) if (k.startsWith(`${key}\u0001`)) pending.delete(k);
   }
 }

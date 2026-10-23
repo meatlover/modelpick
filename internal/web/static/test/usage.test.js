@@ -1,9 +1,7 @@
-// Cases for the notes js/usage.js shows under a row. In the browser,
+// Cases for the state chips js/usage.js shows (owner, 2026-10-23: no notes under a row). In the browser,
 // usage.test.html writes the verdict into <output id="result">.
 import { store } from "../js/api.js";
 import { render } from "../js/usage.js";
-
-const LOGIN = "Open Claude Code with this account to refresh its login.";
 
 function row(account, vendor, state, age) {
   return { account, vendor, state, reading_age_seconds: age, can_refresh: false, windows: [] };
@@ -13,18 +11,17 @@ const rows = [
   row("claude-x", "claude", "expired token", null),
   row("codex-x", "codex", "expired token", null),
   row("go-x", "opencode-go", "expired token", 60),
-  row("fresh", "codex", "ok", null),
+  row("fresh", "codex", "no reading yet", null),
   row("read", "claude", "ok", 60),
 ];
 
-// want is each account's note ("" = none).
-const want = { "claude-x": LOGIN, "codex-x": "", "go-x": "", fresh: "no reading yet", read: "" };
+// want is each account's state chip; no row has a note.
+const want = { "claude-x": "expired token", "codex-x": "expired token", "go-x": "expired token", fresh: "no reading yet", read: "ok" };
 
-function notes(root) {
+function chips(root) {
   const out = {};
   for (const r of root.querySelectorAll(".u-row")) {
-    const note = r.querySelector(".u-note");
-    out[r.querySelector(".u-name").textContent] = note ? note.textContent : "";
+    out[r.querySelector(".u-name").textContent] = r.querySelector(".chip").textContent;
   }
   return out;
 }
@@ -40,9 +37,10 @@ export function run() {
   const root = document.createElement("main");
   document.body.append(root);
   render(root);
-  const got = notes(root);
+  const got = chips(root);
   const failed = Object.keys(want).filter((k) => got[k] !== want[k])
-    .map((k) => `${k}: note ${JSON.stringify(got[k])}, want ${JSON.stringify(want[k])}`);
+    .map((k) => `${k}: chip ${JSON.stringify(got[k])}, want ${JSON.stringify(want[k])}`);
+  if (root.querySelector(".u-note")) failed.push("a row still has a note");
   root.remove();
   return failed.length ? "FAIL " + failed.join("; ") : `PASS ${Object.keys(want).length}`;
 }
