@@ -18,7 +18,16 @@ used.
 go install github.com/meatlover/modelpick/cmd/modelpick@latest
 ```
 
-Prebuilt binaries will come later. Linux and macOS, amd64 and arm64.
+Prebuilt binaries will come later. Linux and macOS, amd64 and arm64. The
+[installation guide](docs/install.md) covers building from a checkout, first
+setup and uninstalling.
+
+## Documentation
+
+- [Installation guide](docs/install.md): requirements, install, first setup, uninstall.
+- [Configuration guide](docs/configuration.md): every field of the config file.
+- [Admin guide](docs/admin.md): files, network calls, the call floor, launchers, troubleshooting.
+- [Architecture guide](docs/architecture.md): packages, layering, the pick and store flow, adding a vendor.
 
 ## Commands
 
