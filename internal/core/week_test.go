@@ -124,3 +124,17 @@ func TestFullDayAndFullWeekRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleWeekMatchesRulesWeek(t *testing.T) {
+	rules := []DocRule{{Days: []string{"mon", "sun"}, UTC: []string{"22:00-02:00", "05:00-06:00"}}}
+	s, err := ParseSchedule(rules[0].Days, rules[0].UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := s.Week(), weekOf(t, rules...); got != want {
+		t.Errorf("Schedule.Week differs from RulesWeek")
+	}
+	if (Schedule{}).Week() != (Week{}) {
+		t.Errorf("no rules must give an empty week")
+	}
+}

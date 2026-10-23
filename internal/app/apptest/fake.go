@@ -23,26 +23,28 @@ var (
 // Fake serves canned usage per account name and counts calls. An
 // account missing from Readings and Errs has unknown usage (ErrShape).
 type Fake struct {
-	vendor    string
-	Readings  map[string]adapter.Reading
-	Errs      map[string]error
-	Calls     map[string]int // Usage calls per account
-	Expired   map[string]bool
-	CredCalls map[string]int
-	ModelList map[string][]adapter.Model   // Models per account; missing = error
-	Checks    map[string][]adapter.Finding // Check findings per account
+	vendor     string
+	Readings   map[string]adapter.Reading
+	Errs       map[string]error
+	Calls      map[string]int // Usage calls per account
+	Expired    map[string]bool
+	CredCalls  map[string]int
+	ModelList  map[string][]adapter.Model   // Models per account; missing = error
+	Checks     map[string][]adapter.Finding // Check findings per account
+	CheckCalls map[string]int               // Check calls per account
 }
 
 func NewFake(vendor string) *Fake {
 	return &Fake{
-		vendor:    vendor,
-		Readings:  map[string]adapter.Reading{},
-		Errs:      map[string]error{},
-		Calls:     map[string]int{},
-		Expired:   map[string]bool{},
-		CredCalls: map[string]int{},
-		ModelList: map[string][]adapter.Model{},
-		Checks:    map[string][]adapter.Finding{},
+		vendor:     vendor,
+		Readings:   map[string]adapter.Reading{},
+		Errs:       map[string]error{},
+		Calls:      map[string]int{},
+		Expired:    map[string]bool{},
+		CredCalls:  map[string]int{},
+		ModelList:  map[string][]adapter.Model{},
+		Checks:     map[string][]adapter.Finding{},
+		CheckCalls: map[string]int{},
 	}
 }
 
@@ -72,6 +74,7 @@ func (f *Fake) Models(_ context.Context, acct adapter.Account) ([]adapter.Model,
 }
 
 func (f *Fake) Check(_ context.Context, acct adapter.Account) []adapter.Finding {
+	f.CheckCalls[acct.Name]++
 	return f.Checks[acct.Name]
 }
 

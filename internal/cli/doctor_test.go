@@ -61,7 +61,7 @@ func TestDoctorBadThinking(t *testing.T) {
 	claude, codex := apptest.DoctorFakes()
 	cfg := strings.Replace(doctorConfig, `"thinking": "high", "cap": [98]`, `"thinking": "ultra", "cap": [98]`, 1)
 	stdout, _, code := run(apptest.NewDeps(t, cfg, claude, codex), "doctor")
-	want := `ERROR  profile p: profiles.p[0]: thinking "ultra" not supported by gpt-6.1-sol (supported: low, high)` + "\n"
+	want := `ERROR  profile p, choice 1: thinking "ultra" not supported by gpt-6.1-sol (supported: low, high)` + "\n"
 	if code != 1 || !strings.Contains(stdout, want) {
 		t.Fatalf("exit %d, want line %q in:\n%s", code, want, stdout)
 	}
@@ -72,7 +72,7 @@ func TestDoctorThinkingOnModelWithoutLevelsIsError(t *testing.T) {
 	claude.ModelList["claude-main"] = []adapter.Model{{ID: "claude-opus-5-5"}}
 	cfg := strings.Replace(doctorConfig, `"model": "claude-opus-5-5", "thinking": null`, `"model": "claude-opus-5-5", "thinking": "high"`, 1)
 	stdout, _, code := run(apptest.NewDeps(t, cfg, claude, codex), "doctor")
-	if code != 1 || !strings.Contains(stdout, `profiles.p[1]: thinking "high" not supported by claude-opus-5-5 (supported: none)`) {
+	if code != 1 || !strings.Contains(stdout, `profile p, choice 2: thinking "high" not supported by claude-opus-5-5 (supported: none)`) {
 		t.Fatalf("exit %d:\n%s", code, stdout)
 	}
 }
@@ -81,7 +81,7 @@ func TestDoctorModelNotOffered(t *testing.T) {
 	claude, codex := apptest.DoctorFakes()
 	codex.ModelList["codex-two"] = []adapter.Model{{ID: "other"}}
 	stdout, _, code := run(apptest.NewDeps(t, doctorConfig, claude, codex), "doctor")
-	want := "WARN   profile q: profiles.q[0]: model gpt-6.1-sol not offered by codex-two\n"
+	want := "WARN   profile q, choice 1: model gpt-6.1-sol not offered by codex-two\n"
 	if code != 0 || !strings.Contains(stdout, want) {
 		t.Fatalf("exit %d, want %q in:\n%s", code, want, stdout)
 	}
@@ -101,7 +101,7 @@ func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
 		t.Fatalf("exit %d, want 0:\n%s", code, stdout)
 	}
 	for _, want := range []string{
-		"WARN   profile p[0]: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95\n",
+		"WARN   profile p, choice 1: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95\n",
 		"WARN   codex-main: unrecognised window group \"x\"",
 		"0 error(s), 2 warning(s)",
 	} {
@@ -111,13 +111,12 @@ func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
 	}
 }
 
-func TestDoctorNoUncappedChoiceWarns(t *testing.T) {
+func TestDoctorNoUncappedChoiceIsFine(t *testing.T) {
 	claude, codex := apptest.DoctorFakes()
 	cfg := strings.Replace(doctorConfig, `"model": "claude-opus-5-5", "thinking": null`, `"model": "claude-opus-5-5", "thinking": null, "cap": [90]`, 1)
 	stdout, _, code := run(apptest.NewDeps(t, cfg, claude, codex), "doctor")
-	want := "WARN   profile p: profile p has no uncapped choice; pick can return failed\n"
-	if code != 0 || !strings.Contains(stdout, want) {
-		t.Fatalf("exit %d, want %q in:\n%s", code, want, stdout)
+	if code != 0 || stdout != "no problems found\n" {
+		t.Fatalf("exit %d, want a clean report (v1's no-uncapped warning is gone):\n%s", code, stdout)
 	}
 }
 

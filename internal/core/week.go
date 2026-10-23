@@ -129,3 +129,12 @@ func dayRanges(day [1440]bool) []string {
 }
 
 func clock(m int) string { return fmt.Sprintf("%02d:%02d", m/60, m%60) }
+
+// Week is the UTC minutes of the week the schedule matches.
+func (s Schedule) Week() Week {
+	var w Week
+	for _, r := range s.Rules {
+		w.paintRule(r)
+	}
+	return w
+}
