@@ -669,7 +669,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 .p-cap-input {
-  justify-self: start;
   width: 72px;
   min-height: 36px;
   font-weight: 600;
@@ -746,6 +745,13 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   justify-content: flex-start;
 }
 
+/* + Add choice keeps the cards' edges; its text starts where a card's
+   Account label does: card border 1 + padding 18 + handle column 26 +
+   gap 16 = the button's border 1 + 60. */
+.p-add {
+  padding-left: 60px;
+}
+
 .p-new-input {
   min-height: 44px;
   border-radius: 8px;
@@ -788,31 +794,38 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--surface);
 }
 
-/* The Example row (above the cards) and the Global default cap panel
-   (below + Add choice): the card's box and columns, so their content and
-   example boxes line up with the cards' content. */
+/* The row above the cards: Global default cap, then the Example. It has
+   the card's columns without the card's frame (the frame's 1 px goes into
+   the padding), so it starts at a card's Account label. */
 .p-defcap {
   display: flex;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 0 19px;
 }
 
-/* The label column is one cap box wide (104 px + padding + border) with
-   the cards' 10 px box gap, so the input and the example boxes stand under
-   a card's second and third cap boxes. */
-.p-defcap-grid {
+.p-defcap-line {
   flex: 1 1 auto;
   min-width: 0;
-  display: grid;
-  grid-template-columns: calc(104px + 2 * 12px + 2px) minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px 10px;
+  gap: 12px 32px;
+}
+
+/* A label and its value stay on one line while they fit. */
+.p-defcap-group {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .p-defcap-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 .p-defcap-label.is-quiet {
@@ -846,10 +859,17 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   font-size: 13px;
 }
 
-/* The Example row above the cards: no frame, so the frame's 1 px goes
-   into the padding to keep the columns of the cards. */
-.p-defcap.p-example {
-  padding: 0 19px;
+/* On a phone the Example (label and two boxes) does not fit beside a
+   card's handle column: the row gives up that indent so it stays two
+   lines. */
+@media (max-width: 480px) {
+  .p-defcap {
+    padding: 0;
+  }
+
+  .p-defcap .p-pos {
+    display: none;
+  }
 }
 
 /* A list row is the link with its Delete button laid over the link's
@@ -910,13 +930,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -2px;
 }
 
-@media (max-width: 720px) {
-  .p-defcap-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
-}
-
 /* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
 .p-card:focus {
   outline: none;
@@ -955,7 +968,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .p-pos {
   /* The handle's width (14 px dots + 2 × 6 px padding), fixed so the
-     Global default cap panel's empty column matches it. */
+     Global default cap row's empty column matches it. */
   flex: 0 0 26px;
   display: flex;
   flex-direction: column;
