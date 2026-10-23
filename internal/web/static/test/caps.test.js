@@ -57,6 +57,14 @@ export const cases = [
   ["trashAction empty cap, first box → uncap (cap: null)", () => trashAction([], 0), "uncap"],
   ["trashAction empty cap, later box → disabled", () => trashAction([], 2), null],
   ["trashAction default after an explicit → disabled", () => trashAction([90], 1), null],
+  // Task 23: a value typed (or sent, not yet answered) into the first
+  // default box shows it as the last explicit one; trash puts the default
+  // back. The middle-box rule is unchanged.
+  ["trashAction typed first default → discard", () => trashAction([90], 1, true), "discard"],
+  ["trashAction typed second default → disabled", () => trashAction([90], 2, true), null],
+  ["trashAction typed middle explicit → disabled", () => trashAction([90, 80, 70], 1, true), null],
+  ["trashAction typed last explicit → default", () => trashAction([90, 80], 1, true), "default"],
+  ["trashAction typed box 1, none explicit → uncap", () => trashAction([], 0, true), "uncap"],
   ["positions labelled", () => json(positions([90, "pace+10"], ["5h", "7d"], 0)),
     `[{"label":"5h","explicit":true,"editable":true},{"label":"7d","explicit":true,"editable":true}]`],
   ["positions labelled, all default: only the first editable",
