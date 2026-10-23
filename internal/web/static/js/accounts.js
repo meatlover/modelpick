@@ -186,7 +186,6 @@ function paint() {
   listen();
   clear(host);
   const st = store.state;
-  host.append(h("h1", {}, "Accounts"));
   if (!st) return;
   host.append(addForm(st.accounts), list(st.accounts, errorSubjects()));
   restoreFocus();

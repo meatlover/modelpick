@@ -1,8 +1,9 @@
 // Profiles tab: the profile list, and the selected profile's choices as
 // cards (#profiles/<name>; the first profile when the name is missing or
-// unknown), with the Global default cap panel below them. Every edit is one op; a refusal re-renders
-// from the store, which reverts the control.
-import { h, clear } from "./dom.js";
+// unknown), under the cap Example row and above the Global default cap
+// panel. Every edit is one op; a refusal re-renders from the store, which
+// reverts the control.
+import { h, clear, trashIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
 import { confirmDialog } from "./notice.js";
 import { currentTab } from "./header.js";
@@ -12,7 +13,6 @@ import { wireReorder, dragHandle } from "./reorder.js";
 
 export const uses = ["state", "doctor"];
 
-const NOTE = "Tried top to bottom; the first usable choice wins.";
 const SVG = "http://www.w3.org/2000/svg";
 
 let host = null;
@@ -85,20 +85,24 @@ function afterBlur(el, fn) {
 
 // ---------- Global default cap ----------
 
+// capValue reads "95", "95%" or "95 %" as 95, clamped to 0–100; anything
+// else is null.
 function capValue(text) {
   let t = text.trim();
   if (t.endsWith("%")) t = t.slice(0, -1).trim();
   const n = t === "" ? NaN : Number(t);
-  // Not a number: sent as typed so the server's refusal names it.
-  return Number.isFinite(n) ? n : t;
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : null;
 }
 
+// commitCap saves the typed cap. Garbage, or the stored value, sends
+// nothing; the repaint then shows the stored value, so the input always
+// shows what was saved ("150" saves and shows "100%").
 async function commitCap(el) {
   el.dataset.sent = el.value;
   const value = capValue(el.value);
   capDraft = null;
-  if (value === store.state.default_cap) {
-    if (el.value !== `${value}%`) paint(); // "95" shows as "95%" again
+  if (value === null || value === store.state.default_cap) {
+    if (el.value !== `${store.state.default_cap}%`) paint();
     return;
   }
   const r = await sendOp("settings.default_cap", { value });
@@ -128,16 +132,23 @@ function exampleBox(dashed, text) {
     h("span", { class: "cap-val" }, h("span", { class: "p-defcap-val" }, text)));
 }
 
-// defaultCapPanel is laid out like a card: an empty column as wide as the
-// card's handle column, so its content starts where the cards' content does.
-function defaultCapPanel(st) {
-  return h("div", { class: "panel p-defcap" },
+// capRow is laid out like a card: an empty column as wide as the card's
+// handle column, so its content starts where the cards' content does.
+function capRow(cls, label, value) {
+  return h("div", { class: cls },
     h("span", { class: "p-pos", "aria-hidden": "true" }),
-    h("div", { class: "p-defcap-grid" },
-      h("label", { class: "p-defcap-label", for: "p-default-cap" }, "Global default cap"),
-      capInput(st),
-      h("span", { class: "p-defcap-label is-quiet" }, "Example:"),
-      h("div", { class: "p-defcap-example" }, exampleBox(true, "default cap"), exampleBox(false, "customized cap"))));
+    h("div", { class: "p-defcap-grid" }, label, value));
+}
+
+// exampleRow tops the cards: how a default and a customized cap look.
+function exampleRow() {
+  return capRow("p-defcap p-example", h("span", { class: "p-defcap-label is-quiet" }, "Example:"),
+    h("div", { class: "p-defcap-example" }, exampleBox(true, "default cap"), exampleBox(false, "customized cap")));
+}
+
+function defaultCapPanel(st) {
+  return capRow("panel p-defcap",
+    h("label", { class: "p-defcap-label", for: "p-default-cap" }, "Global default cap"), capInput(st));
 }
 
 // ---------- profile list ----------
@@ -182,21 +193,35 @@ function openNew() {
   paint();
 }
 
+// listRow is a profile's link with its Delete button laid over the link's
+// right end (a link cannot hold a button); the glyph shows on hover or
+// focus in the row.
+function listRow(p, sel, red) {
+  return h("div", { class: "p-row" },
+    h("a", { href: `#profiles/${encodeURIComponent(p.name)}`,
+      class: ["p-link", red.has(`profile ${p.name}`) && "is-error"],
+      "aria-current": p === sel ? "true" : null, "data-key": `pl-${p.name}` }, p.name),
+    h("button", { type: "button", class: "p-del", "data-key": `pl-del-${p.name}`,
+      "aria-label": `Delete profile ${p.name}`, onClick: () => deleteProfile(p.name) }, trashIcon()));
+}
+
 function profileList(profiles, sel, red) {
   return h("aside", { class: "p-list", "aria-label": "Profiles" },
     h("h2", { class: "p-list-title" }, "Profiles"),
-    profiles.map((p) => h("a", { href: `#profiles/${encodeURIComponent(p.name)}`,
-      class: ["p-link", red.has(`profile ${p.name}`) && "is-error"],
-      "aria-current": p === sel ? "true" : null, "data-key": `pl-${p.name}` }, p.name)),
+    profiles.map((p) => listRow(p, sel, red)),
     adding ? newInput()
       : h("button", { type: "button", class: "btn btn-lg btn-dashed p-new", "data-key": "new-profile-btn",
         onClick: openNew }, "+ New profile"));
 }
 
+// deleteProfile always asks first. Deleting the profile on screen shows
+// the first one; focus on the deleted row's button moves to + New profile.
 async function deleteProfile(name) {
   if (!(await confirmDialog(`Delete profile ${name}?`, "Delete"))) return;
+  const shown = selected(store.state.profiles);
   const r = await sendOp("profile.remove", { name });
-  if (r.ok) history.replaceState(null, "", "#profiles");
+  if (r.ok && shown && shown.name === name) history.replaceState(null, "", "#profiles");
+  if (r.ok && focusKey === `pl-del-${name}`) focusKey = "new-profile-btn";
   paint();
 }
 
@@ -302,9 +327,7 @@ function cards(st, prof, red) {
 
 function profileMain(st, prof, red) {
   return h("div", { class: "p-main" },
-    h("div", { class: "p-title" }, h("p", { class: "p-note" }, NOTE),
-      h("button", { type: "button", class: "btn btn-quiet", "data-key": "del-profile",
-        "aria-label": `Delete profile ${prof.name}`, onClick: () => deleteProfile(prof.name) }, "Delete")),
+    exampleRow(),
     cards(st, prof, red),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice",
       onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"),

@@ -366,6 +366,25 @@ h1 {
   cursor: not-allowed;
 }
 
+/* Hover cue (owner, round 3): what the mouse can use takes --hover-bg
+   under the pointer; filled buttons shift to a neighbouring shade
+   instead. The dashed pills on a card ("+ schedule", "+ caps") too. */
+.btn:not(:disabled):hover,
+.sched-add:not(:disabled):hover,
+.cap-addcaps:hover {
+  background: var(--hover-bg);
+}
+
+.btn-primary:not(:disabled):hover {
+  border-color: var(--text-2);
+  background: var(--text-2);
+}
+
+.btn-danger:not(:disabled):hover {
+  border-color: var(--danger-edge);
+  background: var(--danger-edge);
+}
+
 /* ---------- inputs ---------- */
 
 .input,
@@ -382,6 +401,14 @@ select {
 .input.mono,
 select.mono {
   font-family: var(--font-mono);
+}
+
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+select:not(:disabled):hover {
+  background: var(--hover-bg);
 }
 
 /* ---------- chips ---------- */
@@ -690,6 +717,14 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border-color: var(--input-border);
 }
 
+/* A list row (Profiles here, Schedules' .s-row too) takes the hover cue
+   on the whole row, so it stays while the pointer is on its trash button. */
+.p-link:not(.is-error):hover,
+.p-row:hover .p-link:not(.is-error),
+.s-row:hover .p-link:not(.is-error) {
+  background: var(--hover-bg);
+}
+
 .p-link[aria-current="true"] {
   border-color: var(--text);
   font-weight: 600;
@@ -735,12 +770,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   overflow-wrap: anywhere;
 }
 
-.p-note {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text-3);
-}
-
 .p-cards {
   list-style: none;
   margin: 0;
@@ -759,8 +788,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--surface);
 }
 
-/* Global default cap, below + Add choice: the card's box and columns, so
-   its content and example boxes line up with the cards' content. */
+/* The Example row (above the cards) and the Global default cap panel
+   (below + Add choice): the card's box and columns, so their content and
+   example boxes line up with the cards' content. */
 .p-defcap {
   display: flex;
   gap: 16px;
@@ -814,6 +844,70 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .p-defcap-val {
   font-size: 13px;
+}
+
+/* The Example row above the cards: no frame, so the frame's 1 px goes
+   into the padding to keep the columns of the cards. */
+.p-defcap.p-example {
+  padding: 0 19px;
+}
+
+/* A list row is the link with its Delete button laid over the link's
+   right end (a link cannot hold a button), as Schedules' .s-row. The glyph
+   shows on hover or focus in the row; it hides on the svg, not the button,
+   so the read-only dimming (opacity on the button) still composes. */
+.p-row {
+  position: relative;
+  display: flex;
+}
+
+.p-row .p-link {
+  flex: 1 1 auto;
+  padding-right: 44px;
+}
+
+.p-row:hover .p-link:not(.is-error) {
+  border-color: var(--input-border);
+}
+
+.p-del {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.p-del:hover {
+  color: var(--danger);
+}
+
+.p-link.is-error + .p-del {
+  color: var(--danger-text);
+}
+
+.p-del svg {
+  opacity: 0;
+}
+
+.p-row:hover .p-del svg,
+.p-row:focus-within .p-del svg {
+  opacity: 1;
+}
+
+.p-del:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 @media (max-width: 720px) {
