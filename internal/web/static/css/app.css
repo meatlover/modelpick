@@ -1779,6 +1779,12 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   width: 90px;
 }
 
+/* Add ends the row, right-aligned like Remove in the list below (owner,
+   round 4). */
+.a-form > button[type="submit"] {
+  margin-left: auto;
+}
+
 .a-head,
 .a-row {
   display: grid;
