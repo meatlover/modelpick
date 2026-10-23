@@ -49,7 +49,7 @@ func ParseSchedule(days, utc []string) (Schedule, error) {
 }
 
 // parseRange parses "HH:MM-HH:MM". "24:00" is allowed only as the end; the
-// range must be longer than 0 minutes and shorter than 24 hours; an end
+// range must be longer than 0 minutes and shorter than 24 hours, except 00:00-24:00 (the whole day); an end
 // earlier than the start crosses midnight.
 func parseRange(r string) (MinuteRange, error) {
 	startText, endText, ok := strings.Cut(r, "-")
@@ -68,9 +68,6 @@ func parseRange(r string) (MinuteRange, error) {
 	}
 	if start == end {
 		return MinuteRange{}, fmt.Errorf("range %q: start equals end", r)
-	}
-	if start == 0 && end == minutesPerDay {
-		return MinuteRange{}, fmt.Errorf("range %q: must be shorter than 24 hours", r)
 	}
 	return MinuteRange{Start: start, End: end}, nil
 }

@@ -238,3 +238,14 @@ func TestScheduleForms(t *testing.T) {
 		t.Error("an empty schedule matched")
 	}
 }
+
+func TestConfigAcceptsWholeDay(t *testing.T) {
+	cfg, err := Parse([]byte(`{"version":1,"schedules":{"d":{"days":["mon"],"utc":["00:00-24:00"]}}}`), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := cfg.Schedules["d"]
+	if !s.Matches(at(t, "2026-10-19T00:00:00Z")) || !s.Matches(at(t, "2026-10-19T23:59:00Z")) || s.Matches(at(t, "2026-10-20T00:00:00Z")) {
+		t.Error("whole-day Monday must cover 00:00 and 23:59 but not Tuesday 00:00")
+	}
+}

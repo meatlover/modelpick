@@ -105,3 +105,22 @@ func TestWeekRulesSundayWrap(t *testing.T) {
 		t.Errorf("WeekRules = %+v, want %+v", got, want)
 	}
 }
+
+func TestFullDayAndFullWeekRoundTrip(t *testing.T) {
+	var day, all Week
+	for h := 0; h < 24; h++ {
+		day.Paint([][2]int{{1, h}}, true)
+		for d := 0; d < 7; d++ {
+			all.Paint([][2]int{{d, h}}, true)
+		}
+	}
+	if got := WeekRules(day); !reflect.DeepEqual(got, []DocRule{{Days: []string{"mon"}, UTC: []string{"00:00-24:00"}}}) {
+		t.Errorf("full day = %+v", got)
+	}
+	for name, w := range map[string]Week{"day": day, "week": all} {
+		back, err := RulesWeek(WeekRules(w))
+		if err != nil || back != w {
+			t.Errorf("%s: round trip err=%v equal=%v", name, err, back == w)
+		}
+	}
+}

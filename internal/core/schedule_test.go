@@ -91,7 +91,7 @@ func TestParseScheduleTwentyFourEnd(t *testing.T) {
 	if !s.Matches(at(t, "2026-10-19T23:59:00Z")) || s.Matches(at(t, "2026-10-20T00:00:00Z")) {
 		t.Error("22:00-24:00 on mon must cover mon 23:59 and stop at tue 00:00")
 	}
-	for _, bad := range []string{"24:00-01:00", "00:00-24:00", "24:00-24:00", "01:00-24:01"} {
+	for _, bad := range []string{"24:00-01:00", "24:00-24:00", "01:00-24:01", "00:00-24:01", "23:00-23:00"} {
 		if _, err := ParseSchedule([]string{"mon"}, []string{bad}); err == nil {
 			t.Errorf("%q: expected error", bad)
 		}
@@ -115,5 +115,16 @@ func TestScheduleAnyRuleMatches(t *testing.T) {
 	}
 	if s.Matches(at(t, "2026-10-25T08:00:00Z")) {
 		t.Error("sun 08:00 must not match")
+	}
+}
+
+func TestWholeDayRange(t *testing.T) {
+	s := mustParse(t, []string{"mon"}, []string{"00:00-24:00"})
+	for ts, want := range map[string]bool{
+		"2026-10-19T00:00:00Z": true, "2026-10-19T23:59:00Z": true, "2026-10-20T00:00:00Z": false,
+	} {
+		if got := s.Matches(at(t, ts)); got != want {
+			t.Errorf("%s: got %v, want %v", ts, got, want)
+		}
 	}
 }
