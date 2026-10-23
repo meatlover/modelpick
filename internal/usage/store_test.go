@@ -716,3 +716,27 @@ func TestHelperProcess(t *testing.T) {
 	}
 	fmt.Printf("USED_PCT %v\nGET_MS %d\n", r.Reading.Windows[0].UsedPct, took.Milliseconds())
 }
+
+func TestSaved(t *testing.T) {
+	c := newClock()
+	s := newStore(t, c)
+	if got, err := s.Saved(acct); err != nil || got.Reading != nil || !got.RetryUntil.IsZero() || got.LastError != "" || !got.LastAttempt.IsZero() {
+		t.Fatalf("no state: Saved = %+v, %v; want zero, nil", got, err)
+	}
+	good := reading(33, t0)
+	writeStateFile(t, s, state{LastGood: &good, LastAttempt: t0, LastError: "HTTP 429", RetryUntil: t0.Add(time.Hour)})
+	got, err := s.Saved(acct)
+	if err != nil || got.Reading == nil || got.Reading.Windows[0].UsedPct != 33 ||
+		!got.RetryUntil.Equal(t0.Add(time.Hour)) || got.LastError != "HTTP 429" || !got.LastAttempt.Equal(t0) {
+		t.Fatalf("Saved = %+v, %v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Dir, "work.json"), []byte(`{"last_go`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Saved(acct); err == nil {
+		t.Fatal("corrupt state: want an error")
+	}
+	if _, err := s.Saved(adapter.Account{Name: "a/b"}); err == nil {
+		t.Fatal("bad name: want an error")
+	}
+}
