@@ -23,13 +23,13 @@ func NewServer(b Backend, port int, token string) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, b.State())
+		writeJSON(w, http.StatusOK, normalState(b.State()))
 	})
 	mux.HandleFunc("GET /api/usage", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, b.Usage())
+		writeJSON(w, http.StatusOK, normalUsage(b.Usage()))
 	})
 	mux.HandleFunc("GET /api/doctor", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, b.Doctor())
+		writeJSON(w, http.StatusOK, normalDoctor(b.Doctor()))
 	})
 	// The catch-all "/" below would otherwise turn a wrong method into 404.
 	mux.HandleFunc("/api/usage/{account}/refresh", func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func refreshHandler(b Backend) http.HandlerFunc {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"reason": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, row)
+		writeJSON(w, http.StatusOK, normalRow(row))
 	}
 }
 
@@ -64,23 +64,50 @@ func opHandler(b Backend) http.HandlerFunc {
 			return
 		}
 		res, err := b.Apply(req)
-		var c Conflict
-		var ref Refused
-		switch {
-		case errors.As(err, &c):
+		if err == nil {
+			writeJSON(w, http.StatusOK, normalOpResult(res))
+			return
+		}
+		if c, ok := asConflict(err); ok {
 			writeJSON(w, http.StatusConflict, map[string]string{"sha256": c.SHA256})
-		case errors.As(err, &ref):
+			return
+		}
+		if ref, ok := asRefused(err); ok {
 			body := map[string]any{"reason": ref.Reason}
 			if ref.Uses > 0 {
 				body["uses"] = ref.Uses
 			}
 			writeJSON(w, http.StatusUnprocessableEntity, body)
-		case err != nil:
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"reason": err.Error()})
-		default:
-			writeJSON(w, http.StatusOK, res)
+			return
 		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"reason": err.Error()})
 	}
+}
+
+// asConflict finds a Conflict in err's chain, as a value or a pointer.
+func asConflict(err error) (Conflict, bool) {
+	var v Conflict
+	if errors.As(err, &v) {
+		return v, true
+	}
+	var p *Conflict
+	if errors.As(err, &p) && p != nil {
+		return *p, true
+	}
+	return Conflict{}, false
+}
+
+// asRefused finds a Refused in err's chain, as a value or a pointer.
+func asRefused(err error) (Refused, bool) {
+	var v Refused
+	if errors.As(err, &v) {
+		return v, true
+	}
+	var p *Refused
+	if errors.As(err, &p) && p != nil {
+		return *p, true
+	}
+	return Refused{}, false
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

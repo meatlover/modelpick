@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -130,6 +131,9 @@ func TestOpResponses(t *testing.T) {
 		{"conflict", &stub{applyErr: Conflict{SHA256: "new"}}, 409, `{"sha256":"new"}`},
 		{"refused", &stub{applyErr: Refused{Reason: "x", Uses: 2}}, 422, `{"reason":"x","uses":2}`},
 		{"refused no uses", &stub{applyErr: Refused{Reason: "x"}}, 422, `{"reason":"x"}`},
+		{"conflict pointer", &stub{applyErr: &Conflict{SHA256: "new"}}, 409, `{"sha256":"new"}`},
+		{"refused pointer", &stub{applyErr: &Refused{Reason: "x", Uses: 2}}, 422, `{"reason":"x","uses":2}`},
+		{"refused wrapped pointer", &stub{applyErr: fmt.Errorf("op: %w", &Refused{Reason: "y"})}, 422, `{"reason":"y"}`},
 		{"ok", &stub{applyRes: OpResult{SHA256: "s", Findings: []Finding{}}}, 200, `{"sha256":"s","findings":[]}`},
 	}
 	for _, c := range cases {
