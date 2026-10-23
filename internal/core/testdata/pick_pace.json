@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "profile": "p",
+  "vendor": "claude",
+  "account": "claude-rec",
+  "model": "claude-sonnet-5-5",
+  "thinking": "medium",
+  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude-rec"},
+  "reason": null,
+  "skipped": [
+    {"account": "claude-main", "model": "claude-opus-5-5", "why": "5h window 60% >= pace 55% (hour 2.5 of 5, +5)"}
+  ],
+  "errors": [],
+  "warnings": []
+}

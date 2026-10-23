@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,16 +93,35 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 	caps, warnings := EffectiveCaps(c.Account, c.Cap, ordered, p.cfg.Settings.DefaultCap)
 	p.addWarnings(warnings)
 	for i, w := range ordered {
-		limit := caps[i].N
-		if caps[i].Kind == CapPace {
-			limit = p.cfg.Settings.DefaultCap // until the pace rule lands (Task 3)
-		}
-		if w.UsedPct >= limit {
-			return fmt.Sprintf("%s window %s%% >= cap %s",
-				FormatLength(w.Length), formatPct(w.UsedPct), formatPct(limit)), false
+		if why, blocked := p.windowBlocks(c.Account, w, caps[i]); blocked {
+			return why, false
 		}
 	}
 	return "", true
+}
+
+// windowBlocks judges one window against its effective cap element. A pace
+// element whose window lacks a length or reset time falls back to default_cap
+// with a warning.
+func (p *picker) windowBlocks(account string, w adapter.Window, cap CapElem) (string, bool) {
+	label := FormatLength(w.Length)
+	if cap.Kind == CapPace {
+		if allowed, elapsed, ok := PaceAllowed(w, cap.N, p.now); ok {
+			if w.UsedPct < allowed {
+				return "", false
+			}
+			return fmt.Sprintf("%s window %s%% >= pace %s%% (%s, +%s)", label, formatPct(w.UsedPct),
+				formatPct(math.Round(allowed)), paceWhere(w.Length, elapsed), formatPct(cap.N)), true
+		}
+		d := p.cfg.Settings.DefaultCap
+		p.addWarnings([]string{fmt.Sprintf("%s: %s window has no reset time; pace cap used default_cap %s",
+			account, label, formatPct(d))})
+		cap = CapElem{CapFixed, d}
+	}
+	if w.UsedPct >= cap.N {
+		return fmt.Sprintf("%s window %s%% >= cap %s", label, formatPct(w.UsedPct), formatPct(cap.N)), true
+	}
+	return "", false
 }
 
 // usage reads an account once per pick and records its error and warnings.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -136,4 +137,29 @@ func FormatLength(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
 	}
+}
+
+// PaceAllowed is the share of window w a pace position permits at now:
+// elapsed% + n capped at 100 (spec §3.2). elapsed is the share of the window
+// already gone, 0–100. ok is false when the length or reset time is unknown.
+func PaceAllowed(w adapter.Window, n float64, now time.Time) (allowed, elapsed float64, ok bool) {
+	if w.Length <= 0 || w.ResetsAt.IsZero() {
+		return 0, 0, false
+	}
+	start := w.ResetsAt.Add(-w.Length)
+	elapsed = float64(now.Sub(start)) / float64(w.Length) * 100
+	elapsed = math.Max(0, math.Min(100, elapsed))
+	return math.Min(100, elapsed+n), elapsed, true
+}
+
+// paceWhere says how far into the window the pace line stands: "day 2.7 of 7"
+// for whole-day lengths, else "hour 2.5 of 5".
+func paceWhere(length time.Duration, elapsed float64) string {
+	unit, name := time.Hour, "hour"
+	if length%(24*time.Hour) == 0 {
+		unit, name = 24*time.Hour, "day"
+	}
+	pos := elapsed / 100 * float64(length) / float64(unit)
+	return fmt.Sprintf("%s %s of %s", name, formatPct(math.Round(pos*10)/10),
+		formatPct(math.Round(float64(length)/float64(unit)*10)/10))
 }
