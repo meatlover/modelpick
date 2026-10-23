@@ -56,10 +56,14 @@ type Config struct {
 type ConfigError struct{ Path, Field, Msg string }
 
 func (e *ConfigError) Error() string {
-	if e.Path == "" { // from ParseDoc, which has no file name
-		return fmt.Sprintf("config: %s: %s", e.Field, e.Msg)
+	head := "config" // an empty Path comes from ParseDoc, which has no file name
+	if e.Path != "" {
+		head += " " + e.Path
 	}
-	return fmt.Sprintf("config %s: %s: %s", e.Path, e.Field, e.Msg)
+	if e.Field == "" {
+		return head + ": " + e.Msg
+	}
+	return head + ": " + e.Field + ": " + e.Msg
 }
 
 // ProfileNames returns the profile names, sorted.

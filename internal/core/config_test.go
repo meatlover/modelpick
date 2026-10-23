@@ -166,9 +166,19 @@ func TestAccountPathsAbsoluteOrHome(t *testing.T) {
 }
 
 func TestConfigErrorString(t *testing.T) {
-	e := &ConfigError{Path: "p.json", Field: "a.b", Msg: "bad"}
-	if e.Error() != "config p.json: a.b: bad" {
-		t.Errorf("Error() = %q", e.Error())
+	cases := []struct {
+		e    ConfigError
+		want string
+	}{
+		{ConfigError{"p.json", "a.b", "bad"}, "config p.json: a.b: bad"},
+		{ConfigError{"p.json", "", "bad"}, "config p.json: bad"},
+		{ConfigError{"", "a.b", "bad"}, "config: a.b: bad"},
+		{ConfigError{"", "", "bad"}, "config: bad"},
+	}
+	for _, c := range cases {
+		if got := c.e.Error(); got != c.want {
+			t.Errorf("%+v: Error() = %q, want %q", c.e, got, c.want)
+		}
 	}
 }
 
