@@ -47,6 +47,21 @@ var ops = map[string]opFunc{
 	"account.remove":       (*Demo).opAccountRemove,
 }
 
+// capital upper-cases the first letter of a kind word that opens a refusal.
+func capital(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
 func refuse(format string, args ...any) error {
 	return web.Refused{Reason: fmt.Sprintf(format, args...)}
 }
@@ -63,12 +78,12 @@ func (d *Demo) Apply(req web.OpRequest) (web.OpResult, error) {
 	}
 	fn, ok := ops[req.Op]
 	if !ok {
-		return web.OpResult{}, refuse("unknown operation %s", req.Op)
+		return web.OpResult{}, refuse("Unknown operation %s", req.Op)
 	}
 	var a opArgs
 	if len(req.Args) > 0 {
 		if err := json.Unmarshal(req.Args, &a); err != nil {
-			return web.OpResult{}, refuse("bad arguments: %v", err)
+			return web.OpResult{}, refuse("Bad arguments: %v", err)
 		}
 	}
 	if err := fn(d, a); err != nil {
@@ -81,13 +96,13 @@ func (d *Demo) Apply(req web.OpRequest) (web.OpResult, error) {
 
 func (d *Demo) checkNew(kind, name string, taken func(string) bool) error {
 	if !nameRE.MatchString(name) {
-		return refuse("%s name %q must match ^[a-z0-9][a-z0-9-]*$", kind, name)
+		return refuse("%s name %q must match ^[a-z0-9][a-z0-9-]*$", capital(kind), name)
 	}
 	if kind == "account" && name == "models" {
-		return refuse("accounts.models: reserved name")
+		return refuse("models is a reserved account name")
 	}
 	if taken(name) {
-		return refuse("%s %s already exists", kind, name)
+		return refuse("%s %s already exists", capital(kind), name)
 	}
 	return nil
 }
@@ -107,7 +122,7 @@ func (d *Demo) profile(name string) (*web.Profile, error) {
 			return &d.profiles[i], nil
 		}
 	}
-	return nil, refuse("unknown profile %s", name)
+	return nil, refuse("Unknown profile %s", name)
 }
 
 // firstThinking is the model's first thinking level, or nil.
@@ -137,7 +152,7 @@ func (d *Demo) opProfileAdd(a opArgs) error {
 		return err
 	}
 	if len(d.accounts) == 0 {
-		return refuse("profile %s needs an account", a.Name)
+		return refuse("Profile %s needs an account", a.Name)
 	}
 	d.profiles = append(d.profiles, web.Profile{Name: a.Name,
 		Choices: []web.Choice{d.newChoice(d.accounts[0].Name)}})
@@ -151,7 +166,7 @@ func (d *Demo) opProfileRemove(a opArgs) error {
 			return nil
 		}
 	}
-	return refuse("unknown profile %s", a.Name)
+	return refuse("Unknown profile %s", a.Name)
 }
 
 func (d *Demo) opChoiceAdd(a opArgs) error {
@@ -186,11 +201,11 @@ func (d *Demo) choiceAt(profile string, i int, expect json.RawMessage) (*web.Pro
 		return nil, err
 	}
 	if i < 0 || i >= len(p.Choices) {
-		return nil, refuse("profile %s has no choice %d", profile, i)
+		return nil, refuse("Profile %s has no choice %d", profile, i+1)
 	}
 	var seen web.Choice
 	if err := json.Unmarshal(expect, &seen); err != nil || !reflect.DeepEqual(normalized(seen), normalized(p.Choices[i])) {
-		return nil, refuse("the choice you edited was changed in the file; load the file's version")
+		return nil, refuse("Choice %d of %s was changed outside the UI", i+1, profile)
 	}
 	return p, nil
 }
@@ -201,7 +216,7 @@ func (d *Demo) opChoiceRemove(a opArgs) error {
 		return err
 	}
 	if len(p.Choices) == 1 {
-		return refuse("profile %s needs at least one choice", p.Name)
+		return refuse("Profile %s needs at least one choice", p.Name)
 	}
 	p.Choices = append(p.Choices[:a.Index], p.Choices[a.Index+1:]...)
 	return nil
@@ -213,7 +228,7 @@ func (d *Demo) opChoiceMove(a opArgs) error {
 		return err
 	}
 	if a.To < 0 || a.To >= len(p.Choices) {
-		return refuse("profile %s has no position %d", p.Name, a.To)
+		return refuse("Profile %s has no position %d", p.Name, a.To)
 	}
 	c := p.Choices[a.From]
 	rest := append(append([]web.Choice{}, p.Choices[:a.From]...), p.Choices[a.From+1:]...)
@@ -272,10 +287,10 @@ func without(list []string, s string) []string {
 
 func (d *Demo) opScheduleRemove(a opArgs) error {
 	if d.schedule(a.Name) == nil {
-		return refuse("unknown schedule %s", a.Name)
+		return refuse("Unknown schedule %s", a.Name)
 	}
 	if n := d.scheduleUses(a.Name); n > 0 && !a.Force {
-		return web.Refused{Reason: fmt.Sprintf("schedule %s is used by %d choice(s)", a.Name, n), Uses: n}
+		return web.Refused{Reason: fmt.Sprintf("Schedule %s is used by %s", a.Name, plural(n, "choice")), Uses: n}
 	}
 	for i := range d.profiles {
 		for j := range d.profiles[i].Choices {
@@ -295,11 +310,11 @@ func (d *Demo) opScheduleRemove(a opArgs) error {
 func (d *Demo) opSchedulePaint(a opArgs) error {
 	s := d.schedule(a.Name)
 	if s == nil {
-		return refuse("unknown schedule %s", a.Name)
+		return refuse("Unknown schedule %s", a.Name)
 	}
 	for _, c := range a.Cells {
 		if c[0] < 0 || c[0] > 6 || c[1] < 0 || c[1] > 23 {
-			return refuse("cell [%d, %d] is outside day 0–6, hour 0–23", c[0], c[1])
+			return refuse("Cell [%d, %d] is outside day 0–6, hour 0–23", c[0], c[1])
 		}
 	}
 	v := 0.0
@@ -337,7 +352,7 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 	if n, ok := f["key_line"].(float64); ok {
 		line = strconv.Itoa(int(n))
 	}
-	return file + " · line " + line, "key line " + line + " of " + strconv.Itoa(onFile)
+	return file, "key line " + line + " of " + strconv.Itoa(onFile)
 }
 
 // relabel rebuilds every account's location and source, since an
@@ -361,7 +376,7 @@ func (d *Demo) opAccountAdd(a opArgs) error {
 		return err
 	}
 	if a.Vendor != "claude" && a.Vendor != "codex" && a.Vendor != "opencode-go" {
-		return refuse("unknown vendor %q", a.Vendor)
+		return refuse("Unknown vendor %q", a.Vendor)
 	}
 	if a.Fields == nil {
 		a.Fields = map[string]any{}
@@ -375,12 +390,12 @@ func (d *Demo) opAccountAdd(a opArgs) error {
 
 func (d *Demo) opAccountRemove(a opArgs) error {
 	if !d.hasAccount(a.Name) {
-		return refuse("unknown account %s", a.Name)
+		return refuse("Unknown account %s", a.Name)
 	}
 	for _, p := range d.profiles {
 		for i, c := range p.Choices {
 			if c.Account == a.Name {
-				return refuse("account %s is used by %s[%d]", a.Name, p.Name, i)
+				return refuse("Account %s is used by profile %s, choice %d", a.Name, p.Name, i+1)
 			}
 		}
 	}

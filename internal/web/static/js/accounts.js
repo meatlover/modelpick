@@ -170,7 +170,7 @@ function row(accounts, i, red) {
       h("span", { class: "mono a-loc" }, a.location),
       h("span", { class: "a-src" }, a.source)),
     h("div", { class: "a-act" },
-      h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove ${a.name}`,
+      h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove account ${a.name}`,
         "data-key": `rm-${a.name}`, onClick: () => remove(accounts, i) }, "Remove")));
 }
 

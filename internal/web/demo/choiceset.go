@@ -72,7 +72,7 @@ func (d *Demo) fixThinking(c *web.Choice) {
 
 func (d *Demo) setAccount(c *web.Choice, v string) error {
 	if !d.hasAccount(v) {
-		return refuse("unknown account %s", v)
+		return refuse("Unknown account %s", v)
 	}
 	c.Account = v
 	if !d.offers(v, c.Model) {
@@ -120,7 +120,7 @@ func (d *Demo) setField(c *web.Choice, base string, a opArgs) error {
 		}
 		return d.setSchedules(c, where, a.Field, list)
 	default:
-		return refuse("unknown field %s", a.Field)
+		return refuse("Unknown field %s", a.Field)
 	}
 	return nil
 }

@@ -169,7 +169,7 @@ func TestExpectMismatchRefused(t *testing.T) {
 		"field": "cap", "value": []any{80}, "expect": stale})
 	got := refusal(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 0,
 		"field": "cap", "value": []any{70}, "expect": stale}).Reason
-	if got != "the choice you edited was changed in the file; load the file's version" {
+	if got != "Choice 1 of coder-difficult was changed outside the UI" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -202,7 +202,7 @@ func TestChoiceMoveAndRemove(t *testing.T) {
 	must(t, d, "profile.add", map[string]any{"name": "solo"})
 	got := refusal(t, d, "choice.remove", map[string]any{"profile": "solo", "index": 0,
 		"expect": choiceJSON(t, d, "solo", 0)}).Reason
-	if got != "profile solo needs at least one choice" {
+	if got != "Profile solo needs at least one choice" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -227,7 +227,7 @@ func TestNamesAndReserved(t *testing.T) {
 		}
 	}
 	got := refusal(t, d, "account.add", map[string]any{"name": "models", "vendor": "claude"}).Reason
-	if got != "accounts.models: reserved name" {
+	if got != "models is a reserved account name" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -235,7 +235,7 @@ func TestNamesAndReserved(t *testing.T) {
 func TestAccountRemoveReferenced(t *testing.T) {
 	d := newDemo()
 	got := refusal(t, d, "account.remove", map[string]any{"name": "claude-main"}).Reason
-	if got != "account claude-main is used by coder-difficult[0]" {
+	if got != "Account claude-main is used by profile coder-difficult, choice 1" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -243,7 +243,7 @@ func TestAccountRemoveReferenced(t *testing.T) {
 func TestScheduleRemoveUsesAndForce(t *testing.T) {
 	d := newDemo()
 	r := refusal(t, d, "schedule.remove", map[string]any{"name": "deepseek-peak", "force": false})
-	if r.Uses != 4 || r.Reason != "schedule deepseek-peak is used by 4 choice(s)" {
+	if r.Uses != 4 || r.Reason != "Schedule deepseek-peak is used by 4 choices" {
 		t.Fatalf("got %+v", r)
 	}
 	must(t, d, "schedule.remove", map[string]any{"name": "deepseek-peak", "force": true})
@@ -530,5 +530,19 @@ func TestNoReadingIsRefreshableUnlessBlocked(t *testing.T) {
 	}
 	if _, err := d.Refresh("claude-rec"); err == nil {
 		t.Error("claude-rec refreshed")
+	}
+}
+
+// Owner, 2026-10-23 (wording): a count of 1 is singular, and a refusal
+// reason that starts with a kind word starts with a capital.
+func TestPluralAndCapital(t *testing.T) {
+	if got := plural(1, "choice"); got != "1 choice" {
+		t.Fatalf("got %q", got)
+	}
+	if got := plural(4, "choice"); got != "4 choices" {
+		t.Fatalf("got %q", got)
+	}
+	if got := capital("profile"); got != "Profile" {
+		t.Fatalf("got %q", got)
 	}
 }

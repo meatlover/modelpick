@@ -258,7 +258,7 @@ func (d *Demo) stateLocked() web.State {
 
 func (d *Demo) row(a web.Account) web.UsageRow {
 	r := d.readings[a.Name]
-	row := web.UsageRow{Account: a.Name, Vendor: a.Vendor, State: "no reading",
+	row := web.UsageRow{Account: a.Name, Vendor: a.Vendor, State: "no reading yet",
 		Windows: []web.UsageWindow{}}
 	if r == nil {
 		row.CanRefresh = true // nothing blocks a first reading

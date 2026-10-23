@@ -619,12 +619,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--fill);
 }
 
-.u-note {
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--warn-note);
-}
-
 .u-age {
   font-size: 13px;
   line-height: 20px;
@@ -639,7 +633,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .u-row.is-error,
 .u-row.is-error .u-left,
 .u-row.is-error .u-reset,
-.u-row.is-error .u-note,
 .u-row.is-error .u-age {
   color: var(--danger-text);
 }
@@ -1143,17 +1136,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--muted);
 }
 
-.cap-add {
-  min-width: 54px;
-  min-height: 54px;
-  border: 1px dashed var(--dashed);
-  border-radius: 8px;
-  background: transparent;
-  font: 500 18px var(--font);
-  color: var(--text-2);
-  cursor: pointer;
-}
-
 /* The open box: the frame itself shows focus. */
 .cap-edit {
   display: flex;
@@ -1465,6 +1447,11 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .sched-mode[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
+}
+
+.sched-pop-head {
+  font: 600 12px var(--font);
+  color: var(--text-2);
 }
 
 .sched-pick {

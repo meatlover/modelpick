@@ -283,7 +283,7 @@ function week(sched) {
     kids.push(h("span", { class: "s-day" }, name));
     for (let hr = 0; hr < 24; hr++) kids.push(cell(sched, d, hr));
   });
-  grid.el = h("div", { class: "s-grid", tabindex: "0", role: "group", "aria-label": "Week",
+  grid.el = h("div", { class: "s-grid", tabindex: "0", role: "group", "aria-label": `schedule of ${sched.name}`,
     "data-key": "week", onKeyDown: onGridKey, onPointerDown: startDrag, onPointerMove: hoverAt,
     onPointerLeave: unhover, onFocus: readout, onBlur: readout }, kids);
   mark();
