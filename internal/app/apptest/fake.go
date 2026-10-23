@@ -32,6 +32,7 @@ type Fake struct {
 	ModelList  map[string][]adapter.Model   // Models per account; missing = error
 	Checks     map[string][]adapter.Finding // Check findings per account
 	CheckCalls map[string]int               // Check calls per account
+	ModelCalls map[string]int               // Models calls per account
 }
 
 func NewFake(vendor string) *Fake {
@@ -45,6 +46,7 @@ func NewFake(vendor string) *Fake {
 		ModelList:  map[string][]adapter.Model{},
 		Checks:     map[string][]adapter.Finding{},
 		CheckCalls: map[string]int{},
+		ModelCalls: map[string]int{},
 	}
 }
 
@@ -67,6 +69,7 @@ func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, 
 }
 
 func (f *Fake) Models(_ context.Context, acct adapter.Account) ([]adapter.Model, error) {
+	f.ModelCalls[acct.Name]++
 	if m, ok := f.ModelList[acct.Name]; ok {
 		return m, nil
 	}

@@ -1,12 +1,9 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/core"
@@ -26,55 +23,6 @@ type Finding struct{ Severity, Subject, Message string }
 // ConfigFinding is the one finding of a config that does not parse.
 func ConfigFinding(err error) Finding {
 	return Finding{Severity: sevError, Subject: "config", Message: err.Error()}
-}
-
-type accountCheck struct {
-	findings  []adapter.Finding
-	models    []adapter.Model
-	modelsErr error
-}
-
-// CheckCache keeps each account's adapter Check findings and Models result
-// until forgotten, so repeated doctor runs do not repeat vendor-side work.
-// The zero value is ready; it is safe for concurrent use.
-type CheckCache struct {
-	mu sync.Mutex
-	m  map[string]accountCheck
-}
-
-// Forget drops one account's cached results.
-func (c *CheckCache) Forget(account string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.m, account)
-}
-
-// ForgetAll drops every cached result.
-func (c *CheckCache) ForgetAll() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m = nil
-}
-
-// check returns the account's cached results, running Check and Models once.
-func (c *CheckCache) check(name string, acct adapter.Account, a adapter.Adapter) accountCheck {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if r, ok := c.m[name]; ok {
-		return r
-	}
-	var r accountCheck
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	r.findings = a.Check(ctx, acct)
-	cancel()
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-	r.models, r.modelsErr = a.Models(ctx, acct)
-	cancel()
-	if c.m == nil {
-		c.m = map[string]accountCheck{}
-	}
-	c.m[name] = r
-	return r
 }
 
 // findings collects findings, dropping exact repeats. fromCheck marks the
