@@ -259,6 +259,10 @@ func TestFailureCountsAsAttempt(t *testing.T) {
 	if r.Err == nil || usedPct(t, r) != 10 {
 		t.Fatalf("failing call: want error plus last good reading, got %+v", r)
 	}
+	wantNow := "work: using reading from 2026-10-22T12:00:00Z (20 min old); this call failed: connection reset"
+	if len(r.Warnings) != 1 || r.Warnings[0] != wantNow {
+		t.Fatalf("failing call: warnings = %q, want [%q]", r.Warnings, wantNow)
+	}
 
 	c.advance(5 * time.Minute)
 	r = s.Get(context.Background(), f, acct, false)

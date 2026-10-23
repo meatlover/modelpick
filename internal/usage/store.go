@@ -165,6 +165,10 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	}
 	cacheErr = s.write(name, st)
 	res.Reading, res.Err = st.LastGood, callErr
+	if callErr != nil && st.LastGood != nil {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: using reading from %s (%d min old); this call failed: %v",
+			name, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now), callErr))
+	}
 	if res.Reading == nil && cacheErr != nil {
 		res.Err = fmt.Errorf("%w; cache unavailable: %w", callErr, cacheErr)
 	}
