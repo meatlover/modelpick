@@ -972,7 +972,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text-2);
 }
 
-/* content-box as in the mockup: 104 px inside the padding. */
+/* content-box as in the mockup: 104 px inside the padding. A configured
+   box (fixed or pace) has a solid neutral frame, a default one a dashed
+   frame; blue is only the open editing frame (owner, 2026-10-23). */
 .cap-box {
   box-sizing: content-box;
   display: flex;
@@ -984,11 +986,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border: 1px solid var(--input-border);
   background: var(--surface);
   cursor: text;
-}
-
-.cap-box.is-pace {
-  border-color: var(--accent-mid);
-  background: var(--accent-soft);
 }
 
 .cap-box.is-default {
@@ -1011,7 +1008,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text);
 }
 
-.cap-box.is-pace .cap-val {
+/* "pace+10%" is wider than "90%". */
+.cap-box.is-wide .cap-val {
   width: 88px;
 }
 
@@ -1077,11 +1075,12 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   overflow: hidden;
 }
 
+/* 34 px inside the group's 1 px border: as tall as the trash button. */
 .cap-sw {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  min-height: 32px;
+  min-height: 34px;
   padding: 0 12px;
   border: 0;
   background: var(--surface);
@@ -1109,10 +1108,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -4px;
 }
 
-.cap-trash {
-  margin-left: auto;
-}
-
 .cap-bar {
   position: relative;
   width: 240px;
@@ -1122,27 +1117,25 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--track);
 }
 
+/* Pace: the track and fill are yellow, standing for time. */
 .cap-bar.is-pace {
   margin-top: 22px;
+  background: var(--time-soft);
 }
 
-/* An illustration of time elapsed, not the real usage: always 25%. */
+/* An illustration with fixed values, not the account's readings: token
+   usage 33% (fixed), time elapsed 50% (pace). caps.js sets the width. */
 .cap-fill {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 60px;
   border-radius: 5px;
   background: var(--fill);
 }
 
-.cap-tint {
-  position: absolute;
-  left: 60px;
-  top: 0;
-  bottom: 0;
-  background: var(--accent-ring);
+.cap-bar.is-pace .cap-fill {
+  background: var(--time);
 }
 
 .cap-line,
@@ -1218,6 +1211,13 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: 2px;
 }
 
+/* Under the bar: what its fill stands for. */
+.cap-scale {
+  margin-top: -6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 .cap-effect {
   font-size: 12px;
   color: var(--text-2);
@@ -1271,7 +1271,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   position: relative;
 }
 
-.sched-add {
+/* caps.js's "+ caps" on an uncapped card is the same dashed pill. */
+.sched-add,
+.cap-addcaps {
   min-height: 32px;
   padding: 0 10px;
   border: 1px dashed var(--dashed);

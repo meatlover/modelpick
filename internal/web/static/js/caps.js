@@ -7,7 +7,11 @@ import { h, clear, svg, trashIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
 
 const BAR = 240; // drawn bar width, px
-const ELAPSED = 25; // the bar's fixed fill, standing for time elapsed (%)
+// The bar's fill is an illustration with fixed values, not the account's
+// readings (owner, 2026-10-23): token usage in fixed mode, time elapsed in
+// pace mode. ELAPSED also sets the pace geometry.
+const USED = 33; // fixed mode's fill (%)
+const ELAPSED = 50; // pace mode's fill (%)
 const PACE_MAX = 100 - ELAPSED; // the largest N the bar covers
 const THUMB = 14; // width of the overlaid range's thumb (.cap-range)
 const KNOB = 14; // the drawn ring's outer width
@@ -78,7 +82,9 @@ export function trashAction(cap, pos) {
   return pos === cap.length - 1 ? "default" : null;
 }
 
-// switchKind keeps the number: fixed v → pace+v (1–75), pace N → fixed N.
+// switchKind keeps the number: fixed v → pace+v (1–PACE_MAX), pace N →
+// fixed N. A kind already shown is returned as is (a hand-written pace+60
+// stays pace+60).
 export function switchKind(shown, kind) {
   if (shown.kind === kind) return shown;
   if (kind === "pace") return { kind, n: clamp(Math.round(shown.n), 1, PACE_MAX) };
@@ -97,6 +103,11 @@ export function barGeometry(shown) {
   const v = clamp(shown.n, 0, 100);
   return { x: (BAR * v) / 100, left: -THUMB / 2, width: BAR + THUMB,
     range: { min: 0, max: 100, value: Math.round(v) } };
+}
+
+// scaleText names what the bar's fill stands for in mode kind.
+export function scaleText(kind) {
+  return kind === "pace" ? `Time elapsed: ${ELAPSED}%` : `Token usage: ${USED}%`;
 }
 
 export function effect(shown) {
@@ -298,8 +309,8 @@ function clock(w) {
     ["path", { d: "M2.2 2.2l1.3-1M9.8 2.2l-1.3-1" }]);
 }
 
-// place draws shown on the frame: switch state, handle, tint, alarm clock,
-// the range's span and value, and the effect line.
+// place draws shown on the frame: switch state, fill, handle, alarm clock,
+// the range's span and value, the fill's caption and the effect line.
 function place(els, shown) {
   const g = barGeometry(shown);
   const pace = shown.kind === "pace";
@@ -309,8 +320,7 @@ function place(els, shown) {
   els.line.style.left = `${g.x - 1}px`;
   els.knob.style.left = `${g.x - KNOB / 2}px`;
   els.clock.style.left = `${g.x - 8}px`;
-  els.tint.style.width = `${Math.max(0, g.x - (BAR * ELAPSED) / 100)}px`;
-  els.tint.hidden = !pace;
+  els.fill.style.width = `${(BAR * (pace ? ELAPSED : USED)) / 100}px`;
   els.clock.hidden = !pace;
   const r = els.range;
   r.style.left = `${g.left}px`;
@@ -320,6 +330,7 @@ function place(els, shown) {
   r.value = String(g.range.value);
   r.setAttribute("aria-label", pace ? `${els.label} cap above time elapsed` : `${els.label} cap`);
   r.setAttribute("aria-valuetext", effect(shown));
+  els.scale.textContent = scaleText(shown.kind);
   els.effect.textContent = effect(shown);
 }
 
@@ -353,7 +364,7 @@ function switchRow(ctx, p, els) {
 
 function bar(ctx, p, els) {
   const key = cardKey(ctx);
-  els.tint = h("div", { class: "cap-tint" });
+  els.fill = h("div", { class: "cap-fill" });
   els.line = h("div", { class: "cap-line" });
   els.knob = h("div", { class: "cap-knob" });
   els.clock = h("span", { class: "cap-clock", "aria-hidden": "true" }, clock(11), h("span", {}, "»"));
@@ -363,7 +374,7 @@ function bar(ctx, p, els) {
     onChange: () => {
       if (edit && edit.draft !== null) commit(key, p, edit.draft);
     } });
-  els.bar = h("div", { class: "cap-bar" }, h("div", { class: "cap-fill" }), els.tint, els.line, els.knob,
+  els.bar = h("div", { class: "cap-bar" }, els.fill, els.line, els.knob,
     els.clock, els.range);
   return els.bar;
 }
@@ -384,13 +395,14 @@ function frame(ctx, p, pos) {
         rerender(key);
       }
     } });
+  els.scale = h("span", { class: "cap-scale" });
   els.effect = h("span", { class: "cap-effect" });
   // tabindex -1: a click on the frame's padding, bar or text keeps focus
   // inside it instead of moving it to body (which would close the frame).
   const el = h("div", { class: "cap-edit", tabindex: "-1", "data-key": `${boxKey(ctx, p)}-frame`,
     onFocusOut: () => afterLeave(key, p) },
     h("span", { class: "mono cap-edit-win" }, pos.label), els.input, switchRow(ctx, p, els), bar(ctx, p, els),
-    els.effect);
+    els.scale, els.effect);
   place(els, shownOf(ctx, p, els.input.value));
   return el;
 }
@@ -399,7 +411,7 @@ function frame(ctx, p, pos) {
 // shown but disabled (it cannot be written before the ones ahead of it).
 function box(ctx, p, pos) {
   const v = pos.explicit ? elementOf(ctx.choice.cap[p]) : null;
-  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-pace",
+  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-wide",
     !pos.editable && "is-locked"] },
     h("span", { class: "mono cap-win" }, pos.label),
     h("input", { type: "text", class: "cap-val", "aria-label": `${pos.label} cap`, "data-key": boxKey(ctx, p),
@@ -408,14 +420,15 @@ function box(ctx, p, pos) {
 
 function addCaps(ctx) {
   const key = cardKey(ctx);
-  return h("button", { type: "button", class: "btn", "data-key": `c${ctx.index}-addcaps`,
+  return h("button", { type: "button", class: "cap-addcaps", "aria-label": "Add caps",
+    "data-key": `c${ctx.index}-addcaps`,
     onClick: () => enqueue(key, async () => {
       const now = liveCtx(key);
       if (!now) return;
       await sendOp("choice.set", { profile: now.profile, index: now.index, expect: now.choice,
         field: "cap", value: [] });
       focusCard(mounts.get(key).container); // the button is gone after a repaint
-    }) }, "Add caps");
+    }) }, "+ caps");
 }
 
 function plus(ctx, n) {

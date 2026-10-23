@@ -1,7 +1,8 @@
 // Cases for the pure functions of js/caps.js. In the browser,
 // caps.test.html writes the verdict into <output id="result">; elsewhere
 // run() returns it.
-import { parseCap, capArg, writeCap, trashAction, positions, switchKind } from "../js/caps.js";
+import { parseCap, capArg, writeCap, trashAction, positions, switchKind, barGeometry, scaleText }
+  from "../js/caps.js";
 
 const json = (x) => JSON.stringify(x);
 
@@ -74,8 +75,16 @@ export const cases = [
     `[{"label":"1","explicit":true,"editable":true},{"label":"2","explicit":false,"editable":true}]`],
   ["positions numbered, empty cap with added → one box", () => json(positions([], null, 3)),
     `[{"label":"1","explicit":false,"editable":true}]`],
-  ["switchKind 90 → pace clamps to 75", () => json(switchKind({ kind: "fixed", n: 90 }, "pace")),
-    `{"kind":"pace","n":75}`],
+  // Owner ruling 2026-10-23 (round 2): the pace bar's fill stands for time
+  // elapsed at a fixed 50% (was 25%), so pace N runs 1–50 (was 1–75).
+  ["switchKind 90 → pace clamps to 50", () => json(switchKind({ kind: "fixed", n: 90 }, "pace")),
+    `{"kind":"pace","n":50}`],
+  ["switchKind 50 → pace+50", () => json(switchKind({ kind: "fixed", n: 50 }, "pace")),
+    `{"kind":"pace","n":50}`],
+  ["switchKind 51 → pace clamps to 50", () => json(switchKind({ kind: "fixed", n: 51 }, "pace")),
+    `{"kind":"pace","n":50}`],
+  ["switchKind pace+60 stays pace+60", () => json(switchKind({ kind: "pace", n: 60 }, "pace")),
+    `{"kind":"pace","n":60}`],
   ["switchKind 10 → pace+10", () => json(switchKind({ kind: "fixed", n: 10 }, "pace")),
     `{"kind":"pace","n":10}`],
   ["switchKind 0 → pace+1", () => json(switchKind({ kind: "fixed", n: 0 }, "pace")),
@@ -86,6 +95,33 @@ export const cases = [
     `{"kind":"fixed","n":40}`],
   ["switchKind same kind unchanged", () => json(switchKind({ kind: "pace", n: 90 }, "pace")),
     `{"kind":"pace","n":90}`],
+  // The bar is 240 px; the range's thumb is 14 px, so the range sits 7 px
+  // out on each side and its thumb centre meets x at every value.
+  ["barGeometry fixed 90", () => json(barGeometry({ kind: "fixed", n: 90 })),
+    `{"x":216,"left":-7,"width":254,"range":{"min":0,"max":100,"value":90}}`],
+  ["barGeometry fixed 0", () => json(barGeometry({ kind: "fixed", n: 0 })),
+    `{"x":0,"left":-7,"width":254,"range":{"min":0,"max":100,"value":0}}`],
+  ["barGeometry fixed 120 clamps to the end", () => json(barGeometry({ kind: "fixed", n: 120 })),
+    `{"x":240,"left":-7,"width":254,"range":{"min":0,"max":100,"value":100}}`],
+  // Pace: the range starts at elapsed + 1 (51% = 122.4 px) and ends at 100%.
+  ["barGeometry pace+10 at 60%", () => json(barGeometry({ kind: "pace", n: 10 })),
+    `{"x":144,"left":115.4,"width":131.6,"range":{"min":1,"max":50,"value":10}}`],
+  ["barGeometry pace+1 at 51%", () => barGeometry({ kind: "pace", n: 1 }).x, 122.4],
+  ["barGeometry pace+50 at the end", () => barGeometry({ kind: "pace", n: 50 }).x, 240],
+  ["barGeometry hand-written pace+60 drawn at the end, range at 50",
+    () => json([barGeometry({ kind: "pace", n: 60 }).x, barGeometry({ kind: "pace", n: 60 }).range.value]),
+    "[240,50]"],
+  ["barGeometry pace thumb centre meets x at every N", () => {
+    const off = [];
+    for (let n = 1; n <= 50; n++) {
+      const g = barGeometry({ kind: "pace", n });
+      const c = g.left + 7 + ((n - 1) / 49) * (g.width - 14);
+      if (Math.abs(c - g.x) > 1e-9) off.push(n);
+    }
+    return json(off);
+  }, "[]"],
+  ["scaleText fixed", () => scaleText("fixed"), "Token usage: 33%"],
+  ["scaleText pace", () => scaleText("pace"), "Time elapsed: 50%"],
 ];
 
 function check([name, fn, want]) {
