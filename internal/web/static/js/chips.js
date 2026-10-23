@@ -96,7 +96,7 @@ function chip(ctx, a) {
     icon(a.kind, 13), a.name,
     h("button", { type: "button", class: "sched-x", "aria-label": `Remove ${a.name}`,
       "data-key": `c${ctx.index}-sched-x-${a.kind}-${a.name}`,
-      onClick: () => edit(key, a.kind, (list) => list.filter((n) => n !== a.name)) }, cross()));
+      onClick: () => edit(key, a.kind, (list) => list.filter((n) => n !== a.name), true) }, cross()));
 }
 
 // modeButton is one side of the picker's switch.
@@ -130,8 +130,12 @@ function addButton(ctx, free) {
     "data-key": `c${ctx.index}-sched-add`, disabled: free.length === 0,
     title: free.length === 0 ? "No more schedules" : null,
     onClick: () => {
-      open = isOpen ? null : { key, kind: lockedKind(ctx.choice) || "skip_during" };
-      refill(key, isOpen ? null : `c${ctx.index}-sched-${open.kind}`);
+      if (isOpen) {
+        dismiss(key);
+        return;
+      }
+      open = { key, kind: lockedKind(ctx.choice) || "skip_during" };
+      refill(key, `c${ctx.index}-sched-${open.kind}`);
     } }, "+ schedule");
 }
 
@@ -158,8 +162,9 @@ function refill(key, want) {
 // ---------- applying ----------
 
 // edit sends kind's list as change() makes it from the card as it stands
-// when the op's turn comes.
-function edit(key, kind, change) {
+// when the op's turn comes. refocus then puts focus on the card's
+// + schedule (after a remove, the clicked x is gone).
+function edit(key, kind, change, refocus) {
   chain = chain.then(async () => {
     const ctx = liveCtx(key);
     if (!ctx) return;
@@ -168,8 +173,27 @@ function edit(key, kind, change) {
     if (JSON.stringify(next) === JSON.stringify(cur)) return;
     await sendOp("choice.set", { profile: ctx.profile, index: ctx.index, expect: ctx.choice,
       field: kind, value: next });
+    if (refocus) focusAdd(key);
   }).catch(() => {});
   return chain;
+}
+
+function focusAdd(key) {
+  const m = mounts.get(key);
+  const b = m && m.container.isConnected ? m.container.querySelector(".sched-add") : null;
+  if (b && !b.disabled) b.focus();
+}
+
+// dismiss closes the picker by removing its node only: the chip area is not
+// rebuilt, so a press that began on a chip's x still ends on it.
+function dismiss(key) {
+  const m = mounts.get(key);
+  open = null;
+  if (!m || !m.container.isConnected) return;
+  const pop = m.container.querySelector(".sched-pop");
+  if (pop) pop.remove();
+  const add = m.container.querySelector(".sched-add");
+  if (add) add.setAttribute("aria-expanded", "false");
 }
 
 function choose(key, kind, name) {
@@ -182,25 +206,24 @@ function choose(key, kind, name) {
 // close shuts the picker and puts focus back on its + schedule.
 function close() {
   const key = open.key;
-  const m = mounts.get(key);
-  open = null;
-  if (m) refill(key, `c${m.ctx.index}-sched-add`);
+  dismiss(key);
+  focusAdd(key);
 }
 
 function listen() {
   if (listening) return;
   listening = true;
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open !== null) close();
+    if (e.key !== "Escape" || open === null || document.querySelector("dialog[open]")) return;
+    e.stopPropagation();
+    close();
   });
   document.addEventListener("pointerdown", (e) => {
     if (open === null) return;
     const m = mounts.get(open.key);
     const wrap = m && m.container.isConnected ? m.container.querySelector(".sched-wrap") : null;
     if (wrap && wrap.contains(e.target)) return;
-    const key = open.key;
-    open = null;
-    refill(key, null);
+    dismiss(open.key);
   });
 }
 
