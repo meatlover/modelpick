@@ -33,7 +33,7 @@ func do(t *testing.T, h http.Handler, method, path, host, origin string, authed 
 		r.Header.Set("Origin", origin)
 	}
 	if authed {
-		r.AddCookie(&http.Cookie{Name: cookieName, Value: testToken})
+		r.AddCookie(&http.Cookie{Name: cookieName(testPort), Value: testToken})
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -60,7 +60,7 @@ func TestTokenRedirectSetsCookie(t *testing.T) {
 		t.Fatalf("got %d loc %q", w.Code, w.Header().Get("Location"))
 	}
 	c := w.Header().Get("Set-Cookie")
-	for _, want := range []string{"modelpick_ui=" + testToken, "HttpOnly", "SameSite=Strict", "Path=/"} {
+	for _, want := range []string{"modelpick_ui_4455=" + testToken, "HttpOnly", "SameSite=Strict", "Path=/"} {
 		if !strings.Contains(c, want) {
 			t.Errorf("cookie %q lacks %q", c, want)
 		}
@@ -107,7 +107,7 @@ func TestHeadersOnEveryResponse(t *testing.T) {
 		do(t, h, "GET", "/api/state", goodHost, "", true),
 	}
 	for i, w := range cases {
-		if got := w.Header().Get("Content-Security-Policy"); got != "default-src 'self'" {
+		if got := w.Header().Get("Content-Security-Policy"); got != "default-src 'self'; frame-ancestors 'none'" {
 			t.Errorf("case %d (%d): CSP %q", i, w.Code, got)
 		}
 		for k := range w.Header() {

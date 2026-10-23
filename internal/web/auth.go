@@ -8,7 +8,9 @@ import (
 	"strconv"
 )
 
-const cookieName = "modelpick_ui"
+// cookieName is per port: cookies on 127.0.0.1 are shared by every port,
+// so two servers (or a stale one) must not overwrite each other's.
+func cookieName(port int) string { return "modelpick_ui_" + strconv.Itoa(port) }
 
 // NewToken returns 32 random bytes, hex encoded.
 func NewToken() (string, error) {
@@ -33,7 +35,9 @@ func allowedOrigin(origin string, port int) bool {
 	return origin == "http://127.0.0.1"+p || origin == "http://localhost"+p
 }
 
-// guard enforces Host, Origin and the token cookie before next runs.
+// guard enforces Host, Origin and the token cookie before next runs. The
+// token in the query is accepted on GET / (which sets the cookie) and on GET
+// /api/ping only.
 func guard(next http.Handler, port int, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowedHost(r.Host, port) {
@@ -44,12 +48,18 @@ func guard(next http.Handler, port int, token string) http.Handler {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}
-		if c, err := r.Cookie(cookieName); err == nil && tokenEqual(c.Value, token) {
+		if c, err := r.Cookie(cookieName(port)); err == nil && tokenEqual(c.Value, token) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.Method == http.MethodGet && r.URL.Path == "/" && tokenEqual(r.URL.Query().Get("t"), token) {
-			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/",
+		queryToken := r.Method == http.MethodGet && tokenEqual(r.URL.Query().Get("t"), token)
+		// The single-instance check (spec §8.1) holds the token, not the cookie.
+		if queryToken && r.URL.Path == "/api/ping" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if queryToken && r.URL.Path == "/" {
+			http.SetCookie(w, &http.Cookie{Name: cookieName(port), Value: token, Path: "/",
 				HttpOnly: true, SameSite: http.SameSiteStrictMode})
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return

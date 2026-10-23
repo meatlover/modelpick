@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log"
 	"net/http"
+	"os"
 )
+
+// errorLog receives the detail of every error the page is not shown.
+var errorLog = log.New(os.Stderr, "modelpick ui: ", log.LstdFlags)
 
 //go:embed static
 var staticFS embed.FS
@@ -47,9 +52,16 @@ func NewServer(b Backend, port int, token string) http.Handler {
 
 func refreshHandler(b Backend) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		row, err := b.Refresh(r.PathValue("account"))
+		account := r.PathValue("account")
+		row, err := b.Refresh(account)
 		if err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"reason": err.Error()})
+			reason := account + ": refresh failed"
+			if ref, ok := asRefused(err); ok {
+				reason = ref.Reason
+			} else {
+				errorLog.Printf("refresh %s: %v", account, err)
+			}
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"reason": reason})
 			return
 		}
 		writeJSON(w, http.StatusOK, normalRow(row))
@@ -80,7 +92,10 @@ func opHandler(b Backend) http.HandlerFunc {
 			writeJSON(w, http.StatusUnprocessableEntity, body)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"reason": err.Error()})
+		// Final review Important 5: the detail can hold a path or a vendor's
+		// words; the page gets a fixed text and stderr gets the error.
+		errorLog.Printf("op %s: %v", req.Op, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"reason": "internal error"})
 	}
 }
 
@@ -116,10 +131,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v) // a failed write means the client left
 }
 
-// withHeaders sets the CSP (and no CORS) before anything else can respond.
+// withHeaders sets the CSP (and no CORS) before anything else can respond;
+// frame-ancestors 'none' keeps the page out of another site's frame.
 func withHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
