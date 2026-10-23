@@ -353,11 +353,15 @@ function newInput() {
     onBlur: (e) => afterBlur(e.target, () => addSchedule(e.target)) });
 }
 
-function openNew() {
+// newSchedule opens the New schedule name input, focused, switching to the
+// Schedules tab first when another tab is shown (the + schedule picker's
+// "+ New schedule").
+export function newSchedule() {
   adding = true;
   newDraft = "";
   focusKey = "new-schedule";
-  paint();
+  if (currentTab() === "schedules") paint();
+  else location.hash = "#schedules";
 }
 
 // listRow is a schedule's link with its Delete button beside it (a link
@@ -377,7 +381,7 @@ function scheduleList(schedules, sel, red) {
     schedules.map((s) => listRow(s, sel, red)),
     adding ? newInput()
       : h("button", { type: "button", class: "btn btn-lg btn-dashed p-new", "data-key": "new-schedule-btn",
-        onClick: openNew }, "+ New schedule"));
+        onClick: newSchedule }, "+ New schedule"));
 }
 
 // deleteSchedule removes an unused schedule at once; a used one asks first,
