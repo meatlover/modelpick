@@ -1381,6 +1381,11 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -2px;
 }
 
+/* The title row is as wide as the week, so the readout ends at its edge. */
+.s-title {
+  max-width: 640px;
+}
+
 /* Fixed width, so the title row never shifts as the text changes. */
 .s-readout {
   margin-left: auto;

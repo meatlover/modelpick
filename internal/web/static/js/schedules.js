@@ -402,7 +402,7 @@ function clearSchedule(name) {
 
 function scheduleMain(sched) {
   grid.out = h("span", { class: "mono s-readout" });
-  const title = h("div", { class: "p-title" }, h("h1", {}, sched.name),
+  const title = h("div", { class: "p-title s-title" }, h("h1", {}, sched.name),
     h("button", { type: "button", class: "btn btn-quiet", "data-key": "clear-schedule",
       "aria-label": `Clear schedule ${sched.name}`, disabled: !painted(sched),
       onClick: () => clearSchedule(sched.name) }, "Clear"),
