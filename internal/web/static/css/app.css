@@ -1690,7 +1690,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 /* Editable: a pointing hand, and the cell under it a shade darker
-   (--hover-bg, or for a painted cell --paint mixed toward --text). The
+   (--cell-hover, or for a painted cell --paint mixed toward --text). The
    drag preview below wins over it. */
 .s-cell {
   position: relative;
@@ -1704,7 +1704,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 .s-cell:hover {
-  background: var(--hover-bg);
+  background: var(--cell-hover);
 }
 
 .s-cell:hover .s-fill {

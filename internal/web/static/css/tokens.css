@@ -30,9 +30,9 @@
   --accent-line: #9DB3E3;
   --accent-mid: #2B5FD0;
   --paint: #C2560F;
-  /* An editable area under the pointer (round 3, owner): a shade off
-     --track. */
-  --hover-bg: #E2E1DB;
+  /* A week-grid cell under the pointer (round 3, owner): a shade off
+     --track, darker than --hover-bg so it shows on the cells. */
+  --cell-hover: #E2E1DB;
   /* The cap editor's pace bar: time elapsed (yellow), beside the token
      usage blue (--fill); owner ruling 2026-10-23, no mockup. */
   --time: #C99A06;
@@ -62,9 +62,6 @@
   --danger-line: #F3C1BB;
 
   --default-bg: #FAFAF8;
-  /* Under the pointer on an area the mouse edits (owner, round 3; no
-     mockup). */
-  --hover-bg: #F1F0EB;
   --terminal: #16181D;
   /* Under the pointer on anything the mouse can edit (owner, round 3;
      no mockup): a shade off both --surface and --bg. */
@@ -100,7 +97,7 @@
     --accent-line: #4C6499;
     --accent-mid: #7099EE;
     --paint: #E3803F;
-    --hover-bg: #3F3F3A;
+    --cell-hover: #3F3F3A;
     --time: #E0B53A;
     --time-soft: #4A3F17;
 
@@ -128,7 +125,6 @@
     --danger-line: #6E2A24;
 
     --default-bg: #191918;
-    --hover-bg: #2A2A27;
     --terminal: #16181D;
     --hover-bg: #2A2A27;
 
