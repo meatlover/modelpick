@@ -47,7 +47,36 @@ var _ web.Backend = (*Live)(nil)
 // New serves the config file at path. Every account without a saved
 // reading gets its first reading in the background, now or when it is
 // added, until Close.
-func New(d app.Deps, path string) *Live { return newLive(d, path, nil) }
+func New(d app.Deps, path string) *Live {
+	l := newLive(d, path, nil)
+	l.startPrefetch()
+	return l
+}
+
+// startPrefetch lists every account's models in the background, through the
+// cache State and Doctor use, so the first page load finds them. Model
+// listing only: no vendor usage call. Close cancels and awaits it.
+func (l *Live) startPrefetch() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.isClosed {
+		return
+	}
+	l.wg.Add(1)
+	go func() {
+		defer l.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				errorLog.Printf("model prefetch: panic: %v", r)
+			}
+		}()
+		snap, err := l.ed.Load()
+		if err != nil || snap.Config == nil {
+			return
+		}
+		l.ed.Checks().WarmModels(l.ctx, l.d, snap.Config, sortedNames(snap.Config.Accounts))
+	}()
+}
 
 // newLive takes first readings with first (nil: readFirst), so tests can
 // see which accounts it is started for.
@@ -206,6 +235,7 @@ func (l *Live) modelsAndWindows(cfg *core.Config) (map[string][]web.Model, map[s
 	store := app.NewStore(l.d, cfg)
 	models := map[string][]web.Model{}
 	windows := map[string]map[string][]string{}
+	l.ed.Checks().WarmModels(context.Background(), l.d, cfg, sortedNames(cfg.Accounts))
 	for name, acct := range cfg.Accounts {
 		ids := choiceModels(cfg, name)
 		models[name] = []web.Model{}

@@ -106,6 +106,7 @@ func sortFindings(fs []Finding) {
 func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, accounts []string) map[string][]adapter.Model {
 	e := NewEnv(d, cfg, false)
 	models := map[string][]adapter.Model{}
+	cache.warmChecks(e, accounts)
 	for _, n := range accounts {
 		acct, a, err := e.AdapterFor(n)
 		if err != nil {

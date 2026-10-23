@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +34,16 @@ type Fake struct {
 	Checks     map[string][]adapter.Finding // Check findings per account
 	CheckCalls map[string]int               // Check calls per account
 	ModelCalls map[string]int               // Models calls per account
+	ModelDelay time.Duration                // each Models call takes this long
+
+	mu sync.Mutex // guards the call counters: Models and Check run concurrently
+}
+
+// ModelCallCount is the Models calls for account, safe beside running calls.
+func (f *Fake) ModelCallCount(account string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ModelCalls[account]
 }
 
 func NewFake(vendor string) *Fake {
@@ -53,11 +64,15 @@ func NewFake(vendor string) *Fake {
 func (f *Fake) Vendor() string { return f.vendor }
 
 func (f *Fake) Credential(acct adapter.Account) adapter.CredStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.CredCalls[acct.Name]++
 	return adapter.CredStatus{Present: true, Expired: f.Expired[acct.Name], Source: "fake: " + acct.Name}
 }
 
 func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.Calls[acct.Name]++
 	if err, ok := f.Errs[acct.Name]; ok {
 		return adapter.Reading{}, err
@@ -69,7 +84,10 @@ func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, 
 }
 
 func (f *Fake) Models(_ context.Context, acct adapter.Account) ([]adapter.Model, error) {
+	f.mu.Lock()
 	f.ModelCalls[acct.Name]++
+	f.mu.Unlock()
+	time.Sleep(f.ModelDelay)
 	if m, ok := f.ModelList[acct.Name]; ok {
 		return m, nil
 	}
@@ -77,7 +95,9 @@ func (f *Fake) Models(_ context.Context, acct adapter.Account) ([]adapter.Model,
 }
 
 func (f *Fake) Check(_ context.Context, acct adapter.Account) []adapter.Finding {
+	f.mu.Lock()
 	f.CheckCalls[acct.Name]++
+	f.mu.Unlock()
 	return f.Checks[acct.Name]
 }
 

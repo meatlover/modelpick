@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/core"
 )
 
 type accountCheck struct {
@@ -80,16 +81,45 @@ func (c *CheckCache) ForgetChecks() {
 
 // Models returns the account's model list, listing it once until forgotten.
 func (c *CheckCache) Models(acct adapter.Account, a adapter.Adapter) ([]adapter.Model, error) {
+	return c.ModelsCtx(context.Background(), acct, a)
+}
+
+// ModelsCtx is Models that gives up when ctx ends. A listing cut short by
+// ctx is not cached, so the next use lists again.
+func (c *CheckCache) ModelsCtx(ctx context.Context, acct adapter.Account, a adapter.Adapter) ([]adapter.Model, error) {
 	e := c.entry(acct.Name)
 	e.modelsMu.Lock()
 	defer e.modelsMu.Unlock()
 	if !e.listed {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		e.models, e.modelsErr = a.Models(ctx, acct)
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ms, err := a.Models(cctx, acct)
 		cancel()
-		e.listed = true
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		e.models, e.modelsErr, e.listed = ms, err, true
 	}
 	return e.models, e.modelsErr
+}
+
+// WarmModels lists the models of the named accounts of cfg concurrently,
+// so a cold request waits for the slowest account, not the sum. Accounts
+// with no adapter are skipped; their error shows where the list is used.
+func (c *CheckCache) WarmModels(ctx context.Context, d Deps, cfg *core.Config, names []string) {
+	env := NewEnv(d, cfg, false)
+	var wg sync.WaitGroup
+	for _, n := range names {
+		acct, a, err := env.AdapterFor(n)
+		if err != nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.ModelsCtx(ctx, acct, a)
+		}()
+	}
+	wg.Wait()
 }
 
 func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []adapter.Finding {
@@ -113,4 +143,22 @@ func (c *CheckCache) check(name string, acct adapter.Account, a adapter.Adapter)
 	r.findings = c.checkFindings(acct, a)
 	r.models, r.modelsErr = c.Models(acct, a)
 	return r
+}
+
+// warmChecks runs the Check and Models of the named accounts concurrently;
+// the results stay in the cache for the sequential reading that follows.
+func (c *CheckCache) warmChecks(e *Env, names []string) {
+	var wg sync.WaitGroup
+	for _, n := range names {
+		acct, a, err := e.AdapterFor(n)
+		if err != nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.check(n, acct, a)
+		}()
+	}
+	wg.Wait()
 }
