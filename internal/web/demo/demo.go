@@ -37,6 +37,7 @@ type window struct {
 type Demo struct {
 	mu         sync.Mutex
 	now        func() time.Time
+	delay      time.Duration // how long Refresh pretends to wait for the vendor
 	counter    int
 	readOnly   string
 	hasError   bool
@@ -51,7 +52,7 @@ type Demo struct {
 
 // New returns a Demo whose readings and resets are relative to now().
 func New(now func() time.Time) *Demo {
-	d := &Demo{now: now, counter: 1, defaultCap: 95}
+	d := &Demo{now: now, delay: 600 * time.Millisecond, counter: 1, defaultCap: 95}
 	d.buildAccounts()
 	d.buildReadings(now())
 	d.buildModels()
@@ -290,7 +291,7 @@ func (d *Demo) Usage() []web.UsageRow {
 
 // Refresh pretends to call the vendor: 600 ms, then age 0 when allowed.
 func (d *Demo) Refresh(account string) (web.UsageRow, error) {
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(d.delay)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, a := range d.accounts {
@@ -312,7 +313,8 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 		r.readAt = d.now()
 		return d.row(a), nil
 	}
-	return web.UsageRow{}, web.Refused{Reason: "unknown account " + account}
+	// The account name leads every refresh refusal (contract 5).
+	return web.UsageRow{}, web.Refused{Reason: account + ": unknown account"}
 }
 
 func (d *Demo) findings() []web.Finding {

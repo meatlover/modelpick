@@ -20,8 +20,10 @@ var allowed = map[string][]string{
 	"internal/usage":    {"internal/adapter", "internal/platform"},
 	"internal/app": {"internal/core", "internal/usage", "internal/adapter", "internal/adapter/claude",
 		"internal/adapter/codex", "internal/adapter/opencodego", "internal/platform", "internal/pathx"},
-	"internal/web":      {},
-	"internal/web/demo": {"internal/web"},
+	"internal/web":         {},
+	"internal/web/demo":    {"internal/web"},
+	"internal/web/live":    {"internal/web", "internal/app", "internal/core", "internal/adapter"},
+	"internal/web/webtest": {"internal/web"},
 }
 
 // vendorAllowed is the allowance for internal/adapter/<vendor>.
@@ -100,6 +102,14 @@ func TestViolationsDetectsForbiddenEdge(t *testing.T) {
 	})
 	if len(got) != 1 || !strings.Contains(got[0], m+"/internal/app") || !strings.Contains(got[0], m+"/internal/web") {
 		t.Fatalf("want exactly 1 violation for app->web, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/web/live":    {m + "/internal/web", m + "/internal/app", m + "/internal/cli"},
+		m + "/internal/web/webtest": {m + "/internal/web", m + "/internal/app"},
+	})
+	if len(got) != 2 {
+		t.Fatalf("want 2 violations (live->cli, webtest->app), got %q", got)
 	}
 
 	got = violations(m, map[string][]string{
