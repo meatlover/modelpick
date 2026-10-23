@@ -83,11 +83,24 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 	}
 	sort.Strings(profiles)
 
-	// Each account: adapter Check (binary, credential, expiry, key line),
-	// once; then its model list for the thinking checks.
+	models := doctorAccounts(r, cfg, d, accounts)
+	for _, p := range profiles {
+		for i, c := range cfg.Profiles[p] {
+			if ms, ok := models[c.Account]; ok {
+				doctorThinking(r, p, i, c, ms)
+			}
+		}
+	}
+	doctorCaps(r, cfg, d, accounts, profiles)
+	doctorUncapped(r, cfg, profiles)
+}
+
+// doctorAccounts runs each account's adapter Check (binary, credential,
+// expiry, key line) once, and returns the model list of every account
+// whose models could be listed, for the thinking checks.
+func doctorAccounts(r *report, cfg *core.Config, d Deps, accounts []string) map[string][]adapter.Model {
 	e := newEnv(d, cfg, false)
 	models := map[string][]adapter.Model{}
-	modelsOK := map[string]bool{}
 	for _, n := range accounts {
 		acct, a, err := e.adapterFor(n)
 		if err != nil {
@@ -111,18 +124,14 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 			r.add(adapter.SeverityWarning, n, "cannot list models, thinking values not checked: "+usageError(acct.Vendor, err).Error())
 			continue
 		}
-		models[n], modelsOK[n] = ms, true
+		models[n] = ms // present even when empty, so its choices are still checked
 	}
+	return models
+}
 
-	for _, p := range profiles {
-		for i, c := range cfg.Profiles[p] {
-			if modelsOK[c.Account] {
-				doctorThinking(r, p, i, c, models[c.Account])
-			}
-		}
-	}
-
-	// Cap count vs the last stored reading; no lock, no network.
+// doctorCaps compares each capped choice's cap count with the windows of
+// the account's last stored reading; no lock, no network.
+func doctorCaps(r *report, cfg *core.Config, d Deps, accounts, profiles []string) {
 	store := newStore(d, cfg)
 	peeked := map[string]*adapter.Reading{}
 	for _, n := range accounts {
@@ -151,7 +160,10 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 			}
 		}
 	}
+}
 
+// doctorUncapped warns about a profile with no uncapped choice.
+func doctorUncapped(r *report, cfg *core.Config, profiles []string) {
 	for _, p := range profiles {
 		uncapped := false
 		for _, c := range cfg.Profiles[p] {

@@ -159,6 +159,8 @@ redacted, that its parser test reads.
 | Golden pick results A–H (the spec's §7.1 examples) | `internal/core/testdata/pick_*.json` | `go test ./...` |
 | `examples/config.json` equals the config guide's example | `internal/cli/docs_test.go` | `go test ./...` |
 | Import layering, no third-party modules | `internal/archtest/arch_test.go` | `go test ./...` |
+| No import cycles: the layer map is a DAG, and so is the real package graph (the compiler refuses one too; the gate names it) | `internal/archtest/cycle_test.go` | `go test ./...` |
+| Function length: at most 60 lines per function, method or function literal, 80 in tests; no exceptions list | `internal/archtest/funclen_test.go` | `go test ./...` |
 | CI workflow keeps `permissions: contents: read` | `internal/archtest/ci_test.go` | `go test ./...` |
 | Live endpoints | `internal/live`, tag `live` | by hand only |
 

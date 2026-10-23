@@ -2,6 +2,7 @@
 package archtest
 
 import (
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -99,18 +100,32 @@ func TestViolationsDetectsForbiddenEdge(t *testing.T) {
 }
 
 func TestModuleHasNoViolations(t *testing.T) {
+	module, imports := moduleImports(t)
+	if v := violations(module, imports); len(v) != 0 {
+		t.Fatalf("layer violations:\n%s", strings.Join(v, "\n"))
+	}
+}
+
+// moduleImports returns the module path and, per package, its imports, as
+// `go list` reports them for the non-test build.
+func moduleImports(t *testing.T) (module string, imports map[string][]string) {
+	t.Helper()
 	run := func(args ...string) string {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = "../.."
 		b, err := cmd.Output()
 		if err != nil {
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				t.Fatalf("go %v: %v\n%s", args, err, ee.Stderr) // names an import cycle, if that is the cause
+			}
 			t.Fatalf("go %v: %v", args, err)
 		}
 		return strings.TrimSpace(string(b))
 	}
-	module := run("list", "-m")
+	module = run("list", "-m")
 	listing := run("list", "-f", "{{.ImportPath}}{{range .Imports}} {{.}}{{end}}", "./...")
-	imports := map[string][]string{}
+	imports = map[string][]string{}
 	for _, line := range strings.Split(listing, "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
@@ -121,7 +136,5 @@ func TestModuleHasNoViolations(t *testing.T) {
 	if len(imports) == 0 {
 		t.Fatal("go list returned no packages")
 	}
-	if v := violations(module, imports); len(v) != 0 {
-		t.Fatalf("layer violations:\n%s", strings.Join(v, "\n"))
-	}
+	return module, imports
 }

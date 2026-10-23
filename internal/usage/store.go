@@ -81,7 +81,7 @@ func minutesOld(taken, now time.Time) int { return int(Age(taken, now) / time.Mi
 // Get returns the account's usage, calling the vendor at most once per Floor
 // (§6.2). The account's lock is held from before the state is read until Get
 // returns, so concurrent callers wait and then answer from the same attempt.
-func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account, refresh bool) (res Result) {
+func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account, refresh bool) Result {
 	name := acct.Name
 	if err := checkName(name); err != nil {
 		return Result{Err: err}
@@ -92,15 +92,40 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	} else {
 		defer unlock()
 	}
-	reportCache := true
-	defer func() {
-		if cacheErr != nil && reportCache {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: cache unavailable: %v", name, cacheErr))
-		}
-	}()
 
 	st := s.read(name) // missing or corrupt = empty
 	now := s.now()
+	if r, answered := s.withoutCall(a, acct, st, now, refresh); answered {
+		return withCacheWarning(r, name, cacheErr)
+	}
+
+	// Call. The attempt is recorded first: success and failure both count.
+	// Without the lock or a persisted attempt the floor cannot hold, so it
+	// fails closed: no call (Ruling 27).
+	if cacheErr == nil {
+		st.LastAttempt = now
+		cacheErr = s.write(name, st)
+	}
+	if cacheErr != nil {
+		return cacheUnavailable(name, st.LastGood, cacheErr, now)
+	}
+	r, writeErr := s.callAndRecord(ctx, a, acct, st, now)
+	return withCacheWarning(r, name, writeErr)
+}
+
+// withCacheWarning adds the "cache unavailable" warning when err is set.
+func withCacheWarning(res Result, name string, err error) Result {
+	if err != nil {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: cache unavailable: %v", name, err))
+	}
+	return res
+}
+
+// withoutCall answers from the stored state when no call may be made: an
+// expired token, an unexpired Retry-After, or the floor. answered is false
+// when a call is due.
+func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, now time.Time, refresh bool) (res Result, answered bool) {
+	name := acct.Name
 	res.Reading = st.LastGood
 
 	if a.Credential(acct).Expired {
@@ -111,7 +136,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: token expired; using reading from %s (%d min old)",
 				name, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now)))
 		}
-		return res
+		return res, true
 	}
 
 	if now.Before(st.RetryUntil) {
@@ -120,7 +145,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 		if st.LastGood == nil {
 			res.Err = fmt.Errorf("no usage reading yet; rate-limited until %s%s", stamp(st.RetryUntil), failedClause(st))
 		}
-		return res
+		return res, true
 	}
 
 	if elapsed := now.Sub(st.LastAttempt); !refresh && elapsed >= 0 && elapsed < s.Floor {
@@ -134,20 +159,15 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: using reading from %s (%d min old)%s",
 				name, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now), failedClause(st)))
 		}
-		return res
+		return res, true
 	}
+	return Result{}, false
+}
 
-	// Call. The attempt is recorded first: success and failure both count.
-	// Without the lock or a persisted attempt the floor cannot hold, so it
-	// fails closed: no call (Ruling 27).
-	if cacheErr == nil {
-		st.LastAttempt = now
-		cacheErr = s.write(name, st)
-	}
-	if cacheErr != nil {
-		reportCache = false
-		return cacheUnavailable(name, st.LastGood, cacheErr, now)
-	}
+// callAndRecord makes the one usage call and stores its outcome. writeErr is
+// the failure to store it, if any; the result is still returned.
+func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapter.Account, st state, now time.Time) (res Result, writeErr error) {
+	name := acct.Name
 	r, callErr := s.call(ctx, a, acct)
 	if callErr == nil {
 		if r.TakenAt.IsZero() {
@@ -163,16 +183,16 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 		}
 		st.LastError, st.LastErrorAt = callErr.Error(), now
 	}
-	cacheErr = s.write(name, st)
+	writeErr = s.write(name, st)
 	res.Reading, res.Err = st.LastGood, callErr
 	if callErr != nil && st.LastGood != nil {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: using reading from %s (%d min old); this call failed: %v",
 			name, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now), callErr))
 	}
-	if res.Reading == nil && cacheErr != nil {
-		res.Err = fmt.Errorf("%w; cache unavailable: %w", callErr, cacheErr)
+	if res.Reading == nil && writeErr != nil {
+		res.Err = fmt.Errorf("%w; cache unavailable: %w", callErr, writeErr)
 	}
-	return res
+	return res, writeErr
 }
 
 // cacheUnavailable is the fail-closed result when no call may be made

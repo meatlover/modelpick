@@ -202,30 +202,41 @@ func runLsModels(args []string, stdout, stderr io.Writer, d Deps) int {
 	sort.Strings(names)
 	out := make([]lsModels, 0, len(names))
 	for _, n := range names {
-		entry := lsModels{Account: n, Models: []lsModel{}}
-		acct, a, err := e.adapterFor(n)
-		var ms []adapter.Model
-		if err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			ms, err = a.Models(ctx, acct)
-			cancel()
-		}
-		if err != nil {
-			entry.Error = usageError(acct.Vendor, err).Error()
-		}
-		for _, m := range ms {
-			th := m.Thinking
-			if th == nil {
-				th = []string{}
-			}
-			entry.Models = append(entry.Models, lsModel{ID: m.ID, Thinking: th})
-		}
-		out = append(out, entry)
+		out = append(out, accountModels(e, n))
 	}
 	if asJSON {
 		return writeJSON(stdout, stderr, out)
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	writeModelsTable(stdout, out)
+	return 0
+}
+
+// accountModels lists one account's models; a failure becomes the entry's
+// Error, with no models.
+func accountModels(e *env, name string) lsModels {
+	entry := lsModels{Account: name, Models: []lsModel{}}
+	acct, a, err := e.adapterFor(name)
+	var ms []adapter.Model
+	if err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ms, err = a.Models(ctx, acct)
+		cancel()
+	}
+	if err != nil {
+		entry.Error = usageError(acct.Vendor, err).Error()
+	}
+	for _, m := range ms {
+		th := m.Thinking
+		if th == nil {
+			th = []string{}
+		}
+		entry.Models = append(entry.Models, lsModel{ID: m.ID, Thinking: th})
+	}
+	return entry
+}
+
+func writeModelsTable(w io.Writer, out []lsModels) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "ACCOUNT\tMODEL\tTHINKING")
 	for _, o := range out {
 		if o.Error != "" {
@@ -240,5 +251,4 @@ func runLsModels(args []string, stdout, stderr io.Writer, d Deps) int {
 		}
 	}
 	_ = tw.Flush()
-	return 0
 }
