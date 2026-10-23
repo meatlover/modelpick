@@ -13,12 +13,14 @@ const BAR = 240; // drawn bar width, px
 // pace mode. ELAPSED also sets the pace geometry.
 const USED = 33; // fixed mode's fill (%)
 const ELAPSED = 50; // pace mode's fill (%)
+const PACE_MIN = 5; // the smallest N (owner, round 6: "set a minimum, +5")
 const PACE_MAX = 100 - ELAPSED; // the largest N the bar covers
 const THUMB = 14; // width of the overlaid range's thumb (.cap-range)
 const KNOB = 14; // the drawn ring's outer width
-// Owner ruling 2026-10-23 (round 3): a typed or dragged cap is bounded to
-// fixed 0–100 and pace+0 to pace+50 (the demo server refuses the rest).
-const RANGE = { fixed: [0, 100], pace: [0, PACE_MAX] };
+// Owner rulings 2026-10-23 (rounds 3 and 6): a typed or dragged cap is
+// bounded to fixed 0–100 and pace+5 to pace+50 (the server refuses the
+// rest).
+const RANGE = { fixed: [0, 100], pace: [PACE_MIN, PACE_MAX] };
 // Owner ruling 2026-10-23 (round 3): what a switch to the kind that is not
 // stored shows.
 const SWITCHED = { fixed: 90, pace: 5 };
@@ -51,7 +53,7 @@ function readCap(text) {
 }
 
 // parseCap reads a cap text like readCap, with the number bounded to its
-// kind's range (120 → 100, pace+70 → pace+50).
+// kind's range (120 → 100, pace+70 → pace+50, pace+2 → pace+5).
 export function parseCap(text) {
   const p = readCap(text);
   return p.kind === "fixed" || p.kind === "pace" ? { kind: p.kind, n: bound(p.kind, p.n) } : p;
@@ -155,13 +157,14 @@ export function capLine(shown) {
 
 // barGeometry places the handle: x is its centre on the bar (px); left and
 // width place the overlaid range so its thumb centre meets x at every value.
-// Pace N runs from the elapsed mark (pace+0) to the bar's end (pace+50).
+// Pace N sits at the elapsed mark + N; the range runs from pace+5 to the
+// bar's end (pace+50).
 export function barGeometry(shown) {
   if (shown.kind === "pace") {
-    const v = clamp(shown.n, 0, PACE_MAX);
-    const start = (BAR * ELAPSED) / 100;
+    const v = clamp(shown.n, PACE_MIN, PACE_MAX);
+    const start = (BAR * (ELAPSED + PACE_MIN)) / 100;
     return { x: (BAR * (ELAPSED + v)) / 100, left: start - THUMB / 2, width: BAR - start + THUMB,
-      range: { min: 0, max: PACE_MAX, value: Math.round(v) } };
+      range: { min: PACE_MIN, max: PACE_MAX, value: Math.round(v) } };
   }
   const v = clamp(shown.n, 0, 100);
   return { x: (BAR * v) / 100, left: -THUMB / 2, width: BAR + THUMB,

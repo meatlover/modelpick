@@ -19,8 +19,11 @@ export const cases = [
   ["parseCap abc is bad", () => json(parseCap("abc")), `{"kind":"bad","raw":"abc"}`],
   ["parseCap pace+x is bad", () => json(parseCap("pace+x")), `{"kind":"bad","raw":"pace+x"}`],
   // Owner ruling 2026-10-23 (round 3): every typed number is bounded:
-  // fixed 0–100, pace 0–50; out of range clamps.
-  ["pace+0 is sent as pace+0", () => sent("pace+0"), `"pace+0"`],
+  // fixed 0–100, pace 5–50 (round 6: "set a minimum, +5"; the old pace+0
+  // case is that owner spec change); out of range clamps.
+  ["pace+2 clamps to pace+5", () => sent("pace+2"), `"pace+5"`],
+  ["pace+0 clamps to pace+5", () => sent("pace+0"), `"pace+5"`],
+  ["pace+5 is sent as pace+5", () => sent("pace+5"), `"pace+5"`],
   ["120 clamps to 100", () => sent("120"), "100"],
   ["-5 clamps to 0", () => sent("-5"), "0"],
   ["pace+70 clamps to pace+50", () => sent("pace+70"), `"pace+50"`],
@@ -111,7 +114,7 @@ export const cases = [
   ["plusShown labelled → never", () => plusShown(positions([90, 80], ["5h", "7d"], 0), true), false],
   // elementOf shows a stored element as it is, in range or not.
   ["elementOf hand-written pace+60 stays 60", () => json(elementOf("pace+60")), `{"kind":"pace","n":60}`],
-  ["elementOf pace+0", () => json(elementOf("pace+0")), `{"kind":"pace","n":0}`],
+  ["elementOf hand-written pace+2 stays 2", () => json(elementOf("pace+2")), `{"kind":"pace","n":2}`],
   ["elementOf 120 stays 120", () => json(elementOf(120)), `{"kind":"fixed","n":120}`],
   // boundNumber reads the frame's number box: null for garbage (the box
   // reverts), else the number clamped to the kind's range.
@@ -122,8 +125,12 @@ export const cases = [
   ["boundNumber -3 fixed → 0", () => boundNumber("-3", "fixed"), 0],
   ["boundNumber 70 pace → 50", () => boundNumber("70", "pace"), 50],
   ["boundNumber +10 pace", () => boundNumber("+10", "pace"), 10],
-  ["boundNumber 0 pace", () => boundNumber("0", "pace"), 0],
-  ["boundNumber -2 pace → 0", () => boundNumber("-2", "pace"), 0],
+  ["boundNumber 5 pace", () => boundNumber("5", "pace"), 5],
+  ["boundNumber 2 pace → 5", () => boundNumber("2", "pace"), 5],
+  ["boundNumber +2 pace → 5", () => boundNumber("+2", "pace"), 5],
+  ["boundNumber 0 pace → 5", () => boundNumber("0", "pace"), 5],
+  ["boundNumber -2 pace → 5", () => boundNumber("-2", "pace"), 5],
+  ["boundNumber 4.6 pace rounds to 5", () => boundNumber("4.6", "pace"), 5],
   ["boundNumber 12.6 pace rounds to 13", () => boundNumber("12.6", "pace"), 13],
   ["boundNumber abc → null", () => boundNumber("abc", "fixed"), null],
   ["boundNumber 9x → null", () => boundNumber("9x", "pace"), null],
@@ -148,6 +155,10 @@ export const cases = [
   // number clamped, else the kind's value from switchKind.
   ["previewOf 70 in pace → pace+50", () => json(previewOf("pace", "70", { kind: "pace", n: 10 })),
     `{"kind":"pace","n":50}`],
+  ["previewOf 2 in pace → pace+5", () => json(previewOf("pace", "2", { kind: "pace", n: 10 })),
+    `{"kind":"pace","n":5}`],
+  ["previewOf stored pace+2 untouched → drawn at 5", () => json(previewOf("pace", "2", { kind: "pace", n: 2 })),
+    `{"kind":"pace","n":5}`],
   ["previewOf garbage in the stored kind → stored", () => json(previewOf("pace", "x", { kind: "pace", n: 10 })),
     `{"kind":"pace","n":10}`],
   ["previewOf garbage in the other kind → its default", () => json(previewOf("fixed", "x", { kind: "pace", n: 10 })),
@@ -169,20 +180,26 @@ export const cases = [
     `{"x":0,"left":-7,"width":254,"range":{"min":0,"max":100,"value":0}}`],
   ["barGeometry fixed 120 clamps to the end", () => json(barGeometry({ kind: "fixed", n: 120 })),
     `{"x":240,"left":-7,"width":254,"range":{"min":0,"max":100,"value":100}}`],
-  // Pace (owner, round 3): N runs 0–50; the range starts at elapsed (50% =
-  // 120 px) for pace+0 and ends at 100% for pace+50.
+  // Pace (owner, rounds 3 and 6): N runs 5–50 and sits at elapsed + N
+  // (50% = 120 px), so the range starts at 55% (132 px) for pace+5 and
+  // ends at 100% for pace+50. The old pace+0-at-120 px case is that owner
+  // spec change.
   ["barGeometry pace+10 at 60%", () => json(barGeometry({ kind: "pace", n: 10 })),
-    `{"x":144,"left":113,"width":134,"range":{"min":0,"max":50,"value":10}}`],
-  ["barGeometry pace+0 at the elapsed mark", () => barGeometry({ kind: "pace", n: 0 }).x, 120],
+    `{"x":144,"left":125,"width":122,"range":{"min":5,"max":50,"value":10}}`],
+  ["barGeometry pace+5 at 55%", () => json(barGeometry({ kind: "pace", n: 5 })),
+    `{"x":132,"left":125,"width":122,"range":{"min":5,"max":50,"value":5}}`],
+  ["barGeometry hand-written pace+2 drawn at pace+5",
+    () => json([barGeometry({ kind: "pace", n: 2 }).x, barGeometry({ kind: "pace", n: 2 }).range.value]),
+    "[132,5]"],
   ["barGeometry pace+50 at the end", () => barGeometry({ kind: "pace", n: 50 }).x, 240],
   ["barGeometry hand-written pace+60 drawn at the end, range at 50",
     () => json([barGeometry({ kind: "pace", n: 60 }).x, barGeometry({ kind: "pace", n: 60 }).range.value]),
     "[240,50]"],
   ["barGeometry pace thumb centre meets x at every N", () => {
     const off = [];
-    for (let n = 0; n <= 50; n++) {
+    for (let n = 5; n <= 50; n++) {
       const g = barGeometry({ kind: "pace", n });
-      const c = g.left + 7 + (n / 50) * (g.width - 14);
+      const c = g.left + 7 + ((n - 5) / 45) * (g.width - 14);
       if (Math.abs(c - g.x) > 1e-9) off.push(n);
     }
     return json(off);

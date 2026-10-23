@@ -99,7 +99,12 @@ func TestChoiceSetRefusals(t *testing.T) {
 		want  string
 	}{
 		{"range", "cap", []any{120}, "profiles.coder-difficult[0].cap[0]: 120 is outside 0–100"},
-		{"pace over 50", "cap", []any{90, "pace+51"}, `profiles.coder-difficult[0].cap[1]: "pace+51": 51 must be 0-50`},
+		// Owner ruling 2026-10-23 (round 6): pace N is 5–50; pace+0 is now
+		// refused (owner spec change).
+		{"pace over 50", "cap", []any{90, "pace+51"}, "profiles.coder-difficult[0].cap[1]: pace+51 is outside pace+5–pace+50"},
+		{"pace below 5", "cap", []any{"pace+2"}, "profiles.coder-difficult[0].cap[0]: pace+2 is outside pace+5–pace+50"},
+		{"pace+4", "cap", []any{"pace+4"}, "profiles.coder-difficult[0].cap[0]: pace+4 is outside pace+5–pace+50"},
+		{"pace+0", "cap", []any{"pace+0"}, "profiles.coder-difficult[0].cap[0]: pace+0 is outside pace+5–pace+50"},
 		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number, pace+N or default`},
 		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number, pace+N or default"},
 		{"Default is not default", "cap", []any{"Default"}, `profiles.coder-difficult[0].cap[0]: "Default" is not a number, pace+N or default`},
@@ -118,10 +123,11 @@ func TestChoiceSetRefusals(t *testing.T) {
 	}
 }
 
-// Owner ruling 2026-10-23 (round 3): pace N is 0–50; both ends are saved.
+// Owner ruling 2026-10-23 (rounds 3 and 6): pace N is 5–50; both ends are
+// saved.
 func TestChoiceSetPaceRange(t *testing.T) {
 	d := newDemo()
-	for _, v := range []string{"pace+0", "pace+50"} {
+	for _, v := range []string{"pace+5", "pace+50"} {
 		must(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 0, "field": "cap",
 			"value": []any{v}, "expect": choiceJSON(t, d, "coder-difficult", 0)})
 		var got struct {

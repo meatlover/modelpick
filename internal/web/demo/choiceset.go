@@ -9,7 +9,7 @@ import (
 )
 
 // capElement validates one cap element (a number 0–100, "pace+N" with N
-// 0–50, or "default"); where names it in the refusal.
+// 5–50, or "default"); where names it in the refusal.
 func capElement(where string, raw json.RawMessage) (any, error) {
 	text := strings.TrimSpace(string(raw))
 	var n float64
@@ -28,9 +28,10 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 		}
 		if m := paceRE.FindStringSubmatch(s); m != nil {
 			v, _ := strconv.Atoi(m[1])
-			// Owner ruling 2026-10-23 (round 3): pace N is 0–50.
-			if v < 0 || v > 50 {
-				return nil, refuse("%s: %q: %d must be 0-50", where, s, v)
+			// Owner ruling 2026-10-23 (rounds 3 and 6): pace N is 5–50
+			// ("set a minimum, +5").
+			if v < 5 || v > 50 {
+				return nil, refuse("%s: %s is outside pace+5–pace+50", where, s)
 			}
 			return s, nil
 		}
