@@ -88,8 +88,9 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	} else {
 		defer unlock()
 	}
+	reportCache := true
 	defer func() {
-		if cacheErr != nil {
+		if cacheErr != nil && reportCache {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: cache unavailable: %v", name, cacheErr))
 		}
 	}()
@@ -131,9 +132,15 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	}
 
 	// Call. The attempt is recorded first: success and failure both count.
-	st.LastAttempt = now
-	if err := s.write(name, st); err != nil && cacheErr == nil {
-		cacheErr = err
+	// Without the lock or a persisted attempt the floor cannot hold, so it
+	// fails closed: no call (Ruling 27).
+	if cacheErr == nil {
+		st.LastAttempt = now
+		cacheErr = s.write(name, st)
+	}
+	if cacheErr != nil {
+		reportCache = false
+		return cacheUnavailable(name, st.LastGood, cacheErr, now)
 	}
 	r, callErr := s.call(ctx, a, acct)
 	if callErr == nil {
@@ -149,14 +156,23 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 		}
 		st.LastError, st.LastErrorAt = callErr.Error(), now
 	}
-	if err := s.write(name, st); err != nil && cacheErr == nil {
-		cacheErr = err
-	}
+	cacheErr = s.write(name, st)
 	res.Reading, res.Err = st.LastGood, callErr
 	if res.Reading == nil && cacheErr != nil {
 		res.Err = fmt.Errorf("%w; cache unavailable: %w", callErr, cacheErr)
 	}
 	return res
+}
+
+// cacheUnavailable is the fail-closed result when no call may be made
+// because the cache cannot hold the floor: the stored reading with a
+// warning, or an error naming the cache.
+func cacheUnavailable(name string, stored *adapter.Reading, err error, now time.Time) Result {
+	if stored == nil {
+		return Result{Err: fmt.Errorf("cache unavailable: %w; no usage call made", err)}
+	}
+	return Result{Reading: stored, Warnings: []string{fmt.Sprintf("%s: cache unavailable: %v; using stored reading from %s (%d min old)",
+		name, err, stamp(stored.TakenAt), minutesOld(stored.TakenAt, now))}}
 }
 
 // failedClause is "; last call at HH:MM:SSZ failed: <err>", or "; last call

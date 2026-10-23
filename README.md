@@ -50,7 +50,11 @@ no credentials.
 modelpick makes at most one usage call per account per 15 minutes
 (`settings.min_call_interval_minutes`). Within that window, and whenever a call
 fails, it uses the last good reading and says so in `warnings`.
-Concurrent picks on a cold cache make one call between them.
+Concurrent picks on a cold cache make one call between them. The floor needs a
+working cache: if an account's lock cannot be taken or the attempt cannot be
+written, modelpick makes no usage call for it. It uses the last stored reading
+it can read and warns `cache unavailable`; with none, that account's usage is
+unknown and the error names the cache.
 
 ## `pick` status and exit code
 

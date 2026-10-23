@@ -389,35 +389,62 @@ func TestStateFileIsPrivateAndHoldsNoTemp(t *testing.T) {
 	}
 }
 
-func TestUnwritableCacheDirStillAnswers(t *testing.T) {
+// TestUnusableCacheMakesNoCall checks Ruling 27: when the lock cannot be
+// taken or the attempt cannot be persisted, the floor fails closed — no
+// vendor call; the stored reading if there is one, else an error naming the
+// cache.
+func TestUnusableCacheMakesNoCall(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can write a read-only directory")
 	}
-	c := newClock()
-	s := newStore(t, c)
-	if err := os.Chmod(s.Dir, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(s.Dir, 0o700) })
+	old := reading(10, t0.Add(-time.Hour))
+	for _, c := range []struct {
+		name       string
+		lockExists bool // lock taken, but the attempt cannot be written
+		stored     bool
+	}{
+		{name: "no lock, no reading"},
+		{name: "no lock, stored reading", stored: true},
+		{name: "attempt not persisted, no reading", lockExists: true},
+		{name: "attempt not persisted, stored reading", lockExists: true, stored: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newStore(t, newClock())
+			if c.stored {
+				writeStateFile(t, s, state{LastGood: &old, LastAttempt: old.TakenAt})
+			}
+			if c.lockExists {
+				if err := os.WriteFile(filepath.Join(s.Dir, "work.lock"), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Chmod(s.Dir, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(s.Dir, 0o700) })
 
-	f := &fakeAdapter{reading: reading(10, t0)}
-	r := s.Get(context.Background(), f, acct, false)
-	if got := f.callCount(); got != 1 {
-		t.Fatalf("calls = %d, want 1", got)
-	}
-	if r.Err != nil || usedPct(t, r) != 10 {
-		t.Fatalf("want the reading, got %+v", r)
-	}
-	if len(r.Warnings) != 1 || !strings.HasPrefix(r.Warnings[0], "work: cache unavailable: ") {
-		t.Fatalf("want one cache-unavailable warning, got %q", r.Warnings)
-	}
-
-	// No reading: the error names both the call failure and the cache.
-	f.set(func(f *fakeAdapter) { f.err = errors.New("connection reset") })
-	r = s.Get(context.Background(), f, acct, false)
-	if r.Reading != nil || r.Err == nil ||
-		!strings.Contains(r.Err.Error(), "connection reset") || !strings.Contains(r.Err.Error(), "cache unavailable") {
-		t.Fatalf("want error naming call and cache, got %+v", r)
+			f := &fakeAdapter{reading: reading(20, t0)}
+			r := s.Get(context.Background(), f, acct, false)
+			if got := f.callCount(); got != 0 {
+				t.Fatalf("calls = %d, want 0 (fail closed)", got)
+			}
+			if !c.stored {
+				if r.Reading != nil || r.Err == nil ||
+					!strings.HasPrefix(r.Err.Error(), "cache unavailable: ") ||
+					!strings.HasSuffix(r.Err.Error(), "; no usage call made") {
+					t.Fatalf("want error naming the cache, got %+v", r)
+				}
+				return
+			}
+			if r.Err != nil || usedPct(t, r) != 10 {
+				t.Fatalf("want the stored reading, got %+v", r)
+			}
+			wantSuffix := "; using stored reading from 2026-10-22T11:00:00Z (60 min old)"
+			if len(r.Warnings) != 1 || !strings.HasPrefix(r.Warnings[0], "work: cache unavailable: ") ||
+				!strings.HasSuffix(r.Warnings[0], wantSuffix) {
+				t.Fatalf("want one cache-unavailable warning ending %q, got %q", wantSuffix, r.Warnings)
+			}
+		})
 	}
 }
 
@@ -490,6 +517,7 @@ func TestNoReadingImpliesError(t *testing.T) {
 		f       *fakeAdapter
 		refresh bool
 		roDir   bool
+		lockOK  bool // with roDir: the lock file exists, so only the attempt write fails
 		acct    string
 	}
 	cases := []tc{
@@ -509,8 +537,12 @@ func TestNoReadingImpliesError(t *testing.T) {
 		{name: "call times out", f: &fakeAdapter{delay: time.Second}},
 		{name: "cache unwritable, call ok", roDir: true, f: &fakeAdapter{reading: reading(10, t0)}},
 		{name: "cache unwritable, call fails", roDir: true, f: &fakeAdapter{err: errors.New("boom")}},
+		{name: "cache unwritable, stored reading", roDir: true, st: &state{LastGood: &good}, f: &fakeAdapter{reading: reading(10, t0)}},
+		{name: "attempt not persisted, no reading", roDir: true, lockOK: true, f: &fakeAdapter{reading: reading(10, t0)}},
+		{name: "attempt not persisted, stored reading", roDir: true, lockOK: true, st: &state{LastGood: &good}, f: &fakeAdapter{reading: reading(10, t0)}},
 		{name: "invalid account name", acct: "../x", f: &fakeAdapter{}},
 	}
+	a0 := acct
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if c.roDir && os.Geteuid() == 0 {
@@ -520,6 +552,11 @@ func TestNoReadingImpliesError(t *testing.T) {
 			s.CallTimeout = 50 * time.Millisecond
 			if c.st != nil {
 				writeStateFile(t, s, *c.st)
+			}
+			if c.lockOK {
+				if err := os.WriteFile(filepath.Join(s.Dir, a0.Name+".lock"), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if c.roDir {
 				if err := os.Chmod(s.Dir, 0o500); err != nil {
