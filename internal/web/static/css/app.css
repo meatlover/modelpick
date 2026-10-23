@@ -641,56 +641,11 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border: 0;
 }
 
-.p-capbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 24px;
-  padding: 12px 18px;
-}
-
-.p-cap-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
 .p-cap-input {
+  justify-self: start;
   width: 72px;
   min-height: 36px;
   font-weight: 600;
-}
-
-.p-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-3);
-}
-
-.p-legend-box {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 104px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px dashed var(--dashed);
-  background: var(--default-bg);
-}
-
-.p-legend-win {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.p-legend-val {
-  font: 500 15px var(--font);
-  color: var(--muted);
 }
 
 .p-body {
@@ -769,12 +724,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   gap: 18px;
 }
 
-.p-head {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .p-title {
   display: flex;
   flex-wrap: wrap;
@@ -808,6 +757,70 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* Global default cap, below + Add choice: the card's box and columns, so
+   its content and example boxes line up with the cards' content. */
+.p-defcap {
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+/* The label column is one cap box wide (104 px + padding + border) with
+   the cards' 10 px box gap, so the input and the example boxes stand under
+   a card's second and third cap boxes. */
+.p-defcap-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: calc(104px + 2 * 12px + 2px) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px 10px;
+}
+
+.p-defcap-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.p-defcap-label.is-quiet {
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.p-defcap-example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* An illustration, not an editable box. Its width is a card box's
+   (content-box 104 px), so a longer text cannot widen it. */
+.p-defcap .cap-box {
+  width: 104px;
+  cursor: default;
+}
+
+/* .cap-val keeps its 15 px line, so the box is as tall as a card's; the
+   text inside is smaller so "customized cap" fits 104 px. */
+.p-defcap .cap-val {
+  width: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.p-defcap-val {
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .p-defcap-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
 }
 
 /* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
@@ -847,6 +860,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 .p-pos {
+  /* The handle's width (14 px dots + 2 × 6 px padding), fixed so the
+     Global default cap panel's empty column matches it. */
+  flex: 0 0 26px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -926,7 +942,22 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .p-card-side {
   flex: 0 0 auto;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 6px;
+}
+
+/* An empty line as tall as a field label (same font, same gap), so Remove
+   is centred on the row of selects; 2 px centres the 36 px button on the
+   40 px select. */
+.p-card-side::before {
+  content: "\200b";
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.p-card-side .btn {
+  margin-block: 2px;
 }
 
 /* ---------- caps on a card (caps.js, CapsEditor.dc.html) ---------- */

@@ -1,6 +1,6 @@
-// Profiles tab: the Default cap field, the profile list, and the selected
-// profile's choices as cards (#profiles/<name>; the first profile when the
-// name is missing or unknown). Every edit is one op; a refusal re-renders
+// Profiles tab: the profile list, and the selected profile's choices as
+// cards (#profiles/<name>; the first profile when the name is missing or
+// unknown), with the Global default cap panel below them. Every edit is one op; a refusal re-renders
 // from the store, which reverts the control.
 import { h, clear } from "./dom.js";
 import { store, sendOp } from "./api.js";
@@ -83,7 +83,7 @@ function afterBlur(el, fn) {
   }, 0);
 }
 
-// ---------- Default cap ----------
+// ---------- Global default cap ----------
 
 function capValue(text) {
   let t = text.trim();
@@ -106,7 +106,7 @@ async function commitCap(el) {
 }
 
 function capInput(st) {
-  return h("input", { type: "text", class: "input p-cap-input", "data-key": "default-cap",
+  return h("input", { type: "text", class: "input p-cap-input", id: "p-default-cap", "data-key": "default-cap",
     value: capDraft !== null ? capDraft : `${st.default_cap}%`,
     onInput: (e) => { capDraft = e.target.value; },
     onKeyDown: (e) => {
@@ -119,15 +119,25 @@ function capInput(st) {
     onBlur: (e) => afterBlur(e.target, () => commitCap(e.target)) });
 }
 
-function capBar(st) {
-  return h("div", { class: "panel p-capbar" },
-    h("label", { class: "p-cap-label" }, "Default cap", capInput(st)),
-    h("span", { class: "p-legend" },
-      h("span", { class: "p-legend-box", "aria-hidden": "true" },
-        h("span", { class: "mono p-legend-win" }, "window"),
-        h("span", { class: "p-legend-val" }, "cap limit")),
-      h("span", { "aria-hidden": "true" }, "Default"),
-      h("span", { class: "vh" }, "Dashed box: default cap")));
+// exampleBox draws a cap box as a card shows it (caps.js classes, so it has
+// the same size and look): dashed for the default cap, solid for a set one.
+// The text sits in a smaller inner span so "customized cap" fits the box.
+function exampleBox(dashed, text) {
+  return h("span", { class: ["cap-box", dashed && "is-default"] },
+    h("span", { class: "mono cap-win" }, "5h"),
+    h("span", { class: "cap-val" }, h("span", { class: "p-defcap-val" }, text)));
+}
+
+// defaultCapPanel is laid out like a card: an empty column as wide as the
+// card's handle column, so its content starts where the cards' content does.
+function defaultCapPanel(st) {
+  return h("div", { class: "panel p-defcap" },
+    h("span", { class: "p-pos", "aria-hidden": "true" }),
+    h("div", { class: "p-defcap-grid" },
+      h("label", { class: "p-defcap-label", for: "p-default-cap" }, "Global default cap"),
+      capInput(st),
+      h("span", { class: "p-defcap-label is-quiet" }, "Example:"),
+      h("div", { class: "p-defcap-example" }, exampleBox(true, "default cap"), exampleBox(false, "customized cap"))));
 }
 
 // ---------- profile list ----------
@@ -292,14 +302,13 @@ function cards(st, prof, red) {
 
 function profileMain(st, prof, red) {
   return h("div", { class: "p-main" },
-    h("div", { class: "p-head" },
-      h("div", { class: "p-title" }, h("h1", {}, prof.name),
-        h("button", { type: "button", class: "btn btn-quiet", "data-key": "del-profile",
-          "aria-label": `Delete profile ${prof.name}`, onClick: () => deleteProfile(prof.name) }, "Delete")),
-      h("p", { class: "p-note" }, NOTE)),
+    h("div", { class: "p-title" }, h("p", { class: "p-note" }, NOTE),
+      h("button", { type: "button", class: "btn btn-quiet", "data-key": "del-profile",
+        "aria-label": `Delete profile ${prof.name}`, onClick: () => deleteProfile(prof.name) }, "Delete")),
     cards(st, prof, red),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice",
-      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"));
+      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"),
+    defaultCapPanel(st));
 }
 
 function paint() {
@@ -310,8 +319,8 @@ function paint() {
   if (!st) return;
   const red = errorSubjects();
   const prof = selected(st.profiles);
-  host.append(capBar(st),
-    h("div", { class: "p-body" }, profileList(st.profiles, prof, red), prof && profileMain(st, prof, red)));
+  host.append(h("div", { class: "p-body" }, profileList(st.profiles, prof, red),
+    prof ? profileMain(st, prof, red) : h("div", { class: "p-main" }, defaultCapPanel(st))));
   restoreFocus();
 }
 
