@@ -1095,14 +1095,14 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   cursor: default;
 }
 
-/* A card's box that opens the frame: a pointing hand and the hover
-   background, no I-beam (owner, round 3). Locked boxes and the Example
-   boxes keep the default cursor and no hover change. */
-.p-caps .cap-box:not(.is-locked) {
+/* A card's box opens the frame: a pointing hand and the hover background,
+   no I-beam (owner, round 3). Every card box is editable (round 5); the
+   Example boxes keep the default cursor and no hover change. */
+.p-caps .cap-box {
   cursor: pointer;
 }
 
-.p-caps .cap-box:not(.is-locked):hover {
+.p-caps .cap-box:hover {
   background: var(--hover-bg);
 }
 
@@ -1139,9 +1139,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   font-weight: 500;
   color: var(--muted);
 }
-
-/* A default box after the first default one: shown, not editable (the
-   default cursor comes from .cap-box). */
 
 .cap-add {
   min-width: 54px;

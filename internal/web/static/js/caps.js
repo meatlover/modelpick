@@ -88,33 +88,46 @@ export function capArg(p) {
   return p.raw;
 }
 
-// The cap array runs from the shortest window up; positions past its end
-// take the default. A default position before an explicit one never
-// happens, so the page never writes the default cap as a number.
+// The cap array runs from the shortest window up. Owner ruling 2026-10-23
+// (round 5): an element is a number, "pace+N" or "default" (the position
+// uses the Global default cap); positions past its end use it too, and
+// trailing "default" elements are dropped when writing.
+const DEFAULT = "default";
 
-// writeCap is cap with position pos set to value: an explicit position is
-// replaced, the first default one appended; null removes the last explicit
-// one. Anything else is null (nothing to send).
-export function writeCap(cap, pos, value) {
-  if (!Number.isInteger(pos) || pos < 0) return null;
-  if (value === null) return cap.length > 0 && pos === cap.length - 1 ? cap.slice(0, -1) : null;
-  if (pos > cap.length) return null;
-  const out = cap.slice();
-  out[pos] = value;
-  return out;
+// isSet says a cap element is set (a number or pace+N), not the default
+// (a "default" element, or a position past the array's end).
+export function isSet(v) {
+  return v !== undefined && v !== DEFAULT;
 }
 
-// trashAction is what trash does on position pos: "default" (the last
-// explicit one), "uncap" (the first box when none is explicit), "discard"
-// (the first default box holding a value typed but not yet saved: the box
-// shows it as the last explicit one, and trash puts the default back) or
-// null (disabled: anything else would leave a default before an explicit
-// one). drafted says the box holds such a value (typed, or sent and not yet
-// answered).
+// trimmed drops trailing "default" elements.
+function trimmed(cap) {
+  let n = cap.length;
+  while (n > 0 && !isSet(cap[n - 1])) n--;
+  return cap.slice(0, n);
+}
+
+// writeCap is cap with position pos set to value, any gap before it filled
+// with "default"; null makes a set position the default. Trailing defaults
+// are dropped. null when nothing changes (nothing to send).
+export function writeCap(cap, pos, value) {
+  if (!Number.isInteger(pos) || pos < 0) return null;
+  if (value === null && !isSet(cap[pos])) return null;
+  const out = cap.slice();
+  while (out.length < pos) out.push(DEFAULT);
+  out[pos] = value === null ? DEFAULT : value;
+  return trimmed(out);
+}
+
+// trashAction is what trash does on position pos: "default" (a set one
+// becomes the default), "uncap" (the first box when none is set),
+// "discard" (a default box holding a value typed but not yet saved: trash
+// puts the default back) or null (disabled). drafted says the box holds
+// such a value (typed, or sent and not yet answered).
 export function trashAction(cap, pos, drafted = false) {
-  if (cap.length === 0) return pos === 0 ? "uncap" : null;
-  if (pos === cap.length - 1) return "default";
-  return drafted && pos === cap.length ? "discard" : null;
+  if (isSet(cap[pos])) return "default";
+  if (pos === 0 && !cap.some(isSet)) return "uncap";
+  return drafted ? "discard" : null;
 }
 
 // switchKind is what the frame shows after a switch to kind: the stored
@@ -161,17 +174,20 @@ export function scaleText(kind) {
 }
 
 // positions lists the boxes: one per window label when the account has a
-// stored reading, else numbered (at least one; + adds the one default box
-// after the explicit ones). A hand-written cap longer than that keeps a
-// numbered box per extra value. Only the explicit boxes and the first
-// default one are editable.
+// stored reading, else numbered (at least one; + adds one default box after
+// the array). A hand-written cap longer than that keeps a numbered box per
+// extra value. explicit: the position is set. Every box is editable.
 export function positions(cap, labels, extra) {
   const named = Array.isArray(labels) && labels.length > 0;
   const n = named ? Math.max(labels.length, cap.length)
     : Math.max(cap.length, Math.min(Math.max(1, extra), cap.length + 1));
   return Array.from({ length: n }, (_, i) => ({
-    label: named && i < labels.length ? labels[i] : String(i + 1), explicit: i < cap.length,
-    editable: i <= cap.length }));
+    label: named && i < labels.length ? labels[i] : String(i + 1), explicit: isSet(cap[i]) }));
+}
+
+// plusShown says the numbered boxes end with + : the last box is set.
+export function plusShown(list, named) {
+  return !named && list.length > 0 && list[list.length - 1].explicit;
 }
 
 // ---------- state that survives repaints ----------
@@ -215,8 +231,8 @@ function defaultCap() {
 }
 
 function storedText(ctx, p) {
-  const cap = ctx.choice.cap;
-  return p < cap.length ? capText(cap[p]) : `${defaultCap()}%`;
+  const v = ctx.choice.cap[p];
+  return isSet(v) ? capText(v) : `${defaultCap()}%`;
 }
 
 function boxText(ctx, p) {
@@ -231,7 +247,7 @@ function baseOf(ctx, p) {
   const v = t !== undefined ? parseCap(t) : null;
   if (v && (v.kind === "fixed" || v.kind === "pace")) return v;
   const cap = ctx.choice.cap;
-  return (p < cap.length && elementOf(cap[p])) || { kind: "fixed", n: defaultCap() };
+  return (isSet(cap[p]) && elementOf(cap[p])) || { kind: "fixed", n: defaultCap() };
 }
 
 // frameKind and frameText are what the open frame shows.
@@ -516,15 +532,14 @@ function frame(ctx, p, pos) {
   return el;
 }
 
-// box draws a closed position; a default one after the first default is
-// shown but disabled (it cannot be written before the ones ahead of it).
+// box draws a closed position: solid when set, dashed when it uses the
+// default.
 function box(ctx, p, pos) {
   const v = pos.explicit ? elementOf(ctx.choice.cap[p]) : null;
-  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-wide",
-    !pos.editable && "is-locked"] },
+  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-wide"] },
     h("span", { class: "mono cap-win" }, pos.label),
     h("input", { type: "text", class: "cap-val", "aria-label": `${pos.label} cap`, "data-key": boxKey(ctx, p),
-      value: boxText(ctx, p), disabled: !pos.editable, onFocus: () => openBox(ctx, p) }));
+      value: boxText(ctx, p), onFocus: () => openBox(ctx, p) }));
 }
 
 function addCaps(ctx) {
@@ -563,8 +578,7 @@ function fill(container, ctx) {
   const labels = byModel ? byModel[c.model] : null;
   const list = positions(c.cap, labels, extra.get(key) || 0);
   list.forEach((pos, p) => container.append(isOpen(key, p) ? frame(ctx, p, pos) : box(ctx, p, pos)));
-  const named = Array.isArray(labels) && labels.length > 0;
-  if (!named && list.every((x) => x.explicit)) container.append(plus(ctx, list.length));
+  if (plusShown(list, Array.isArray(labels) && labels.length > 0)) container.append(plus(ctx, list.length));
 }
 
 // rerender redraws one card's caps in place. Focus goes to the element

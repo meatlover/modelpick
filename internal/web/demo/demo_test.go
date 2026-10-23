@@ -3,6 +3,7 @@ package demo
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -99,8 +100,9 @@ func TestChoiceSetRefusals(t *testing.T) {
 	}{
 		{"range", "cap", []any{120}, "profiles.coder-difficult[0].cap[0]: 120 is outside 0–100"},
 		{"pace over 50", "cap", []any{90, "pace+51"}, `profiles.coder-difficult[0].cap[1]: "pace+51": 51 must be 0-50`},
-		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number or pace+N`},
-		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number or pace+N"},
+		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number, pace+N or default`},
+		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number, pace+N or default"},
+		{"Default is not default", "cap", []any{"Default"}, `profiles.coder-difficult[0].cap[0]: "Default" is not a number, pace+N or default`},
 	}
 	for _, c := range cases {
 		if got := refusal(t, d, "choice.set", set(c.field, c.value)).Reason; got != c.want {
@@ -130,6 +132,26 @@ func TestChoiceSetPaceRange(t *testing.T) {
 		}
 		if len(got.Cap) != 1 || got.Cap[0] != v {
 			t.Errorf("%s: stored cap %v", v, got.Cap)
+		}
+	}
+}
+
+// Owner ruling 2026-10-23 (round 5): "default" is a cap element (that
+// position uses the Global default cap); the server stores the array as
+// sent, trailing "default" elements included.
+func TestChoiceSetDefaultElement(t *testing.T) {
+	d := newDemo()
+	for _, v := range [][]any{{"default", "default", 80.0}, {90.0, "default", 95.0}, {90.0, "default"}, {"default"}} {
+		must(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 2, "field": "cap",
+			"value": v, "expect": choiceJSON(t, d, "coder-difficult", 2)})
+		var got struct {
+			Cap []any `json:"cap"`
+		}
+		if err := json.Unmarshal(choiceJSON(t, d, "coder-difficult", 2), &got); err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprint(got.Cap) != fmt.Sprint(v) {
+			t.Errorf("sent %v: stored cap %v", v, got.Cap)
 		}
 	}
 }

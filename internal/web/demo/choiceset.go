@@ -8,7 +8,8 @@ import (
 	"github.com/meatlover/modelpick/internal/web"
 )
 
-// capElement validates one cap element; where names it in the refusal.
+// capElement validates one cap element (a number 0–100, "pace+N" with N
+// 0–50, or "default"); where names it in the refusal.
 func capElement(where string, raw json.RawMessage) (any, error) {
 	text := strings.TrimSpace(string(raw))
 	var n float64
@@ -20,6 +21,11 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 	}
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
+		// Owner ruling 2026-10-23 (round 5): "default" means the position
+		// uses the Global default cap; stored as sent.
+		if s == "default" {
+			return s, nil
+		}
 		if m := paceRE.FindStringSubmatch(s); m != nil {
 			v, _ := strconv.Atoi(m[1])
 			// Owner ruling 2026-10-23 (round 3): pace N is 0–50.
@@ -29,7 +35,7 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 			return s, nil
 		}
 	}
-	return nil, refuse("%s: %s is not a number or pace+N", where, text)
+	return nil, refuse("%s: %s is not a number, pace+N or default", where, text)
 }
 
 func parseCap(where string, raw json.RawMessage) ([]any, error) {

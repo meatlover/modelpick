@@ -2,7 +2,7 @@
 // caps.test.html writes the verdict into <output id="result">; elsewhere
 // run() returns it.
 import { parseCap, capArg, writeCap, trashAction, positions, switchKind, barGeometry, scaleText, elementOf,
-  boundNumber, previewOf, capLine, lineParts } from "../js/caps.js";
+  boundNumber, previewOf, capLine, lineParts, isSet, plusShown } from "../js/caps.js";
 
 const json = (x) => JSON.stringify(x);
 
@@ -28,66 +28,87 @@ export const cases = [
   ["100% is sent as 100", () => sent("100%"), "100"],
   ["' Pace+10 ' is sent as pace+10", () => sent(" Pace+10 "), `"pace+10"`],
   ["bad text is sent as typed", () => sent("abc"), `"abc"`],
-  ["empty box is trash", () => parseCap("").kind === "empty" && trashAction([90], 0), "default"],
-  // Owner ruling 2026-10-23: the cap array runs from the shortest window
-  // up; a default position before an explicit one never happens, so
-  // writeCap never writes a default number.
+  // Owner ruling 2026-10-23 (round 5): a cap element is a number, "pace+N"
+  // or "default" (use the Global default cap); the array runs from the
+  // shortest window up; trailing "default" elements are dropped on write.
+  ["isSet number", () => isSet(90), true],
+  ["isSet pace", () => isSet("pace+5"), true],
+  ["isSet default → false", () => isSet("default"), false],
+  ["isSet past the end → false", () => isSet(undefined), false],
   ["writeCap sets an explicit position", () => json(writeCap([90, "pace+10"], 1, 80)), "[90,80]"],
   ["writeCap sets the first position", () => json(writeCap([90, 80], 0, "pace+5")), `["pace+5",80]`],
   ["writeCap appends on the first default", () => json(writeCap([90], 1, 80)), "[90,80]"],
   ["writeCap appends to an empty cap", () => json(writeCap([], 0, 90)), "[90]"],
-  ["writeCap past the first default → null", () => writeCap([], 2, 90), null],
-  ["writeCap two past the end → null", () => writeCap([90], 2, 70), null],
+  ["writeCap past the end fills the gap with default", () => json(writeCap([], 2, 80)),
+    `["default","default",80]`],
+  ["writeCap two past the end fills one default", () => json(writeCap([90], 2, 70)), `[90,"default",70]`],
+  ["writeCap sets a default element", () => json(writeCap([90, "default", 95], 1, 80)), "[90,80,95]"],
+  ["writeCap drops a stored trailing default", () => json(writeCap([90, "default"], 0, 80)), "[80]"],
   ["writeCap negative position → null", () => writeCap([90], -1, 70), null],
   ["writeCap null on the last explicit → shorter", () => json(writeCap([90, "pace+10"], 1, null)), "[90]"],
   ["writeCap null on the only explicit → []", () => json(writeCap([90], 0, null)), "[]"],
-  ["writeCap null on a middle position → null", () => writeCap([90, 80, 70], 1, null), null],
+  ["writeCap null on a middle position → default", () => json(writeCap([90, 98, 95], 1, null)),
+    `[90,"default",95]`],
+  ["writeCap null on the first → default", () => json(writeCap([90, "default", 95], 0, null)),
+    `["default","default",95]`],
+  ["writeCap null on the last trims every trailing default",
+    () => json(writeCap(["default", "default", 95], 2, null)), "[]"],
+  ["writeCap null on the last trims back to the explicit one",
+    () => json(writeCap([90, "default", 95], 2, null)), "[90]"],
+  ["writeCap null on a default element → null", () => writeCap([90, "default", 95], 1, null), null],
   ["writeCap null on the first default → null", () => writeCap([90], 1, null), null],
   ["writeCap null on an empty cap → null", () => writeCap([], 0, null), null],
   ["writeCap leaves the input alone", () => {
-    const cap = [90];
-    writeCap(cap, 1, 70);
+    const cap = [90, 98];
+    writeCap(cap, 3, 70);
     writeCap(cap, 0, null);
     return json(cap);
-  }, "[90]"],
+  }, "[90,98]"],
   ["trashAction last explicit → default", () => trashAction([90, 80], 1), "default"],
   ["trashAction only explicit → default", () => trashAction([90], 0), "default"],
-  ["trashAction middle explicit → disabled", () => trashAction([90, 80, 70], 1), null],
-  ["trashAction first of two explicit → disabled", () => trashAction([90, 80], 0), null],
+  ["trashAction middle explicit → default", () => trashAction([90, 98, 95], 1), "default"],
+  ["trashAction first of two explicit → default", () => trashAction([90, 80], 0), "default"],
+  ["trashAction explicit after a default element → default", () => trashAction(["default", 80], 1), "default"],
+  ["trashAction default element → disabled", () => trashAction([90, "default", 95], 1), null],
   ["trashAction empty cap, first box → uncap (cap: null)", () => trashAction([], 0), "uncap"],
+  ["trashAction only default elements, first box → uncap", () => trashAction(["default"], 0), "uncap"],
   ["trashAction empty cap, later box → disabled", () => trashAction([], 2), null],
+  ["trashAction first box default, a later one set → disabled", () => trashAction(["default", "default", 95], 0),
+    null],
   ["trashAction default after an explicit → disabled", () => trashAction([90], 1), null],
-  // Task 23: a value typed (or sent, not yet answered) into the first
-  // default box shows it as the last explicit one; trash puts the default
-  // back. The middle-box rule is unchanged.
+  // Task 23: a value typed (or sent, not yet answered) into a default box;
+  // trash puts the default back. Round 5: on any default box.
   ["trashAction typed first default → discard", () => trashAction([90], 1, true), "discard"],
-  ["trashAction typed second default → disabled", () => trashAction([90], 2, true), null],
-  ["trashAction typed middle explicit → disabled", () => trashAction([90, 80, 70], 1, true), null],
+  ["trashAction typed second default → discard", () => trashAction([90], 2, true), "discard"],
+  ["trashAction typed default element → discard", () => trashAction([90, "default", 95], 1, true), "discard"],
+  ["trashAction typed middle explicit → default", () => trashAction([90, 80, 70], 1, true), "default"],
   ["trashAction typed last explicit → default", () => trashAction([90, 80], 1, true), "default"],
   ["trashAction typed box 1, none explicit → uncap", () => trashAction([], 0, true), "uncap"],
   ["positions labelled", () => json(positions([90, "pace+10"], ["5h", "7d"], 0)),
-    `[{"label":"5h","explicit":true,"editable":true},{"label":"7d","explicit":true,"editable":true}]`],
-  ["positions labelled, all default: only the first editable",
-    () => json(positions([], ["5h", "7d", "7d Fable"], 0)),
-    `[{"label":"5h","explicit":false,"editable":true},{"label":"7d","explicit":false,"editable":false},` +
-    `{"label":"7d Fable","explicit":false,"editable":false}]`],
-  ["positions labelled, one explicit: the next editable",
-    () => json(positions([90], ["5h", "7d", "7d Fable"], 0)),
-    `[{"label":"5h","explicit":true,"editable":true},{"label":"7d","explicit":false,"editable":true},` +
-    `{"label":"7d Fable","explicit":false,"editable":false}]`],
+    `[{"label":"5h","explicit":true},{"label":"7d","explicit":true}]`],
+  ["positions labelled, all default", () => json(positions([], ["5h", "7d", "7d Fable"], 0)),
+    `[{"label":"5h","explicit":false},{"label":"7d","explicit":false},{"label":"7d Fable","explicit":false}]`],
+  ["positions labelled, a default element", () => json(positions([90, "default", 95], ["5h", "7d", "7d Fable"], 0)),
+    `[{"label":"5h","explicit":true},{"label":"7d","explicit":false},{"label":"7d Fable","explicit":true}]`],
   ["positions labelled, longer cap numbered", () => json(positions([90, 80, 70], ["5h"], 0)),
-    `[{"label":"5h","explicit":true,"editable":true},{"label":"2","explicit":true,"editable":true},` +
-    `{"label":"3","explicit":true,"editable":true}]`],
+    `[{"label":"5h","explicit":true},{"label":"2","explicit":true},{"label":"3","explicit":true}]`],
   ["positions no reading → one numbered", () => json(positions([], undefined, 0)),
-    `[{"label":"1","explicit":false,"editable":true}]`],
+    `[{"label":"1","explicit":false}]`],
   ["positions empty labels → numbered", () => json(positions([90], [], 0)),
-    `[{"label":"1","explicit":true,"editable":true}]`],
+    `[{"label":"1","explicit":true}]`],
   ["positions numbered plus added → one default box", () => json(positions([90], null, 2)),
-    `[{"label":"1","explicit":true,"editable":true},{"label":"2","explicit":false,"editable":true}]`],
+    `[{"label":"1","explicit":true},{"label":"2","explicit":false}]`],
   ["positions numbered, stale added count → still one default box", () => json(positions([90], null, 3)),
-    `[{"label":"1","explicit":true,"editable":true},{"label":"2","explicit":false,"editable":true}]`],
+    `[{"label":"1","explicit":true},{"label":"2","explicit":false}]`],
   ["positions numbered, empty cap with added → one box", () => json(positions([], null, 3)),
-    `[{"label":"1","explicit":false,"editable":true}]`],
+    `[{"label":"1","explicit":false}]`],
+  ["positions numbered, default elements", () => json(positions(["default", "default", 80], null, 0)),
+    `[{"label":"1","explicit":false},{"label":"2","explicit":false},{"label":"3","explicit":true}]`],
+  // + (numbered boxes only) shows when the last box is set.
+  ["plusShown last set", () => plusShown(positions(["default", 80], null, 0), false), true],
+  ["plusShown last default", () => plusShown(positions([80, "default"], null, 0), false), false],
+  ["plusShown one default box", () => plusShown(positions([], null, 0), false), false],
+  ["plusShown labelled → never", () => plusShown(positions([90, 80], ["5h", "7d"], 0), true), false],
   // elementOf shows a stored element as it is, in range or not.
   ["elementOf hand-written pace+60 stays 60", () => json(elementOf("pace+60")), `{"kind":"pace","n":60}`],
   ["elementOf pace+0", () => json(elementOf("pace+0")), `{"kind":"pace","n":0}`],
