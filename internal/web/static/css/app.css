@@ -1486,8 +1486,10 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 /* Hover cue on an option (owner, round 4), as on the other controls. */
+/* The options rest on --bg, which --hover-bg barely differs from in
+   light; the week cells' hover shade reads clearly on both schemes. */
 .sched-pick:hover {
-  background: var(--hover-bg);
+  background: var(--cell-hover);
 }
 
 /* The hover preview (weekpeek.js): one schedule's week beside the picker,
