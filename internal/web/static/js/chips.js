@@ -1,9 +1,13 @@
 // Schedule chips and "+ schedule" on a choice card (spec 8.3 "Schedules on
 // a card", mockup Profiles.dc.html): a chip per attached schedule (slash =
-// skip, check = allow) with a remove ×, and a picker that attaches one more.
-// Every edit is one choice.set of skip_during / allow_during.
+// skip, check = allow) with a remove ×, and a picker that attaches one more
+// (hovering or focusing an option previews its week) or, last, opens
+// "+ New schedule" on the Schedules tab. Every edit is one choice.set of
+// skip_during / allow_during.
 import { h, clear } from "./dom.js";
 import { store, sendOp } from "./api.js";
+import { newSchedule } from "./schedules.js";
+import { weekPeek } from "./weekpeek.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const KINDS = ["skip_during", "allow_during"];
@@ -112,30 +116,86 @@ function modeButton(ctx, kind, shown, locked) {
     } }, icon(kind, 12), WORD[kind]);
 }
 
-function picker(ctx, names) {
+// ---------- hover preview ----------
+
+// unpeek removes the week preview from a picker.
+function unpeek(pop) {
+  for (const el of pop.querySelectorAll(".sched-peek")) el.remove();
+}
+
+// peek shows schedule name's week beside the picker, level with the option
+// opt: on the right when it fits in the viewport, else on the left, else
+// below, so it never covers the options or widens the page.
+function peek(opt, name) {
+  const pop = opt.closest(".sched-pop");
+  const sched = store.state ? store.state.schedules.find((s) => s.name === name) : null;
+  if (!pop || !sched) return;
+  unpeek(pop);
+  const el = weekPeek(sched);
+  pop.append(el);
+  const r = pop.getBoundingClientRect();
+  const room = document.documentElement.clientWidth;
+  const gap = 6;
+  let side = "below";
+  if (r.right + gap + el.offsetWidth <= room - 8) side = "right";
+  else if (r.left - gap - el.offsetWidth >= 8) side = "left";
+  el.classList.add(`is-${side}`);
+  if (side !== "below") el.style.top = `${Math.max(0, Math.min(opt.offsetTop, pop.clientHeight - el.offsetHeight))}px`;
+}
+
+function pickOption(ctx, shown, name) {
   const key = cardKey(ctx);
+  const leave = (e) => {
+    const pop = e.currentTarget.closest(".sched-pop");
+    if (pop) unpeek(pop);
+  };
+  return h("button", { type: "button", class: "sched-pick", "data-key": `c${ctx.index}-sched-pick-${name}`,
+    onClick: () => choose(key, shown, name),
+    onPointerEnter: (e) => peek(e.currentTarget, name), onFocus: (e) => peek(e.currentTarget, name),
+    onPointerLeave: leave, onBlur: leave }, name);
+}
+
+// newOption closes the picker and opens the New schedule input on the
+// Schedules tab; nothing is attached to the choice.
+function newOption(ctx) {
+  const key = cardKey(ctx);
+  return h("button", { type: "button", class: "sched-pick sched-new", "data-key": `c${ctx.index}-sched-new`,
+    onClick: () => {
+      dismiss(key);
+      newSchedule();
+    } }, "+ New schedule");
+}
+
+function picker(ctx, names) {
   const locked = lockedKind(ctx.choice);
   const shown = locked || open.kind;
   return h("div", { class: "sched-pop", role: "dialog", "aria-label": "Add a schedule" },
-    h("div", { class: "sched-switch", role: "group", "aria-label": "Mode" },
+    names.length > 0 && h("div", { class: "sched-switch", role: "group", "aria-label": "Mode" },
       KINDS.map((k) => modeButton(ctx, k, shown, locked))),
-    names.map((name) => h("button", { type: "button", class: "sched-pick", "data-key": `c${ctx.index}-sched-pick-${name}`,
-      onClick: () => choose(key, shown, name) }, name)));
+    names.map((name) => pickOption(ctx, shown, name)),
+    newOption(ctx));
+}
+
+// focusFirst is the control the picker focuses when it opens: the
+// switch's side, or "+ New schedule" when no schedule is left to attach.
+function focusFirst(ctx, free) {
+  return free.length > 0 ? `c${ctx.index}-sched-${open.kind}` : `c${ctx.index}-sched-new`;
 }
 
 function addButton(ctx, free) {
   const key = cardKey(ctx);
-  const isOpen = open !== null && open.key === key && free.length > 0;
+  const isOpen = open !== null && open.key === key;
   return h("button", { type: "button", class: "sched-add", "aria-expanded": String(isOpen),
-    "data-key": `c${ctx.index}-sched-add`, disabled: free.length === 0,
-    title: free.length === 0 ? "No more schedules" : null,
+    "data-key": `c${ctx.index}-sched-add`,
+    // Whether it is open is read at click time: dismiss() closes the picker
+    // without redrawing this button, so the render-time isOpen goes stale.
     onClick: () => {
-      if (isOpen) {
+      if (open !== null && open.key === key) {
         dismiss(key);
         return;
       }
       open = { key, kind: lockedKind(ctx.choice) || "skip_during" };
-      refill(key, `c${ctx.index}-sched-${open.kind}`);
+      refill(key, focusFirst(ctx, free));
     } }, "+ schedule");
 }
 
@@ -143,7 +203,6 @@ function fill(container, ctx) {
   clear(container);
   const free = available(scheduleNames(), ctx.choice);
   const key = cardKey(ctx);
-  if (open !== null && open.key === key && free.length === 0) open = null;
   for (const a of attached(ctx.choice)) container.append(chip(ctx, a));
   container.append(h("div", { class: "sched-wrap" }, addButton(ctx, free),
     open !== null && open.key === key ? picker(ctx, free) : null));

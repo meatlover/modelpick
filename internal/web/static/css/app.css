@@ -1348,6 +1348,66 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   cursor: pointer;
 }
 
+.sched-pick.sched-new {
+  border: 1px dashed var(--dashed);
+  background: transparent;
+  color: var(--text-2);
+}
+
+/* The hover preview (weekpeek.js): one schedule's week beside the picker,
+   7 day columns, 24 hour rows. chips.js picks the side (is-right, is-left,
+   is-below) and sets top level with the hovered option (CSSOM). */
+.sched-peek {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(7, 7px);
+  grid-template-rows: 10px;
+  grid-auto-rows: 4px;
+  gap: 1px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+  pointer-events: none;
+}
+
+.sched-peek.is-right {
+  left: calc(100% + 6px);
+}
+
+.sched-peek.is-left {
+  right: calc(100% + 6px);
+}
+
+.sched-peek.is-below {
+  left: 0;
+  top: calc(100% + 6px);
+}
+
+/* The initials fill the first, 10px row; the hours are 4px rows. */
+.sched-peek-day {
+  color: var(--muted);
+  font: 600 8px/10px var(--font-mono);
+  text-align: center;
+}
+
+.sched-peek-cell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--track);
+}
+
+.sched-peek-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paint);
+}
+
 /* ---------- schedules ----------
    The list and title row reuse the profiles classes (.p-list, .p-link,
    .p-title). The week grid follows Schedules.dc.html; painted cells use
