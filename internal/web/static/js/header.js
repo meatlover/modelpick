@@ -58,7 +58,37 @@ function fillStatus(parts, doctor) {
   parts.findings = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity !== "error")];
   clear(parts.list);
   parts.list.append(...parts.findings.map(findingItem));
-  if (!parts.findings.length) parts.pop.hidden = true;
+  parts.sync();
+}
+
+// wirePopover: hover and keyboard focus show the findings while they last;
+// a click pins them open (or unpins: they then stay until the pointer
+// leaves); Escape or a click outside unpins and hides. A pointer press also
+// focuses the button, so that focus is not counted, or unpinning by click
+// would leave them open until blur.
+function wirePopover(parts) {
+  const on = { hover: false, focus: false, pinned: false };
+  let pressing = false;
+  parts.sync = () => {
+    parts.pop.hidden = !parts.findings.length || !(on.hover || on.focus || on.pinned);
+  };
+  const set = (key, value) => { on[key] = value; parts.sync(); };
+  const close = () => {
+    on.hover = false;
+    on.focus = false;
+    set("pinned", false);
+  };
+  parts.btn.addEventListener("pointerdown", () => { pressing = true; });
+  for (const type of ["pointerup", "pointercancel"]) {
+    document.addEventListener(type, () => { pressing = false; }, true);
+  }
+  parts.btn.addEventListener("click", () => set("pinned", !on.pinned));
+  parts.wrap.addEventListener("mouseenter", () => set("hover", true));
+  parts.wrap.addEventListener("mouseleave", () => set("hover", false));
+  parts.btn.addEventListener("focus", () => { if (!pressing) set("focus", true); });
+  parts.btn.addEventListener("blur", () => set("focus", false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  document.addEventListener("click", (e) => { if (!parts.wrap.contains(e.target)) close(); });
 }
 
 function statusButton() {
@@ -67,22 +97,7 @@ function statusButton() {
     h("span", { class: "dot", "aria-hidden": "true" }), parts.label);
   parts.pop = h("div", { id: "doctor-pop", class: "pop", role: "tooltip", hidden: true }, parts.list);
   parts.wrap = h("div", { class: "status-wrap", hidden: true }, parts.btn, parts.pop);
-  const show = () => { parts.pop.hidden = parts.findings.length === 0; };
-  const hide = () => { parts.pop.hidden = true; };
-  // A pointer press focuses the button too; its click, not that focus,
-  // decides, so a tap opens and a second tap closes.
-  let pressing = false;
-  parts.btn.addEventListener("pointerdown", () => { pressing = true; });
-  parts.btn.addEventListener("click", () => {
-    pressing = false;
-    if (parts.pop.hidden) show();
-    else hide();
-  });
-  parts.wrap.addEventListener("mouseenter", show);
-  parts.wrap.addEventListener("mouseleave", hide);
-  parts.btn.addEventListener("focus", () => { if (!pressing) show(); });
-  parts.btn.addEventListener("blur", hide);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  wirePopover(parts);
   return parts;
 }
 
