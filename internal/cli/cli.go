@@ -15,6 +15,7 @@ const usageText = `usage:
   modelpick ls models [--json]
   modelpick config
   modelpick doctor
+  modelpick ui [--port N] [--no-open]
 `
 
 // Main runs the command in args (without the program name) and returns the
@@ -30,6 +31,8 @@ func Main(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runLs(args[1:], stdout, stderr, d)
 	case "config":
 		return runConfig(args[1:], stdout, stderr, d)
+	case "ui":
+		return runUI(args[1:], stdout, stderr, d)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, d)
 	}
