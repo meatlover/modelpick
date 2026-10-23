@@ -129,8 +129,10 @@ function addButton(ctx, free) {
   return h("button", { type: "button", class: "sched-add", "aria-expanded": String(isOpen),
     "data-key": `c${ctx.index}-sched-add`, disabled: free.length === 0,
     title: free.length === 0 ? "No more schedules" : null,
+    // Whether it is open is read at click time: dismiss() closes the picker
+    // without redrawing this button, so the render-time isOpen goes stale.
     onClick: () => {
-      if (isOpen) {
+      if (open !== null && open.key === key) {
         dismiss(key);
         return;
       }
