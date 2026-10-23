@@ -74,7 +74,10 @@ Both keys are optional; the defaults are built into the binary.
 
 A map of your own account names to the place the login lives. Any number of
 accounts per vendor. Each vendor takes exactly the fields below; a missing or
-foreign field is an error. Paths may start with `~`.
+foreign field is an error. `config_dir`, `codex_home` and `key_file` must be
+absolute or start with `~` (`~` or `~/…`, your home directory); a relative
+path is an error (`must be an absolute path or start with ~`), because it
+would depend on the directory modelpick happens to run in.
 
 | `vendor` | Fields | Credential read |
 |---|---|---|

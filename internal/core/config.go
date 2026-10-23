@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -256,6 +257,15 @@ func (p parser) checkVendorFields(a adapter.Account, prefix string) error {
 	}
 	if a.Vendor == "opencode-go" && a.KeyLine < 1 {
 		return p.fail(join(prefix, "key_line"), "must be >= 1")
+	}
+	// Ruling 26: a relative path would be relative to whatever directory
+	// modelpick runs in; refuse it rather than guess.
+	for _, f := range []struct{ key, val string }{
+		{"config_dir", a.ConfigDir}, {"codex_home", a.CodexHome}, {"key_file", a.KeyFile},
+	} {
+		if f.val != "" && !filepath.IsAbs(f.val) && f.val != "~" && !strings.HasPrefix(f.val, "~/") {
+			return p.fail(join(prefix, f.key), "must be an absolute path or start with ~")
+		}
 	}
 	return nil
 }

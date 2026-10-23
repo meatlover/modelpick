@@ -109,6 +109,11 @@ func TestValidationErrors(t *testing.T) {
 		{"cap null element", prof(`{"account":"a","model":"m","thinking":null,"cap":[90,null]}`), "profiles.tester[0].cap[1]", "must be a number"},
 		{"settings wrong type", `{"version":1,"settings":"x"}`, "settings", "must be an object"},
 		{"account wrong type", `{"version":1,"accounts":{"a":"x"}}`, "accounts.a", "must be an object"},
+		{"relative config_dir", `{"version":1,"accounts":{"a":{"vendor":"claude","config_dir":".claude"}}}`, "accounts.a.config_dir", "must be an absolute path or start with ~"},
+		{"dot-relative config_dir", `{"version":1,"accounts":{"a":{"vendor":"claude","config_dir":"./c"}}}`, "accounts.a.config_dir", "must be an absolute path or start with ~"},
+		{"relative codex_home", `{"version":1,"accounts":{"a":{"vendor":"codex","codex_home":"codex"}}}`, "accounts.a.codex_home", "must be an absolute path or start with ~"},
+		{"relative key_file", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_file":"keys.txt","key_line":1}}}`, "accounts.a.key_file", "must be an absolute path or start with ~"},
+		{"~user key_file", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_file":"~bob/keys","key_line":1}}}`, "accounts.a.key_file", "must be an absolute path or start with ~"},
 		{"choice wrong type", prof(ok + `,[1]`), "profiles.tester[1]", "must be an object"},
 		{"empty profile", `{"version":1,` + acc + `,"profiles":{"tester":[]}}`, "profiles.tester", "must not be empty"},
 		{"thinking missing", prof(`{"account":"a","model":"m"}`), "profiles.tester[0].thinking", "required (use null for none)"},
@@ -135,6 +140,20 @@ func TestValidationErrors(t *testing.T) {
 				t.Errorf("Path = %q", ce.Path)
 			}
 		})
+	}
+}
+
+func TestAccountPathsAbsoluteOrHome(t *testing.T) {
+	doc := `{"version":1,"accounts":{
+		"a":{"vendor":"claude","config_dir":"~"},
+		"b":{"vendor":"codex","codex_home":"~/.codex"},
+		"c":{"vendor":"opencode-go","key_file":"/k/keys","key_line":1}}}`
+	cfg, err := Parse([]byte(doc), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []string{cfg.Accounts["a"].ConfigDir, cfg.Accounts["b"].CodexHome, cfg.Accounts["c"].KeyFile}; strings.Join(got, ",") != "/h,/h/.codex,/k/keys" {
+		t.Fatalf("paths = %q", got)
 	}
 }
 
