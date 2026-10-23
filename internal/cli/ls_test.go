@@ -7,21 +7,22 @@ import (
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app/apptest"
 )
 
 // lsFakes: claude-main ok, claude-rec unauthorized, codex-main ok.
-func lsFakes() (*fakeAdapter, *fakeAdapter) {
-	claude := newFake("claude")
-	claude.readings["claude-main"] = claudeReading(40, 10)
-	claude.errs["claude-rec"] = adapter.ErrUnauthorized
-	codex := newFake("codex")
-	codex.readings["codex-main"] = claudeReading(5, 6)
+func lsFakes() (*apptest.Fake, *apptest.Fake) {
+	claude := apptest.NewFake("claude")
+	claude.Readings["claude-main"] = apptest.ClaudeReading(40, 10)
+	claude.Errs["claude-rec"] = adapter.ErrUnauthorized
+	codex := apptest.NewFake("codex")
+	codex.Readings["codex-main"] = apptest.ClaudeReading(5, 6)
 	return claude, codex
 }
 
 func TestLsTableHasEveryAccount(t *testing.T) {
 	claude, codex := lsFakes()
-	d := testDeps(t, testConfig, claude, codex)
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 	stdout, stderr, code := run(d, "ls")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0; stderr %q", code, stderr)
@@ -71,7 +72,7 @@ type gotAccount struct {
 
 func TestLsJSONShape(t *testing.T) {
 	claude, codex := lsFakes()
-	d := testDeps(t, testConfig, claude, codex)
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 	stdout, _, code := run(d, "ls", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -89,7 +90,7 @@ func TestLsJSONShape(t *testing.T) {
 	}
 	if len(main.Windows) != 2 || main.Windows[0].Length != "5h" || main.Windows[1].Length != "7d" ||
 		main.Windows[0].UsedPct != 40 || main.Windows[0].Scope != nil ||
-		main.Windows[0].ResetsAt != later.Format(time.RFC3339) {
+		main.Windows[0].ResetsAt != apptest.Later.Format(time.RFC3339) {
 		t.Errorf("claude-main windows = %+v", main.Windows)
 	}
 	if rec.AgeSeconds != nil || rec.Windows == nil || len(rec.Windows) != 0 || !strings.HasPrefix(rec.State, "error: ") {
@@ -102,29 +103,29 @@ func TestLsJSONShape(t *testing.T) {
 
 func TestLsRespectsFloor(t *testing.T) {
 	claude, codex := lsFakes()
-	d := testDeps(t, testConfig, claude, codex)
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 	for i := 0; i < 2; i++ {
 		if _, _, code := run(d, "ls"); code != 0 {
 			t.Fatalf("run %d exit %d", i, code)
 		}
 	}
 	for _, c := range []struct {
-		f    *fakeAdapter
+		f    *apptest.Fake
 		acct string
 	}{{claude, "claude-main"}, {claude, "claude-rec"}, {codex, "codex-main"}} {
-		if c.f.usage[c.acct] != 1 {
-			t.Errorf("%s adapter calls = %d, want 1", c.acct, c.f.usage[c.acct])
+		if c.f.Calls[c.acct] != 1 {
+			t.Errorf("%s adapter calls = %d, want 1", c.acct, c.f.Calls[c.acct])
 		}
 	}
 }
 
 func TestLsStates(t *testing.T) {
-	claude := newFake("claude")
-	claude.errs["claude-main"] = adapter.ErrTokenExpired
-	claude.errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
-	codex := newFake("codex")
-	codex.readings["codex-main"] = claudeReading(1, 1)
-	d := testDeps(t, testConfig, claude, codex)
+	claude := apptest.NewFake("claude")
+	claude.Errs["claude-main"] = adapter.ErrTokenExpired
+	claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
+	codex := apptest.NewFake("codex")
+	codex.Readings["codex-main"] = apptest.ClaudeReading(1, 1)
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 	stdout, _, code := run(d, "ls", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -153,17 +154,17 @@ func TestLsStates(t *testing.T) {
 // TestLsStatesWithCachedReading: an expired token or a rate limit wins over
 // ok even when the store answers from a cached reading.
 func TestLsStatesWithCachedReading(t *testing.T) {
-	claude := newFake("claude")
-	claude.readings["claude-main"] = claudeReading(40, 10)
-	claude.readings["claude-rec"] = claudeReading(20, 10)
-	codex := newFake("codex")
-	codex.readings["codex-main"] = claudeReading(1, 1)
-	d := testDeps(t, testConfig, claude, codex)
+	claude := apptest.NewFake("claude")
+	claude.Readings["claude-main"] = apptest.ClaudeReading(40, 10)
+	claude.Readings["claude-rec"] = apptest.ClaudeReading(20, 10)
+	codex := apptest.NewFake("codex")
+	codex.Readings["codex-main"] = apptest.ClaudeReading(1, 1)
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 	if _, _, code := run(d, "ls"); code != 0 {
 		t.Fatalf("first run exit %d", code)
 	}
-	claude.expired["claude-main"] = true
-	claude.errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
+	claude.Expired["claude-main"] = true
+	claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
 	stdout, _, code := run(d, "ls", "--json", "--refresh")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -188,7 +189,7 @@ func TestLsStatesWithCachedReading(t *testing.T) {
 }
 
 func TestLsBadArgsAndConfig(t *testing.T) {
-	d := testDeps(t, `{"version": 2}`, newFake("claude"))
+	d := apptest.NewDeps(t, `{"version": 2}`, apptest.NewFake("claude"))
 	if _, stderr, code := run(d, "ls"); code != 1 || !strings.Contains(stderr, "version") {
 		t.Errorf("config error: code %d stderr %q", code, stderr)
 	}
@@ -198,13 +199,13 @@ func TestLsBadArgsAndConfig(t *testing.T) {
 }
 
 func TestLsModels(t *testing.T) {
-	claude := newFake("claude")
-	claude.models["claude-main"] = []adapter.Model{
+	claude := apptest.NewFake("claude")
+	claude.ModelList["claude-main"] = []adapter.Model{
 		{ID: "claude-opus-5-5", Thinking: []string{"low", "high"}},
 		{ID: "claude-haiku-5"},
 	}
-	codex := newFake("codex") // codex-main has no models entry → error
-	d := testDeps(t, testConfig, claude, codex)
+	codex := apptest.NewFake("codex") // codex-main has no models entry → error
+	d := apptest.NewDeps(t, testConfig, claude, codex)
 
 	stdout, _, code := run(d, "ls", "models")
 	if code != 0 {

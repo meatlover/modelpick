@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
 )
@@ -37,12 +38,12 @@ type configOutput struct {
 
 // runConfig is `modelpick config`: the effective config as JSON. No network
 // and no store access.
-func runConfig(args []string, stdout, stderr io.Writer, d Deps) int {
+func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) > 0 {
 		return badUsage(stderr, fmt.Sprintf("config: unexpected argument %q", args[0]))
 	}
 	if d.Home == "" {
-		fmt.Fprintf(stderr, "modelpick: %v\n", errNoHome)
+		fmt.Fprintf(stderr, "modelpick: %v\n", app.ErrNoHome)
 		return 1
 	}
 	path := platform.ConfigPath(d.Getenv, d.Home)

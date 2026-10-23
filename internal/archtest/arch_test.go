@@ -10,13 +10,16 @@ import (
 
 // allowed lists, per restricted package (path relative to the module root),
 // the module packages it may import. A restricted package with an empty list
-// imports no module package. cmd/... and internal/cli are unrestricted.
+// imports no module package. cmd/..., internal/cli and internal/app/apptest
+// (the test fakes, which import app) are unrestricted.
 var allowed = map[string][]string{
 	"internal/pathx":    {},
 	"internal/platform": {"internal/pathx"},
 	"internal/adapter":  {},
 	"internal/core":     {"internal/adapter", "internal/pathx"},
 	"internal/usage":    {"internal/adapter", "internal/platform"},
+	"internal/app": {"internal/core", "internal/usage", "internal/adapter", "internal/adapter/claude",
+		"internal/adapter/codex", "internal/adapter/opencodego", "internal/platform", "internal/pathx"},
 	"internal/web":      {},
 	"internal/web/demo": {"internal/web"},
 }
@@ -90,6 +93,13 @@ func TestViolationsDetectsForbiddenEdge(t *testing.T) {
 	})
 	if len(got) != 1 {
 		t.Fatalf("want exactly 1 violation for third-party import, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/app": {m + "/internal/web"},
+	})
+	if len(got) != 1 || !strings.Contains(got[0], m+"/internal/app") || !strings.Contains(got[0], m+"/internal/web") {
+		t.Fatalf("want exactly 1 violation for app->web, got %q", got)
 	}
 
 	got = violations(m, map[string][]string{

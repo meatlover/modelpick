@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -11,9 +9,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/core"
-	"github.com/meatlover/modelpick/internal/platform"
 	"github.com/meatlover/modelpick/internal/usage"
 )
 
@@ -34,16 +31,8 @@ type lsAccount struct {
 	Windows    []lsWindow `json:"windows"`
 }
 
-// loadConfig reads the effective config; the error is ready to print.
-func loadConfig(d Deps) (*core.Config, error) {
-	if d.Home == "" {
-		return nil, errNoHome
-	}
-	return core.Load(platform.ConfigPath(d.Getenv, d.Home), d.Home)
-}
-
 // runLs dispatches `ls` and `ls models`.
-func runLs(args []string, stdout, stderr io.Writer, d Deps) int {
+func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) > 0 && args[0] == "models" {
 		return runLsModels(args[1:], stdout, stderr, d)
 	}
@@ -58,12 +47,12 @@ func runLs(args []string, stdout, stderr io.Writer, d Deps) int {
 			return badUsage(stderr, fmt.Sprintf("ls: unexpected argument %q", a))
 		}
 	}
-	cfg, err := loadConfig(d)
+	cfg, err := app.LoadConfig(d)
 	if err != nil {
 		fmt.Fprintf(stderr, "modelpick: %v\n", err)
 		return 1
 	}
-	rows := lsRows(cfg, newEnv(d, cfg, refresh), d.Now())
+	rows := lsRows(cfg, app.NewEnv(d, cfg, refresh), d.Now())
 	if asJSON {
 		return writeJSON(stdout, stderr, rows)
 	}
@@ -72,7 +61,7 @@ func runLs(args []string, stdout, stderr io.Writer, d Deps) int {
 }
 
 // lsRows reads every account, sorted by name, through the usage store.
-func lsRows(cfg *core.Config, e *env, now time.Time) []lsAccount {
+func lsRows(cfg *core.Config, e *app.Env, now time.Time) []lsAccount {
 	names := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
 		names = append(names, n)
@@ -81,7 +70,7 @@ func lsRows(cfg *core.Config, e *env, now time.Time) []lsAccount {
 	rows := make([]lsAccount, 0, len(names))
 	for _, n := range names {
 		st := e.Usage(n)
-		row := lsAccount{Account: n, Vendor: cfg.Accounts[n].Vendor, State: lsState(st), Windows: []lsWindow{}}
+		row := lsAccount{Account: n, Vendor: cfg.Accounts[n].Vendor, State: app.StateText(st), Windows: []lsWindow{}}
 		if st.Reading != nil {
 			age := int64(usage.Age(st.Reading.TakenAt, now) / time.Second)
 			row.AgeSeconds = &age
@@ -107,23 +96,6 @@ func cmpOr(a, b string) string {
 		return a
 	}
 	return b
-}
-
-// lsState derives the STATE column from the store's outcome: an expired
-// token or an unexpired Retry-After wins over ok, even on a cached reading.
-func lsState(st core.AccountState) string {
-	var he *adapter.HTTPError
-	switch {
-	case st.TokenExpired, errors.Is(st.Err, adapter.ErrTokenExpired):
-		return "expired token"
-	case !st.RetryUntil.IsZero():
-		return "rate-limited until " + st.RetryUntil.UTC().Format(time.RFC3339)
-	case st.Err == nil:
-		return "ok"
-	case errors.As(st.Err, &he) && he.Status == 429:
-		return "rate-limited (no retry time given)"
-	}
-	return "error: " + st.Err.Error()
 }
 
 func writeLsTable(w io.Writer, rows []lsAccount) {
@@ -181,7 +153,7 @@ type lsModels struct {
 	Error   string    `json:"error,omitempty"`
 }
 
-func runLsModels(args []string, stdout, stderr io.Writer, d Deps) int {
+func runLsModels(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	var asJSON bool
 	for _, a := range args {
 		if a != "--json" {
@@ -189,12 +161,12 @@ func runLsModels(args []string, stdout, stderr io.Writer, d Deps) int {
 		}
 		asJSON = true
 	}
-	cfg, err := loadConfig(d)
+	cfg, err := app.LoadConfig(d)
 	if err != nil {
 		fmt.Fprintf(stderr, "modelpick: %v\n", err)
 		return 1
 	}
-	e := newEnv(d, cfg, false)
+	e := app.NewEnv(d, cfg, false)
 	names := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
 		names = append(names, n)
@@ -213,17 +185,11 @@ func runLsModels(args []string, stdout, stderr io.Writer, d Deps) int {
 
 // accountModels lists one account's models; a failure becomes the entry's
 // Error, with no models.
-func accountModels(e *env, name string) lsModels {
+func accountModels(e *app.Env, name string) lsModels {
 	entry := lsModels{Account: name, Models: []lsModel{}}
-	acct, a, err := e.adapterFor(name)
-	var ms []adapter.Model
-	if err == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		ms, err = a.Models(ctx, acct)
-		cancel()
-	}
+	ms, err := app.AccountModels(e, name)
 	if err != nil {
-		entry.Error = usageError(acct.Vendor, err).Error()
+		entry.Error = err.Error()
 	}
 	for _, m := range ms {
 		th := m.Thinking

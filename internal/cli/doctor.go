@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/core"
 )
 
@@ -34,12 +35,12 @@ func (r *report) add(sev adapter.Severity, subject, msg string) {
 
 // runDoctor is `modelpick doctor`: validates the config and everything it
 // depends on. It never calls Usage and never takes the store lock (Peek only).
-func runDoctor(args []string, stdout, stderr io.Writer, d Deps) int {
+func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) > 0 {
 		return badUsage(stderr, fmt.Sprintf("doctor: unexpected argument %q", args[0]))
 	}
 	var r report
-	cfg, err := loadConfig(d)
+	cfg, err := app.LoadConfig(d)
 	if err != nil {
 		r.add(adapter.SeverityError, "config", err.Error())
 	} else {
@@ -71,7 +72,7 @@ func writeReport(w io.Writer, r *report) int {
 	return 0
 }
 
-func doctorChecks(r *report, cfg *core.Config, d Deps) {
+func doctorChecks(r *report, cfg *core.Config, d app.Deps) {
 	accounts := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
 		accounts = append(accounts, n)
@@ -98,11 +99,11 @@ func doctorChecks(r *report, cfg *core.Config, d Deps) {
 // doctorAccounts runs each account's adapter Check (binary, credential,
 // expiry, key line) once, and returns the model list of every account
 // whose models could be listed, for the thinking checks.
-func doctorAccounts(r *report, cfg *core.Config, d Deps, accounts []string) map[string][]adapter.Model {
-	e := newEnv(d, cfg, false)
+func doctorAccounts(r *report, cfg *core.Config, d app.Deps, accounts []string) map[string][]adapter.Model {
+	e := app.NewEnv(d, cfg, false)
 	models := map[string][]adapter.Model{}
 	for _, n := range accounts {
-		acct, a, err := e.adapterFor(n)
+		acct, a, err := e.AdapterFor(n)
 		if err != nil {
 			r.add(adapter.SeverityError, n, err.Error())
 			continue
@@ -121,7 +122,7 @@ func doctorAccounts(r *report, cfg *core.Config, d Deps, accounts []string) map[
 		ms, err := a.Models(modelsCtx, acct)
 		cancelModels()
 		if err != nil {
-			r.add(adapter.SeverityWarning, n, "cannot list models, thinking values not checked: "+usageError(acct.Vendor, err).Error())
+			r.add(adapter.SeverityWarning, n, "cannot list models, thinking values not checked: "+app.UsageError(acct.Vendor, err).Error())
 			continue
 		}
 		models[n] = ms // present even when empty, so its choices are still checked
@@ -131,8 +132,8 @@ func doctorAccounts(r *report, cfg *core.Config, d Deps, accounts []string) map[
 
 // doctorCaps compares each capped choice's cap count with the windows of
 // the account's last stored reading; no lock, no network.
-func doctorCaps(r *report, cfg *core.Config, d Deps, accounts, profiles []string) {
-	store := newStore(d, cfg)
+func doctorCaps(r *report, cfg *core.Config, d app.Deps, accounts, profiles []string) {
+	store := app.NewStore(d, cfg)
 	peeked := map[string]*adapter.Reading{}
 	for _, n := range accounts {
 		rd, err := store.Peek(cfg.Accounts[n])
