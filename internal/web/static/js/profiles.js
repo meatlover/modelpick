@@ -1,7 +1,7 @@
 // Profiles tab: the profile list, and the selected profile's choices as
 // cards (#profiles/<name>; the first profile when the name is missing or
-// unknown), under the cap Example row and above the Global default cap
-// panel. Every edit is one op; a refusal re-renders from the store, which
+// unknown), under one row holding the Global default cap and the cap
+// Example. Every edit is one op; a refusal re-renders from the store, which
 // reverts the control.
 import { h, clear, trashIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
@@ -132,23 +132,22 @@ function exampleBox(dashed, text) {
     h("span", { class: "cap-val" }, h("span", { class: "p-defcap-val" }, text)));
 }
 
-// capRow is laid out like a card: an empty column as wide as the card's
-// handle column, so its content starts where the cards' content does.
-function capRow(cls, label, value) {
-  return h("div", { class: cls },
+// capGroup is a label and its value, kept together on one line.
+function capGroup(label, value) {
+  return h("div", { class: "p-defcap-group" }, label, value);
+}
+
+// capRow tops the main column: the Global default cap, then how a default
+// and a customized cap look. It is laid out like a card: an empty column
+// as wide as the card's handle column, so it starts where a card's
+// Account label does. The Example is left out when no profile is shown.
+function capRow(st, withExample) {
+  return h("div", { class: "p-defcap" },
     h("span", { class: "p-pos", "aria-hidden": "true" }),
-    h("div", { class: "p-defcap-grid" }, label, value));
-}
-
-// exampleRow tops the cards: how a default and a customized cap look.
-function exampleRow() {
-  return capRow("p-defcap p-example", h("span", { class: "p-defcap-label is-quiet" }, "Example:"),
-    h("div", { class: "p-defcap-example" }, exampleBox(true, "default cap"), exampleBox(false, "customized cap")));
-}
-
-function defaultCapPanel(st) {
-  return capRow("panel p-defcap",
-    h("label", { class: "p-defcap-label", for: "p-default-cap" }, "Global default cap"), capInput(st));
+    h("div", { class: "p-defcap-line" },
+      capGroup(h("label", { class: "p-defcap-label", for: "p-default-cap" }, "Global default cap"), capInput(st)),
+      withExample && capGroup(h("span", { class: "p-defcap-label is-quiet" }, "Example:"),
+        h("div", { class: "p-defcap-example" }, exampleBox(true, "default cap"), exampleBox(false, "customized cap")))));
 }
 
 // ---------- profile list ----------
@@ -327,11 +326,10 @@ function cards(st, prof, red) {
 
 function profileMain(st, prof, red) {
   return h("div", { class: "p-main" },
-    exampleRow(),
+    capRow(st, true),
     cards(st, prof, red),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice",
-      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"),
-    defaultCapPanel(st));
+      onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add choice"));
 }
 
 function paint() {
@@ -343,7 +341,7 @@ function paint() {
   const red = errorSubjects();
   const prof = selected(st.profiles);
   host.append(h("div", { class: "p-body" }, profileList(st.profiles, prof, red),
-    prof ? profileMain(st, prof, red) : h("div", { class: "p-main" }, defaultCapPanel(st))));
+    prof ? profileMain(st, prof, red) : h("div", { class: "p-main" }, capRow(st, false))));
   restoreFocus();
 }
 
