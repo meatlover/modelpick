@@ -31,14 +31,35 @@ function isMac() {
 // drag is the drag in progress: {card, li, from, to, slot}.
 let drag = null;
 
+// armed is the card made draggable by a press on its handle; one set of
+// document listeners disarms it when the press ends without a drag. The
+// check waits a task because Chromium may send pointercancel around
+// dragstart, and a drag in progress keeps its card until endDrag.
+let armed = null;
+let disarming = false;
+
+function disarmSoon() {
+  setTimeout(() => {
+    if (!armed || (drag && drag.card === armed)) return;
+    armed.draggable = false;
+    armed = null;
+  }, 0);
+}
+
+function listenDisarm() {
+  if (disarming) return;
+  disarming = true;
+  for (const type of ["pointerup", "pointercancel", "dragend"]) document.addEventListener(type, disarmSoon);
+}
+
 // dragHandle makes card draggable only while the pointer is down on handle,
 // so selects and text inside the card keep their own pointer behaviour.
 export function dragHandle(card, handle) {
+  listenDisarm();
   handle.addEventListener("pointerdown", () => {
+    if (armed && armed !== card) armed.draggable = false;
+    armed = card;
     card.draggable = true;
-    document.addEventListener("pointerup", () => {
-      if (!drag) card.draggable = false;
-    }, { once: true });
   });
 }
 
@@ -47,6 +68,7 @@ function endDrag() {
   drag.slot.remove();
   drag.card.classList.remove("is-dragging");
   drag.card.draggable = false;
+  if (armed === drag.card) armed = null;
   drag = null;
 }
 
@@ -91,7 +113,7 @@ function wireDrag(ol, onMove) {
     e.preventDefault();
     const { from, to } = drag;
     endDrag();
-    if (to !== from) onMove(from, to, false);
+    if (to !== from) onMove(from, to);
   });
   // A drop outside the list, or Escape, ends the drag with no drop.
   ol.addEventListener("dragend", endDrag);
@@ -110,11 +132,11 @@ function wireKeys(ol, onMove) {
     const j = i + (act.move || act.focus);
     if (j < 0 || j >= cards.length) return;
     if (act.focus) cards[j].focus();
-    else onMove(i, j, true);
+    else onMove(i, j);
   });
 }
 
-// wireReorder calls onMove(from, to, byKeyboard) when a card is dropped in a
+// wireReorder calls onMove(from, to) when a card is dropped in a
 // new place or moved with the keyboard.
 export function wireReorder(ol, onMove) {
   wireDrag(ol, onMove);

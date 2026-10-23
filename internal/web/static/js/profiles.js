@@ -273,18 +273,20 @@ function card(st, profile, c, i, red) {
   return el;
 }
 
-async function move(prof, from, to, byKeyboard) {
-  if (byKeyboard) focusKey = `card-${to}`;
+// move keeps focus (and the selected style) on the moved card, whether it
+// was dragged or moved with the keyboard; a refusal puts it back.
+async function move(prof, from, to) {
+  focusKey = `card-${to}`;
   const r = await sendOp("choice.move", { profile: prof.name, from, to, expect: prof.choices[from] });
   if (r.ok) return;
-  if (byKeyboard) focusKey = `card-${from}`;
+  focusKey = `card-${from}`;
   paint();
 }
 
 function cards(st, prof, red) {
   const ol = h("ol", { class: "p-cards" },
     prof.choices.map((c, i) => h("li", { class: "p-item" }, card(st, prof.name, c, i, red))));
-  wireReorder(ol, (from, to, byKeyboard) => move(prof, from, to, byKeyboard));
+  wireReorder(ol, (from, to) => move(prof, from, to));
   return ol;
 }
 

@@ -874,7 +874,8 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 
 .p-selects {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Account / Model / Thinking: the model ids are the longest values. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 0.8fr);
   gap: 12px;
 }
 
