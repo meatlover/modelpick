@@ -39,7 +39,7 @@ func TestExampleConfigParses(t *testing.T) {
 	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "tester"}) {
 		t.Errorf("ProfileNames = %v", got)
 	}
-	if len(cfg.Schedules["deepseek-peak"].Ranges) != 2 {
+	if len(cfg.Schedules["deepseek-peak"].Rules[0].Ranges) != 2 {
 		t.Errorf("schedule = %+v", cfg.Schedules["deepseek-peak"])
 	}
 }
@@ -122,6 +122,13 @@ func TestValidationErrors(t *testing.T) {
 		{"bad utc", `{"version":1,"schedules":{"peak":{"days":["mon"],"utc":["01:00-04:00","25:00-26:00"]}}}`, "schedules.peak.utc[1]", `range "25:00-26:00": invalid time "25:00" (want HH:MM, 00:00-23:59)`},
 		{"empty days", `{"version":1,"schedules":{"peak":{"days":[],"utc":["01:00-04:00"]}}}`, "schedules.peak.days", "must not be empty"},
 		{"empty utc", `{"version":1,"schedules":{"peak":{"days":["mon"],"utc":[]}}}`, "schedules.peak.utc", "must not be empty"},
+		{"both kinds", prof(ok + `,{"account":"a","model":"m","thinking":null,"skip_during":["peak"],"allow_during":["peak"]}`), "profiles.tester[1]", "use skip_during or allow_during, not both"},
+		{"empty allow_during", prof(ok + `,{"account":"a","model":"m","thinking":null,"allow_during":[]}`), "profiles.tester[1].allow_during", "must not be empty"},
+		{"unknown allow schedule", prof(`{"account":"a","model":"m","thinking":null,"allow_during":["nope"]}`), "profiles.tester[0].allow_during", `unknown schedule "nope"`},
+		{"empty schedule list", `{"version":1,"schedules":{"peak":[]}}`, "schedules.peak", "must not be empty"},
+		{"list element empty days", `{"version":1,"schedules":{"peak":[{"days":[],"utc":["01:00-04:00"]}]}}`, "schedules.peak[0].days", "must not be empty"},
+		{"list bad utc", `{"version":1,"schedules":{"peak":[{"days":["mon"],"utc":["01:00-04:00"]},{"days":["tue"],"utc":["24:00-01:00"]}]}}`, "schedules.peak[1].utc[0]", `range "24:00-01:00": invalid time "24:00" (want HH:MM, 00:00-23:59)`},
+		{"empty object", `{"version":1,"schedules":{"peak":{}}}`, "schedules.peak.days", "must not be empty"},
 		{"default_cap out of range", `{"version":1,"settings":{"default_cap":101}}`, "settings.default_cap", "must be between 0 and 100"},
 	}
 	for _, c := range cases {
@@ -209,5 +216,25 @@ func TestReservedAccountName(t *testing.T) {
 	var ce *ConfigError
 	if !errors.As(err, &ce) || ce.Field != "accounts.models" || ce.Msg != "reserved name" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestScheduleForms(t *testing.T) {
+	const doc = `{"version":1,"schedules":{
+	  "one":{"days":["mon"],"utc":["22:00-24:00"]},
+	  "many":[{"days":["sat"],"utc":["08:00-12:00"]},{"days":["sun"],"utc":["09:00-11:00"]}],
+	  "none":{"days":[],"utc":[]}}}`
+	cfg, err := Parse([]byte(doc), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(cfg.Schedules["many"].Rules); n != 2 {
+		t.Errorf("many has %d rules, want 2", n)
+	}
+	if cfg.Schedules["one"].Rules[0].Ranges[0] != (MinuteRange{Start: 1320, End: 1440}) {
+		t.Errorf("one = %+v", cfg.Schedules["one"])
+	}
+	if cfg.Schedules["none"].Matches(at(t, "2026-10-22T07:30:00Z")) {
+		t.Error("an empty schedule matched")
 	}
 }

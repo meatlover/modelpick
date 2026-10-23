@@ -38,6 +38,9 @@ type Choice struct {
 	Cap        []CapElem // meaningful only when Capped
 	Capped     bool      // false = "cap" key absent → no limit
 	SkipDuring []string
+	// AllowDuring: usable only while any listed schedule matches. Never set
+	// together with SkipDuring.
+	AllowDuring []string
 }
 
 // Config is a validated modelpick configuration.
@@ -88,11 +91,12 @@ type rawSchedule struct {
 }
 
 type rawChoice struct {
-	Account    *string         `json:"account"`
-	Model      *string         `json:"model"`
-	Thinking   json.RawMessage `json:"thinking"`
-	Cap        json.RawMessage `json:"cap"`
-	SkipDuring []string        `json:"skip_during"`
+	Account     *string         `json:"account"`
+	Model       *string         `json:"model"`
+	Thinking    json.RawMessage `json:"thinking"`
+	Cap         json.RawMessage `json:"cap"`
+	SkipDuring  []string        `json:"skip_during"`
+	AllowDuring []string        `json:"allow_during"`
 }
 
 type rawTop struct {
@@ -281,34 +285,67 @@ func (p parser) schedules(raws map[string]json.RawMessage) (map[string]Schedule,
 	out := map[string]Schedule{}
 	for _, name := range sortedKeys(raws) {
 		prefix := "schedules." + name
-		var rs rawSchedule
-		if err := p.strict(raws[name], &rs, prefix); err != nil {
+		raw := bytes.TrimSpace(raws[name])
+		if len(raw) == 0 || raw[0] != '[' {
+			rule, err := p.scheduleRule(raw, prefix)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = Schedule{Rules: []ScheduleRule{rule}}
+			continue
+		}
+		var items []json.RawMessage
+		if err := p.strict(raw, &items, prefix); err != nil {
 			return nil, err
 		}
-		if len(rs.Days) == 0 {
-			return nil, p.fail(join(prefix, "days"), "must not be empty")
+		if len(items) == 0 {
+			return nil, p.fail(prefix, "must not be empty")
 		}
-		if len(rs.UTC) == 0 {
-			return nil, p.fail(join(prefix, "utc"), "must not be empty")
-		}
-		// ParseSchedule reports no index, so locate the bad element one by one.
-		for i, d := range rs.Days {
-			if _, err := ParseSchedule([]string{d}, nil); err != nil {
-				return nil, p.fail(fmt.Sprintf("%s.days[%d]", prefix, i), "%v", err)
+		s := Schedule{}
+		for i, item := range items {
+			rule, err := p.scheduleRule(item, fmt.Sprintf("%s[%d]", prefix, i))
+			if err != nil {
+				return nil, err
 			}
-		}
-		for i, r := range rs.UTC {
-			if _, err := ParseSchedule(nil, []string{r}); err != nil {
-				return nil, p.fail(fmt.Sprintf("%s.utc[%d]", prefix, i), "%v", err)
-			}
-		}
-		s, err := ParseSchedule(rs.Days, rs.UTC)
-		if err != nil {
-			return nil, p.fail(prefix, "%v", err)
+			s.Rules = append(s.Rules, rule)
 		}
 		out[name] = s
 	}
 	return out, nil
+}
+
+// scheduleRule parses one {days, utc} object. Both lists present and empty is
+// the valid empty rule; one empty list alone is refused, as is a missing one.
+func (p parser) scheduleRule(raw []byte, prefix string) (ScheduleRule, error) {
+	var rs rawSchedule
+	if err := p.strict(raw, &rs, prefix); err != nil {
+		return ScheduleRule{}, err
+	}
+	bothListed := rs.Days != nil && rs.UTC != nil
+	if !(bothListed && len(rs.Days) == 0 && len(rs.UTC) == 0) {
+		if len(rs.Days) == 0 {
+			return ScheduleRule{}, p.fail(join(prefix, "days"), "must not be empty")
+		}
+		if len(rs.UTC) == 0 {
+			return ScheduleRule{}, p.fail(join(prefix, "utc"), "must not be empty")
+		}
+	}
+	// ParseSchedule reports no index, so locate the bad element one by one.
+	for i, d := range rs.Days {
+		if _, err := ParseSchedule([]string{d}, nil); err != nil {
+			return ScheduleRule{}, p.fail(fmt.Sprintf("%s.days[%d]", prefix, i), "%v", err)
+		}
+	}
+	for i, r := range rs.UTC {
+		if _, err := ParseSchedule(nil, []string{r}); err != nil {
+			return ScheduleRule{}, p.fail(fmt.Sprintf("%s.utc[%d]", prefix, i), "%v", err)
+		}
+	}
+	s, err := ParseSchedule(rs.Days, rs.UTC)
+	if err != nil {
+		return ScheduleRule{}, p.fail(prefix, "%v", err)
+	}
+	return s.Rules[0], nil
 }
 
 func (p parser) profiles(raws map[string]json.RawMessage, cfg *Config) (map[string][]Choice, error) {
@@ -380,11 +417,27 @@ func (p parser) choice(raw json.RawMessage, prefix string, cfg *Config) (Choice,
 			c.Cap = append(c.Cap, e)
 		}
 	}
-	for _, s := range rc.SkipDuring {
-		if _, ok := cfg.Schedules[s]; !ok {
-			return c, p.fail(join(prefix, "skip_during"), "unknown schedule %q", s)
+	return c, p.choiceSchedules(&c, rc, prefix, cfg)
+}
+
+// choiceSchedules checks skip_during / allow_during and stores them on c.
+func (p parser) choiceSchedules(c *Choice, rc rawChoice, prefix string, cfg *Config) error {
+	if rc.AllowDuring != nil && len(rc.AllowDuring) == 0 {
+		return p.fail(join(prefix, "allow_during"), "must not be empty")
+	}
+	if len(rc.SkipDuring) > 0 && len(rc.AllowDuring) > 0 {
+		return p.fail(prefix, "use skip_during or allow_during, not both")
+	}
+	for _, kind := range []struct {
+		key  string
+		list []string
+	}{{"skip_during", rc.SkipDuring}, {"allow_during", rc.AllowDuring}} {
+		for _, s := range kind.list {
+			if _, ok := cfg.Schedules[s]; !ok {
+				return p.fail(join(prefix, kind.key), "unknown schedule %q", s)
+			}
 		}
 	}
-	c.SkipDuring = rc.SkipDuring
-	return c, nil
+	c.SkipDuring, c.AllowDuring = rc.SkipDuring, rc.AllowDuring
+	return nil
 }

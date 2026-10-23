@@ -68,6 +68,13 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 			return "in schedule " + name, false
 		}
 	}
+	if len(c.AllowDuring) > 0 && !p.matchesAny(c.AllowDuring) {
+		noun := "schedule "
+		if len(c.AllowDuring) > 1 {
+			noun = "schedules "
+		}
+		return "outside " + noun + strings.Join(c.AllowDuring, ", "), false
+	}
 	// An expired credential is still usable: the TUI refreshes it on launch.
 	if cred := p.env.Credential(c.Account); cred.Err != nil || !cred.Present {
 		msg := cred.Source + ": not found"
@@ -98,6 +105,15 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 		}
 	}
 	return "", true
+}
+
+func (p *picker) matchesAny(names []string) bool {
+	for _, name := range names {
+		if p.cfg.Schedules[name].Matches(p.now) {
+			return true
+		}
+	}
+	return false
 }
 
 // windowBlocks judges one window against its effective cap element. A pace
