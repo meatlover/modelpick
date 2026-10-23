@@ -29,11 +29,35 @@ function renderTab() {
   tick(mainEl());
 }
 
+// While the file is read-only every control in main is inert, including
+// those a tab adds later; app.css dims them. A container holding a .ro-ok
+// control (Usage refresh) is left alone.
+const LOCKABLE = 'button, input, select, textarea, [role="button"], [draggable="true"], [tabindex]';
+const locker = new MutationObserver(() => lock(true));
+
+function lock(on) {
+  if (!on) {
+    for (const el of mainEl().querySelectorAll("[data-ro-lock]")) {
+      el.inert = false;
+      delete el.dataset.roLock;
+    }
+    return;
+  }
+  for (const el of mainEl().querySelectorAll(LOCKABLE)) {
+    if (el.inert || el.classList.contains("ro-ok") || el.querySelector(".ro-ok")) continue;
+    el.inert = true;
+    el.dataset.roLock = "1";
+  }
+}
+
 function applyReadOnly() {
   const text = store.state ? store.state.read_only : "";
   readOnly(text);
   if (text) document.body.dataset.readonly = "1";
   else delete document.body.dataset.readonly;
+  locker.disconnect();
+  lock(Boolean(text));
+  if (text) locker.observe(mainEl(), { childList: true, subtree: true });
 }
 
 function onStore(changed) {

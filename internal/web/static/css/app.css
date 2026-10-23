@@ -468,10 +468,16 @@ select.mono {
 }
 
 /* ---------- read-only (state.read_only non-empty) ----------
-   Every control in main is inert and dimmed; .ro-ok (Usage refresh, which
-   changes no file) stays usable. */
-body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"], [draggable="true"], [tabindex]):not(.ro-ok) {
+   Every control in main is inert (main.js sets the attribute) and dimmed;
+   .ro-ok (Usage refresh, which changes no file) stays usable. Only leaves
+   are dimmed: a focusable container (a card, the caps frame) holding
+   controls keeps full opacity, or its controls would be dimmed twice. */
+body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"], [draggable="true"], [tabindex], .p-handle):not(.ro-ok) {
   pointer-events: none;
+}
+
+body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"], .p-handle):not(.ro-ok),
+body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button, input, select, textarea, [role="button"], [tabindex], .p-handle)):not(.ro-ok) {
   opacity: 0.5;
 }
 
