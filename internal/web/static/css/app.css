@@ -1015,6 +1015,7 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
   width: 120px;
 }
 
+.cap-edit:focus,
 .cap-edit-val:focus,
 .cap-val:focus {
   outline: none;

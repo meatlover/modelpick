@@ -116,7 +116,8 @@ export function positions(cap, labels, extra) {
 // edit is the open frame: {key, pos, draft}; draft is the typed text, null
 // while it shows the stored (or pending) value. One per page.
 let edit = null;
-// pending: box data-key → text shown while its op is in flight.
+// pending: pendKey(card key, position) → text shown while its op is in
+// flight.
 const pending = new Map();
 // extra: card key → numbered positions shown (the + button adds one).
 const extra = new Map();
@@ -125,6 +126,9 @@ const mounts = new Map();
 // Cap ops run one after another, each built from the card as the previous
 // one left it, so a quick second edit never carries a stale expect.
 let chain = Promise.resolve();
+// busy: card key → ops queued or in flight for it (kept through pruning).
+const busy = new Map();
+let pruning = false;
 
 function cardKey(ctx) {
   return `${ctx.profile}\u0000${ctx.index}`;
@@ -132,6 +136,10 @@ function cardKey(ctx) {
 
 function boxKey(ctx, p) {
   return `c${ctx.index}-cap${p}`;
+}
+
+function pendKey(key, p) {
+  return `${key}\u0001${p}`;
 }
 
 function isOpen(key, p) {
@@ -150,7 +158,7 @@ function storedText(ctx, p) {
 function boxText(ctx, p) {
   const key = cardKey(ctx);
   if (isOpen(key, p) && edit.draft !== null) return edit.draft;
-  const t = pending.get(boxKey(ctx, p));
+  const t = pending.get(pendKey(key, p));
   return t !== undefined ? t : storedText(ctx, p);
 }
 
@@ -165,8 +173,13 @@ function shownOf(ctx, p, text) {
 
 // ---------- applying ----------
 
-function enqueue(fn) {
-  chain = chain.then(fn).catch(() => {});
+function enqueue(key, fn) {
+  busy.set(key, (busy.get(key) || 0) + 1);
+  chain = chain.then(fn).catch(() => {}).finally(() => {
+    const n = busy.get(key) - 1;
+    if (n > 0) busy.set(key, n);
+    else busy.delete(key);
+  });
   return chain;
 }
 
@@ -176,16 +189,16 @@ function liveCtx(key) {
 }
 
 // unpend drops the pending text of a box unless a later edit replaced it.
-function unpend(ctx, p, text) {
-  const bk = boxKey(ctx, p);
-  if (pending.get(bk) === text) pending.delete(bk);
+function unpend(key, p, text) {
+  const k = pendKey(key, p);
+  if (pending.get(k) === text) pending.delete(k);
 }
 
 async function send(key, p, value, text) {
   const ctx = liveCtx(key);
   const r = await sendOp("choice.set",
     { profile: ctx.profile, index: ctx.index, expect: ctx.choice, field: "cap", value });
-  unpend(ctx, p, text);
+  unpend(key, p, text);
   rerender(key);
   return r;
 }
@@ -194,16 +207,17 @@ async function send(key, p, value, text) {
 function commit(key, p, text) {
   const ctx = liveCtx(key);
   if (!ctx) return;
-  pending.set(boxKey(ctx, p), text);
+  pending.set(pendKey(key, p), text);
   if (isOpen(key, p)) edit.draft = null;
-  enqueue(() => {
+  enqueue(key, () => {
     const now = liveCtx(key);
     const parsed = parseCap(text);
+    if (!now) return unpend(key, p, text); // the card is gone
     if (parsed.kind === "empty") return trashNow(key, p, text);
     const cap = now.choice.cap || [];
     const next = writeCap(cap, p, capArg(parsed), defaultCap());
     if (JSON.stringify(next) !== JSON.stringify(cap)) return send(key, p, next, text);
-    unpend(now, p, text);
+    unpend(key, p, text);
     rerender(key); // "90" shows as "90%" again
     return null;
   });
@@ -213,10 +227,10 @@ function commit(key, p, text) {
 // text, if any.
 function trashNow(key, p, text) {
   const ctx = liveCtx(key);
-  const cap = ctx.choice.cap;
+  const cap = ctx ? ctx.choice.cap : null;
   const act = cap === null ? null : trashAction(cap, p);
   if (act === null) {
-    unpend(ctx, p, text);
+    unpend(key, p, text);
     rerender(key);
     return null;
   }
@@ -238,7 +252,7 @@ function trash(key, p) {
   const card = m.container.closest(".p-card");
   if (card) card.focus();
   rerender(key);
-  enqueue(() => trashNow(key, p));
+  enqueue(key, () => trashNow(key, p));
 }
 
 // leave closes the open frame and applies its draft.
@@ -383,7 +397,10 @@ function frame(ctx, p, pos) {
       }
     } });
   els.effect = h("span", { class: "cap-effect" });
-  const el = h("div", { class: "cap-edit", onFocusOut: () => afterLeave(key, p) },
+  // tabindex -1: a click on the frame's padding, bar or text keeps focus
+  // inside it instead of moving it to body (which would close the frame).
+  const el = h("div", { class: "cap-edit", tabindex: "-1", "data-key": `${boxKey(ctx, p)}-frame`,
+    onFocusOut: () => afterLeave(key, p) },
     h("span", { class: "mono cap-edit-win" }, pos.label), els.input, switchRow(ctx, p, els), bar(ctx, p, els),
     els.effect);
   place(els, shownOf(ctx, p, els.input.value));
@@ -401,8 +418,9 @@ function box(ctx, p, pos) {
 function addCaps(ctx) {
   const key = cardKey(ctx);
   return h("button", { type: "button", class: "btn", "data-key": `c${ctx.index}-addcaps`,
-    onClick: () => enqueue(async () => {
+    onClick: () => enqueue(key, async () => {
       const now = liveCtx(key);
+      if (!now) return;
       await sendOp("choice.set", { profile: now.profile, index: now.index, expect: now.choice,
         field: "cap", value: [] });
       focusCard(mounts.get(key).container); // the button is gone after a repaint
@@ -456,4 +474,22 @@ function rerender(key, want) {
 export function renderCaps(container, ctx) {
   mounts.set(cardKey(ctx), { container, ctx });
   fill(container, ctx);
+  if (!pruning) {
+    pruning = true;
+    queueMicrotask(prune);
+  }
+}
+
+// prune runs once a repaint has rendered every card: it forgets the cards
+// that were not rendered again (another profile selected, a choice gone),
+// with their pending texts and added positions. A card with ops queued or
+// the open frame is kept until those finish.
+function prune() {
+  pruning = false;
+  for (const [key, m] of mounts) {
+    if (m.container.isConnected || busy.has(key) || (edit && edit.key === key)) continue;
+    mounts.delete(key);
+    extra.delete(key);
+    for (const k of pending.keys()) if (k.startsWith(`${key}\u0001`)) pending.delete(k);
+  }
 }
