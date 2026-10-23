@@ -64,7 +64,8 @@ function windowRow(w) {
 }
 
 function noteFor(row) {
-  if (row.state === "expired token") return EXPIRED_NOTE;
+  // Only Claude Code refreshes a login itself; for others the chip says it.
+  if (row.state === "expired token") return row.vendor === "claude" ? EXPIRED_NOTE : "";
   if (row.reading_age_seconds === null || row.reading_age_seconds === undefined) return "no reading yet";
   return "";
 }
