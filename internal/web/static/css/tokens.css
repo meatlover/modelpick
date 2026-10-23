@@ -60,6 +60,9 @@
 
   --default-bg: #FAFAF8;
   --terminal: #16181D;
+  /* Under the pointer on anything the mouse can edit (owner, round 3;
+     no mockup): a shade off both --surface and --bg. */
+  --hover-bg: #EFEEE9;
 
   --shadow-pop: rgba(26, 26, 25, 0.16);
   --shadow-toast: rgba(26, 26, 25, 0.12);
@@ -119,6 +122,7 @@
 
     --default-bg: #191918;
     --terminal: #16181D;
+    --hover-bg: #2A2A27;
 
     --shadow-pop: rgba(0, 0, 0, 0.16);
     --shadow-toast: rgba(0, 0, 0, 0.12);

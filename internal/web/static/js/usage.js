@@ -164,8 +164,7 @@ function paint() {
   listen();
   const red = errorAccounts();
   clear(host);
-  host.append(h("h1", {}, "Usage"),
-    h("div", { class: "panel u-box" }, headRow(), ordered().map((r) => accountRow(r, red))));
+  host.append(h("div", { class: "panel u-box" }, headRow(), ordered().map((r) => accountRow(r, red))));
   tick(host);
   restoreFocus();
 }
