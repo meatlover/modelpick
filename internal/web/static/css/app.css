@@ -494,9 +494,9 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 }
 
 .u-grid {
-  min-width: 1100px;
+  min-width: 1146px;
   display: grid;
-  grid-template-columns: 170px 180px 324px 222px 110px minmax(90px, 1fr);
+  grid-template-columns: 150px 170px 320px 186px 100px minmax(100px, 1fr);
   gap: 16px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border-soft);
@@ -515,6 +515,8 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 }
 
 .u-head .btn {
+  padding: 0 12px;
+  white-space: nowrap;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -534,8 +536,7 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 
 .u-win {
   display: grid;
-  grid-template-columns: 92px 216px 96px 110px;
-  column-gap: 16px;
+  grid-template-columns: 84px 56px 196px 102px 84px;
   align-items: center;
   min-height: 20px;
 }
@@ -544,23 +545,33 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
   font-size: 13px;
 }
 
-.u-label strong {
-  font-family: var(--font);
+.u-label {
+  width: 72px;
+  white-space: nowrap;
+}
+
+.u-pct {
+  padding-left: 12px;
+  text-align: right;
   font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .u-left {
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 .u-reset {
   color: var(--text-3);
   text-align: right;
+  white-space: nowrap;
 }
 
 .bar {
   position: relative;
-  width: 216px;
+  width: 180px;
   height: 10px;
   border-radius: 5px;
   background: var(--track);
@@ -592,9 +603,14 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
   justify-content: flex-end;
 }
 
-.u-row.is-error .u-note,
-.u-row.is-error .u-age,
+.u-row.is-error,
 .u-row.is-error .u-left,
-.u-row.is-error .u-reset {
+.u-row.is-error .u-reset,
+.u-row.is-error .u-note,
+.u-row.is-error .u-age {
   color: var(--danger-text);
+}
+
+.u-row.is-error {
+  border-bottom-color: var(--danger-border);
 }

@@ -267,7 +267,7 @@ func TestRefreshRules(t *testing.T) {
 	now := t0
 	d := New(func() time.Time { return now })
 	for _, c := range []struct{ acct, want string }{
-		{"claude-rec", "claude-rec: token expired"},
+		{"claude-rec", "claude-rec: expired token"},
 		{"go-3", "go-3: rate-limited until 2026-10-23T09:32:00Z"}} {
 		_, err := d.Refresh(c.acct)
 		var r web.Refused

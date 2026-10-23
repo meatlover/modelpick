@@ -7,7 +7,7 @@ import { currentTab } from "./header.js";
 
 export const uses = ["usage", "doctor", "state"];
 
-const BAR_PX = 216;
+const BAR_PX = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RATE = "rate-limited until ";
 const EXPIRED_NOTE = "Open Claude Code with this account to refresh its login.";
@@ -38,8 +38,9 @@ function windowRow(w) {
   const fill = h("div", { class: "bar-fill" });
   fill.style.width = `${Math.min(100, Math.max(0, used)) * BAR_PX / 100}px`;
   return h("div", { class: "u-win" },
-    h("span", { class: "mono u-label" }, `${w.label} `, h("strong", {}, `${used}%`)),
-    h("div", { class: "bar" }, fill),
+    h("span", { class: "mono u-label" }, w.label),
+    h("strong", { class: "u-pct" }, `${used}%`),
+    h("div", { class: "bar", "aria-hidden": "true" }, fill),
     h("span", { class: "mono u-left", "data-left": w.resets_at }),
     h("span", { class: "mono u-reset", "data-reset": w.resets_at }));
 }
@@ -50,32 +51,52 @@ function noteFor(row) {
   return "";
 }
 
-function ageCell(row) {
+// takenAt remembers when each reading was taken, fixed when its age first
+// arrives, so a repaint that is not a reload does not move it.
+const taken = new Map();
+
+function takenAt(row) {
   const s = row.reading_age_seconds;
-  const at = s === null || s === undefined ? "" : String(Date.now() - s * 1000);
+  if (s === null || s === undefined) return "";
+  const old = taken.get(row.account);
+  if (old && old.age === s) return old.at;
+  const at = String(Date.now() - s * 1000);
+  taken.set(row.account, { age: s, at });
+  return at;
+}
+
+function ageCell(row) {
+  const at = takenAt(row);
   return h("span", { class: "u-age", "data-age-at": at });
 }
 
 async function refreshOne(account) {
+  if (busy.has(account)) return;
   busy.add(account);
   paint();
-  await refresh(account);
-  busy.delete(account);
-  paint();
+  try {
+    await refresh(account);
+  } finally {
+    busy.delete(account);
+    paint();
+  }
 }
 
 async function refreshAll() {
   busyAll = true;
   paint();
-  const todo = store.usage.filter((r) => r.can_refresh);
-  await Promise.all(todo.map((r) => refreshOne(r.account)));
-  busyAll = false;
-  paint();
+  try {
+    const todo = store.usage.filter((r) => r.can_refresh && !busy.has(r.account));
+    await Promise.allSettled(todo.map((r) => refreshOne(r.account)));
+  } finally {
+    busyAll = false;
+    paint();
+  }
 }
 
 function refreshButton(row) {
   const wait = busy.has(row.account);
-  return h("button", { type: "button", class: "btn btn-md btn-outline ro-ok",
+  return h("button", { type: "button", class: "btn btn-md btn-outline ro-ok", "data-focus": row.account,
     disabled: !row.can_refresh || wait || busyAll,
     onClick: () => refreshOne(row.account) }, wait ? "Refreshing…" : "Refresh");
 }
@@ -97,7 +118,7 @@ function headRow() {
     h("span", {}, "Account"), h("span", {}, "State"), h("span", {}, "Windows"),
     h("span", {}, "Resets"), h("span", {}, "Last update"),
     h("div", { class: "u-act" },
-      h("button", { type: "button", class: "btn btn-md btn-primary ro-ok", disabled: busyAll,
+      h("button", { type: "button", class: "btn btn-md btn-primary ro-ok", "data-focus": "*", disabled: busyAll,
         onClick: refreshAll }, busyAll ? "Refreshing…" : "Refresh all")));
 }
 
@@ -110,11 +131,17 @@ function ordered() {
 
 function paint() {
   if (!host || currentTab() !== "usage") return;
+  const active = document.activeElement;
+  const keep = active && host.contains(active) ? active.dataset.focus : undefined;
   clear(host);
   const red = errorAccounts();
   host.append(h("h1", {}, "Usage"),
     h("div", { class: "panel u-box" }, headRow(), ordered().map((r) => accountRow(r, red))));
   tick(host);
+  if (keep !== undefined) {
+    const again = [...host.querySelectorAll("[data-focus]")].find((b) => b.dataset.focus === keep);
+    if (again) again.focus();
+  }
 }
 
 export function render(root) {

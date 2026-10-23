@@ -194,7 +194,7 @@ func (d *Demo) buildReadings(t0 time.Time) {
 		"claude-main": mk(4*time.Minute, "ok", true,
 			w("5h", 5*time.Hour, 31, at(time.Hour+50*time.Minute)),
 			w("7d", 7*day, 58, at(2*day+11*time.Hour+50*time.Minute)), fable),
-		"claude-rec": {state: "token expired"},
+		"claude-rec": {state: "expired token"},
 		"codex-main": mk(12*time.Minute, "ok", true, w("7d", 7*day, 41, at(2*day+50*time.Minute))),
 		"go-1":       mk(9*time.Minute, "ok", true, goWin(0, 62, 95)...),
 		"go-2":       mk(9*time.Minute, "ok", true, goWin(3, 70, 96)...),
