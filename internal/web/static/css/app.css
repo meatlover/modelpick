@@ -1189,3 +1189,118 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
     max-width: none;
   }
 }
+
+/* ---------- schedule chips and picker (chips.js, Profiles.dc.html) ---------- */
+
+.sched-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+.sched-chip.is-allow {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.sched-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sched-wrap {
+  position: relative;
+}
+
+.sched-add {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px dashed var(--dashed);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px var(--font);
+  cursor: pointer;
+}
+
+.sched-add:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sched-pop {
+  position: absolute;
+  left: 0;
+  top: 40px;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 220px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+}
+
+.sched-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sched-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 12px var(--font);
+  cursor: pointer;
+}
+
+.sched-mode[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.sched-mode[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sched-pick {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  font: 500 13px var(--font);
+  cursor: pointer;
+}

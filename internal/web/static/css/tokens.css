@@ -30,6 +30,8 @@
   --accent-line: #9DB3E3;
   --paint: #2B5FD0;
 
+  --chip-bg: #ECEBE6;
+  --chip-text: #3A3935;
   --ok-bg: #E3ECFB;
   --ok-text: #163B8A;
 
@@ -84,6 +86,8 @@
     --accent-line: #4C6499;
     --paint: #7099EE;
 
+    --chip-bg: #33332F;
+    --chip-text: #D2D1CA;
     --ok-bg: #1F2E4D;
     --ok-text: #B3CAF7;
 
