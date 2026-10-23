@@ -167,7 +167,6 @@ func testOpEnv() app.OpEnv {
 			}
 			return nil
 		},
-		Home: "/home/u",
 	}
 }
 

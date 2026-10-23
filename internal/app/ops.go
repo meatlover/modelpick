@@ -28,7 +28,6 @@ func (r *Refused) Error() string { return r.Reason }
 type OpEnv struct {
 	Models  func(account string) ([]adapter.Model, error)
 	Windows func(account, model string) []string
-	Home    string // the user's home; operations keep paths as typed
 }
 
 // opArgs is every argument any operation takes, with the page's field names
