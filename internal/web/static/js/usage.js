@@ -15,6 +15,24 @@ const EXPIRED_NOTE = "Open Claude Code with this account to refresh its login.";
 let host = null;
 const busy = new Set();
 let busyAll = false;
+// wanted is the data-focus key of the button the user last used ("*" =
+// Refresh all); paint puts focus back on it while it is set.
+let wanted = null;
+let listening = false;
+
+function listen() {
+  if (listening) return;
+  listening = true;
+  document.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest ? e.target.closest("[data-focus]") : null;
+    wanted = b ? b.dataset.focus : null;
+  });
+  document.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.focus !== undefined) wanted = t.dataset.focus;
+    else if (t !== document.body && t !== document.documentElement) wanted = null;
+  });
+}
 
 // stateText shows a rate-limit end as a time (just the clock within a day).
 function stateText(state, now = new Date()) {
@@ -51,18 +69,15 @@ function noteFor(row) {
   return "";
 }
 
-// takenAt remembers when each reading was taken, fixed when its age first
-// arrives, so a repaint that is not a reload does not move it.
-const taken = new Map();
+// takenAt is when each row's reading was taken: the time the row object
+// arrived (a load or a refresh makes new objects) minus its age.
+const taken = new WeakMap();
 
 function takenAt(row) {
   const s = row.reading_age_seconds;
   if (s === null || s === undefined) return "";
-  const old = taken.get(row.account);
-  if (old && old.age === s) return old.at;
-  const at = String(Date.now() - s * 1000);
-  taken.set(row.account, { age: s, at });
-  return at;
+  if (!taken.has(row)) taken.set(row, String(Date.now() - s * 1000));
+  return taken.get(row);
 }
 
 function ageCell(row) {
@@ -70,8 +85,9 @@ function ageCell(row) {
   return h("span", { class: "u-age", "data-age-at": at });
 }
 
-async function refreshOne(account) {
+async function refreshOne(account, own = true) {
   if (busy.has(account)) return;
+  if (own) wanted = account;
   busy.add(account);
   paint();
   try {
@@ -83,11 +99,13 @@ async function refreshOne(account) {
 }
 
 async function refreshAll() {
+  if (busyAll) return;
+  wanted = "*";
   busyAll = true;
   paint();
   try {
     const todo = store.usage.filter((r) => r.can_refresh && !busy.has(r.account));
-    await Promise.allSettled(todo.map((r) => refreshOne(r.account)));
+    await Promise.allSettled(todo.map((r) => refreshOne(r.account, false)));
   } finally {
     busyAll = false;
     paint();
@@ -96,9 +114,10 @@ async function refreshAll() {
 
 function refreshButton(row) {
   const wait = busy.has(row.account);
-  return h("button", { type: "button", class: "btn btn-md btn-outline ro-ok", "data-focus": row.account,
-    disabled: !row.can_refresh || wait || busyAll,
-    onClick: () => refreshOne(row.account) }, wait ? "Refreshing…" : "Refresh");
+  return h("button", { type: "button", class: ["btn", "btn-md", "btn-outline", "ro-ok", (wait || busyAll) && "is-busy"],
+    "data-focus": row.account, disabled: !row.can_refresh, "aria-disabled": wait || busyAll,
+    onClick: () => { if (!wait && !busyAll) refreshOne(row.account).catch(() => {}); } },
+  wait ? "Refreshing…" : "Refresh");
 }
 
 function accountRow(row, red) {
@@ -118,8 +137,10 @@ function headRow() {
     h("span", {}, "Account"), h("span", {}, "State"), h("span", {}, "Windows"),
     h("span", {}, "Resets"), h("span", {}, "Last update"),
     h("div", { class: "u-act" },
-      h("button", { type: "button", class: "btn btn-md btn-primary ro-ok", "data-focus": "*", disabled: busyAll,
-        onClick: refreshAll }, busyAll ? "Refreshing…" : "Refresh all")));
+      h("button", { type: "button", class: ["btn", "btn-md", "btn-primary", "ro-ok", busyAll && "is-busy"],
+        "data-focus": "*", "aria-disabled": busyAll,
+        onClick: () => { if (!busyAll) refreshAll().catch(() => {}); } },
+      busyAll ? "Refreshing…" : "Refresh all")));
 }
 
 // rows follow the config's account order; an account without a usage row is skipped.
@@ -129,19 +150,23 @@ function ordered() {
   return names.filter((n) => by.has(n)).map((n) => by.get(n));
 }
 
+function restoreFocus() {
+  if (wanted === null) return;
+  const a = document.activeElement;
+  if (a !== document.body && !host.contains(a)) return;
+  const again = [...host.querySelectorAll("[data-focus]")].find((b) => b.dataset.focus === wanted);
+  if (again && !again.disabled) again.focus();
+}
+
 function paint() {
   if (!host || currentTab() !== "usage") return;
-  const active = document.activeElement;
-  const keep = active && host.contains(active) ? active.dataset.focus : undefined;
-  clear(host);
+  listen();
   const red = errorAccounts();
+  clear(host);
   host.append(h("h1", {}, "Usage"),
     h("div", { class: "panel u-box" }, headRow(), ordered().map((r) => accountRow(r, red))));
   tick(host);
-  if (keep !== undefined) {
-    const again = [...host.querySelectorAll("[data-focus]")].find((b) => b.dataset.focus === keep);
-    if (again) again.focus();
-  }
+  restoreFocus();
 }
 
 export function render(root) {
