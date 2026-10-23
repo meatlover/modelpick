@@ -1,8 +1,20 @@
 // Cases for js/time.js. In the browser, time.test.html writes the verdict
 // into <output id="result">; elsewhere run() returns it.
-import { setZone, fmtLeft, fmtReset, fmtAge } from "../js/time.js";
+import { setZone, fmtLeft, fmtReset, fmtAge, utcCellsFor, shownFraction } from "../js/time.js";
 
 const NOW = "2026-10-23T07:10:00Z";
+
+// The demo's deepseek-peak: Mon–Fri (days 1–5, 0 = Sun) UTC 01–03 and 06–09
+// full; Wed 12 a quarter and Sat 07 half, for the partial cases.
+function fixture() {
+  const cells = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  for (let d = 1; d <= 5; d++) for (const hr of [1, 2, 3, 6, 7, 8, 9]) cells[d][hr] = 1;
+  cells[3][12] = 0.25;
+  cells[6][7] = 0.5;
+  return cells;
+}
+
+const json = (x) => JSON.stringify(x);
 
 export const cases = [
   ["fmtLeft 09:00", () => fmtLeft("2026-10-23T09:00:00Z", NOW), "in 1h 50m"],
@@ -21,6 +33,18 @@ export const cases = [
   ["fmtReset exactly 7 days", () => fmtReset("2026-10-30T07:10:00Z", NOW), "Oct 30 07:10"],
   ["fmtLeft invalid", () => fmtLeft("not a time", NOW), ""],
   ["fmtReset invalid", () => fmtReset("", NOW), ""],
+  ["utcCellsFor Sun 21 at -240", () => json(utcCellsFor(0, 21, -240)), "[[1,1]]"],
+  ["utcCellsFor Sat 22 at -240 wraps the week", () => json(utcCellsFor(6, 22, -240)), "[[0,2]]"],
+  ["utcCellsFor Mon 00 at +330", () => json(utcCellsFor(1, 0, 330)), "[[0,18],[0,19]]"],
+  ["utcCellsFor Sun 00 at -570", () => json(utcCellsFor(0, 0, -570)), "[[0,9],[0,10]]"],
+  ["utcCellsFor Sun 03 at +540 wraps back", () => json(utcCellsFor(0, 3, 540)), "[[6,18]]"],
+  ["utcCellsFor Thu 05 at 0", () => json(utcCellsFor(4, 5, 0)), "[[4,5]]"],
+  ["shownFraction Mon 02 at -240", () => shownFraction(fixture(), 1, 2, -240), 1],
+  ["shownFraction Mon 00 at -240", () => shownFraction(fixture(), 1, 0, -240), 0],
+  ["shownFraction Wed 08 at -240 partial", () => shownFraction(fixture(), 3, 8, -240), 0.25],
+  ["shownFraction Fri 06 at +30 half", () => shownFraction(fixture(), 5, 6, 30), 0.5],
+  ["shownFraction Mon 06 at +345 weighted", () => shownFraction(fixture(), 1, 6, 345), 0.25],
+  ["shownFraction Sat 12 at +330 weighted", () => shownFraction(fixture(), 6, 12, 330), 0.25],
 ];
 
 function check([name, fn, want]) {

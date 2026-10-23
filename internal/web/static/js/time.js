@@ -133,3 +133,39 @@ export function tick(root, now = new Date()) {
     el.textContent = fmtAge(at === "" ? null : Math.floor((now - Number(at)) / 1000));
   }
 }
+
+// ---------- week grid cells ----------
+// A schedule's cells are cells[day][hour] in UTC, day 0 = Sunday, each the
+// covered fraction 0–1. The grid shows them shifted by offsetMinutes (east
+// of UTC; 0 in UTC mode).
+
+const WEEK_MIN = 7 * 24 * 60;
+
+// utcStart is the shown hour's start in minutes since UTC Sunday 00:00.
+function utcStart(day, hour, offsetMinutes) {
+  const m = (day * 24 + hour) * 60 - offsetMinutes;
+  return ((m % WEEK_MIN) + WEEK_MIN) % WEEK_MIN;
+}
+
+function cellAt(weekHour) {
+  const h = weekHour % (7 * 24);
+  return [Math.floor(h / 24), h % 24];
+}
+
+// utcCellsFor lists the [utcDay, utcHour] cells the shown hour overlaps:
+// one for a whole-hour offset, two otherwise.
+export function utcCellsFor(day, hour, offsetMinutes) {
+  const start = utcStart(day, hour, offsetMinutes);
+  const first = Math.floor(start / 60);
+  return start % 60 === 0 ? [cellAt(first)] : [cellAt(first), cellAt(first + 1)];
+}
+
+// shownFraction is the covered fraction of the shown hour: the UTC cells it
+// overlaps, each weighted by the minutes of overlap. A missing cell is 0.
+export function shownFraction(cells, day, hour, offsetMinutes) {
+  const lead = utcStart(day, hour, offsetMinutes) % 60;
+  const weights = lead === 0 ? [1] : [(60 - lead) / 60, lead / 60];
+  const value = ([d, h]) => Number((cells[d] || [])[h]) || 0;
+  const pairs = utcCellsFor(day, hour, offsetMinutes);
+  return pairs.reduce((sum, c, i) => sum + value(c) * weights[i], 0);
+}

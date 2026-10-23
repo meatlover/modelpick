@@ -73,7 +73,9 @@ export async function reload() {
   }
 }
 
-function notApplied(reason) {
+// notApplied shows the refusal toast; a caller that sent with opts.quiet
+// uses it for a refusal it does not handle itself.
+export function notApplied(reason) {
   toast(`${String(reason).replace(new RegExp("[.\\s]+$"), "")}. config.json is unchanged.`, "Not applied.");
 }
 
@@ -95,7 +97,7 @@ async function attempt(op, args, retry, opts) {
   if (r.status === 409) return conflict(op, args, retry, opts);
   const reason = r.data.reason || `HTTP ${r.status}`;
   if (!opts.quiet) notApplied(reason);
-  return { ok: false, reason, uses: r.data.uses };
+  return { ok: false, reason, uses: r.data.uses, refused: true };
 }
 
 async function conflict(op, args, retry, opts) {
@@ -116,10 +118,12 @@ async function conflict(op, args, retry, opts) {
 let queue = Promise.resolve();
 
 // sendOp applies one operation. {ok: true} after a 200 (the reload is
-// attempted; its failure does not reject); on a refusal {ok: false, reason,
-// uses?} after the toast (opts.quiet skips the toast, for a caller that asks
-// the user instead, e.g. schedule.remove's uses). A 409 shows the conflict
-// dialog: "load" reloads, "apply" resends once on the new base.
+// attempted; its failure does not reject); otherwise {ok: false, reason}.
+// Any other answer (a refusal, 422) also carries refused: true and uses?, and
+// is toasted unless opts.quiet: that is for a caller that asks the user
+// instead (schedule.remove's uses) and calls notApplied for the rest. A 409
+// shows the conflict dialog: "load" reloads, "apply" resends once on the
+// new base.
 export function sendOp(op, args, opts = {}) {
   const run = queue.then(() => attempt(op, args, true, opts))
     .catch((e) => ({ ok: false, reason: String(e && e.message ? e.message : e) }));
