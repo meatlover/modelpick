@@ -15,7 +15,7 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 	var n float64
 	if text != "null" && json.Unmarshal(raw, &n) == nil {
 		if n < 0 || n > 100 {
-			return nil, refuse("%s: %s is outside 0–100", where, text)
+			return nil, refuse("%s: %s is outside 0–100%%", where, text)
 		}
 		return n, nil
 	}
@@ -36,26 +36,42 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 			return s, nil
 		}
 	}
-	return nil, refuse("%s: %s is not a number, pace+N or default", where, text)
+	var shown string
+	if text == "null" || json.Unmarshal(raw, &shown) != nil {
+		shown = text
+	}
+	return nil, refuse("%s: %s is not a number, pace+N or default", where, shown)
 }
 
-func parseCap(where string, raw json.RawMessage) ([]any, error) {
+// parseCap validates a cap list; prefix is "Profile p, choice n" and
+// labels are the account's window labels for the model (none without a
+// stored reading, so the position is numbered instead).
+func parseCap(prefix string, labels []string, raw json.RawMessage) ([]any, error) {
 	var items []json.RawMessage
 	if strings.TrimSpace(string(raw)) == "null" {
 		return nil, nil
 	}
 	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, refuse("%s: cap must be a list or null", where)
+		return nil, refuse("%s: cap must be a list or null", prefix)
 	}
 	out := []any{}
 	for k, it := range items {
-		v, err := capElement(where+".cap["+strconv.Itoa(k)+"]", it)
+		v, err := capElement(capWhere(prefix, labels, k), it)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// capWhere names cap position k: by window label when the account has
+// them, else by number (owner, 2026-10-23, N13).
+func capWhere(prefix string, labels []string, k int) string {
+	if k < len(labels) {
+		return prefix + ", " + labels[k] + " cap"
+	}
+	return prefix + ", cap " + strconv.Itoa(k+1)
 }
 
 // fixThinking keeps the thinking if the model offers it, else the first.
@@ -92,13 +108,13 @@ func (d *Demo) offers(account, model string) bool {
 }
 
 func (d *Demo) setField(c *web.Choice, base string, a opArgs) error {
-	where := base + "." + a.Field
+	where := base
 	var s string
 	var list []string
 	switch a.Field {
 	case "account", "model":
 		if json.Unmarshal(a.Value, &s) != nil {
-			return refuse("%s: must be text", where)
+			return refuse("%s: %s must be text", where, a.Field)
 		}
 		if a.Field == "account" {
 			return d.setAccount(c, s)
@@ -111,12 +127,12 @@ func (d *Demo) setField(c *web.Choice, base string, a opArgs) error {
 	case "thinking":
 		return d.setThinking(c, where, a.Value)
 	case "cap":
-		v, err := parseCap(base, a.Value)
+		v, err := parseCap(base, d.windows[c.Account][c.Model], a.Value)
 		c.Cap = v
 		return err
 	case "skip_during", "allow_during":
 		if json.Unmarshal(a.Value, &list) != nil || list == nil {
-			return refuse("%s: must be a list", where)
+			return refuse("%s: %s must be a list", where, a.Field)
 		}
 		return d.setSchedules(c, where, a.Field, list)
 	default:
@@ -154,13 +170,13 @@ func (d *Demo) opChoiceSet(a opArgs) error {
 	if err != nil {
 		return err
 	}
-	where := "profiles." + p.Name + "[" + strconv.Itoa(a.Index) + "]"
+	where := "Profile " + p.Name + ", choice " + strconv.Itoa(a.Index+1)
 	c := p.Choices[a.Index]
 	if err := d.setField(&c, where, a); err != nil {
 		return err
 	}
 	if len(c.SkipDuring) > 0 && len(c.AllowDuring) > 0 {
-		return refuse("%s: use skip_during or allow_during, not both", where)
+		return refuse("Use Skip or Allow, not both")
 	}
 	p.Choices[a.Index] = c
 	return nil

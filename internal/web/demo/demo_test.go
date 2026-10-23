@@ -98,16 +98,16 @@ func TestChoiceSetRefusals(t *testing.T) {
 		value any
 		want  string
 	}{
-		{"range", "cap", []any{120}, "profiles.coder-difficult[0].cap[0]: 120 is outside 0–100"},
+		{"range", "cap", []any{120}, "Profile coder-difficult, choice 1, 5h cap: 120 is outside 0–100%"},
 		// Owner ruling 2026-10-23 (round 6): pace N is 5–50; pace+0 is now
 		// refused (owner spec change).
-		{"pace over 50", "cap", []any{90, "pace+51"}, "profiles.coder-difficult[0].cap[1]: pace+51 is outside pace+5–pace+50"},
-		{"pace below 5", "cap", []any{"pace+2"}, "profiles.coder-difficult[0].cap[0]: pace+2 is outside pace+5–pace+50"},
-		{"pace+4", "cap", []any{"pace+4"}, "profiles.coder-difficult[0].cap[0]: pace+4 is outside pace+5–pace+50"},
-		{"pace+0", "cap", []any{"pace+0"}, "profiles.coder-difficult[0].cap[0]: pace+0 is outside pace+5–pace+50"},
-		{"not a number", "cap", []any{"fast"}, `profiles.coder-difficult[0].cap[0]: "fast" is not a number, pace+N or default`},
-		{"null element", "cap", []any{nil}, "profiles.coder-difficult[0].cap[0]: null is not a number, pace+N or default"},
-		{"Default is not default", "cap", []any{"Default"}, `profiles.coder-difficult[0].cap[0]: "Default" is not a number, pace+N or default`},
+		{"pace over 50", "cap", []any{90, "pace+51"}, "Profile coder-difficult, choice 1, 7d cap: pace+51 is outside pace+5–pace+50"},
+		{"pace below 5", "cap", []any{"pace+2"}, "Profile coder-difficult, choice 1, 5h cap: pace+2 is outside pace+5–pace+50"},
+		{"pace+4", "cap", []any{"pace+4"}, "Profile coder-difficult, choice 1, 5h cap: pace+4 is outside pace+5–pace+50"},
+		{"pace+0", "cap", []any{"pace+0"}, "Profile coder-difficult, choice 1, 5h cap: pace+0 is outside pace+5–pace+50"},
+		{"not a number", "cap", []any{"fast"}, "Profile coder-difficult, choice 1, 5h cap: fast is not a number, pace+N or default"},
+		{"null element", "cap", []any{nil}, "Profile coder-difficult, choice 1, 5h cap: null is not a number, pace+N or default"},
+		{"Default is not default", "cap", []any{"Default"}, "Profile coder-difficult, choice 1, 5h cap: Default is not a number, pace+N or default"},
 	}
 	for _, c := range cases {
 		if got := refusal(t, d, "choice.set", set(c.field, c.value)).Reason; got != c.want {
@@ -117,7 +117,7 @@ func TestChoiceSetRefusals(t *testing.T) {
 	must(t, d, "choice.set", set("skip_during", []string{"deepseek-peak"}))
 	args := set("allow_during", []string{"deepseek-peak"})
 	args["expect"] = choiceJSON(t, d, "coder-difficult", 0)
-	want := "profiles.coder-difficult[0]: use skip_during or allow_during, not both"
+	want := "Use Skip or Allow, not both"
 	if got := refusal(t, d, "choice.set", args).Reason; got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
@@ -226,8 +226,48 @@ func TestNamesAndReserved(t *testing.T) {
 			t.Errorf("%s %s: empty reason", c.op, c.name)
 		}
 	}
-	got := refusal(t, d, "account.add", map[string]any{"name": "models", "vendor": "claude"}).Reason
+	got := refusal(t, d, "profile.add", map[string]any{"name": "My Profile"}).Reason
+	if got != `Profile name "My Profile": use a–z, 0–9 and -, starting with a letter or digit` {
+		t.Fatalf("got %q", got)
+	}
+	for op, w := range map[string]string{"schedule.add": "Schedule name", "account.add": "Account name"} {
+		got = refusal(t, d, op, map[string]any{"name": "My Profile", "vendor": "claude"}).Reason
+		if !strings.HasPrefix(got, w+` "My Profile": use a–z`) {
+			t.Errorf("%s: got %q", op, got)
+		}
+	}
+	got = refusal(t, d, "account.add", map[string]any{"name": "models", "vendor": "claude"}).Reason
 	if got != "models is a reserved account name" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// Owner, 2026-10-23 (N13, N14): cap refusals name the choice and window.
+func TestCapRefusalNamesChoiceAndWindow(t *testing.T) {
+	d := newDemo()
+	ex := choiceJSON(t, d, "coder-difficult", 2)
+	args := func(v any) map[string]any {
+		return map[string]any{"profile": "coder-difficult", "index": 2, "field": "cap",
+			"value": v, "expect": ex}
+	}
+	got := refusal(t, d, "choice.set", args([]any{"pace+70"})).Reason
+	if !strings.HasPrefix(got, "Profile coder-difficult, choice 3, ") ||
+		!strings.HasSuffix(got, " cap: pace+70 is outside pace+5–pace+50") {
+		t.Errorf("got %q", got)
+	}
+	got = refusal(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 2,
+		"field": "model", "value": "nope", "expect": ex}).Reason
+	if !strings.HasPrefix(got, "Profile coder-difficult, choice 3: ") {
+		t.Errorf("got %q", got)
+	}
+	got = refusal(t, d, "settings.default_cap", map[string]any{"value": 150}).Reason
+	if got != "Global default cap: 150 is outside 0–100%" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestCapRefusalNumberedWithoutWindows(t *testing.T) {
+	if got := capWhere("Profile p, choice 1", nil, 1); got != "Profile p, choice 1, cap 2" {
 		t.Fatalf("got %q", got)
 	}
 }
