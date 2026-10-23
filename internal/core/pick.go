@@ -111,7 +111,7 @@ func (p *picker) windowBlocks(account string, w adapter.Window, cap CapElem) (st
 				return "", false
 			}
 			return fmt.Sprintf("%s window %s%% >= pace %s%% (%s, +%s)", label, formatPct(w.UsedPct),
-				formatPct(math.Round(allowed)), paceWhere(w.Length, elapsed), formatPct(cap.N)), true
+				formatPct(math.Round(allowed*10)/10), paceWhere(w.Length, elapsed), formatPct(cap.N)), true
 		}
 		d := p.cfg.Settings.DefaultCap
 		p.addWarnings([]string{fmt.Sprintf("%s: %s window has no reset time; pace cap used default_cap %s",

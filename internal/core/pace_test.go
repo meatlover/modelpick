@@ -34,8 +34,15 @@ func wantSkip(t *testing.T, r Result, why string) {
 }
 
 func TestPaceReason(t *testing.T) {
-	r := pickPace(t, `["pace+10"]`, paceWin(7*day, 58, 43*day/10))
+	// resets in 61% of the window: elapsed is exactly 39%, so pace is 49%.
+	r := pickPace(t, `["pace+10"]`, paceWin(7*day, 58, 7*day*61/100))
 	wantSkip(t, r, "7d window 58% >= pace 49% (day 2.7 of 7, +10)")
+}
+
+func TestPaceFractionalFigure(t *testing.T) {
+	// resets in 4.3 days: elapsed 38.571…%, pace 48.571…% prints as 48.6%.
+	r := pickPace(t, `["pace+10"]`, paceWin(7*day, 58, 43*day/10))
+	wantSkip(t, r, "7d window 58% >= pace 48.6% (day 2.7 of 7, +10)")
 }
 
 func TestPaceHourWindow(t *testing.T) {
