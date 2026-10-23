@@ -15,6 +15,10 @@ type AccountState struct {
 	Reading  *adapter.Reading // nil = usage unknown
 	Err      error            // a failure in this run
 	Warnings []string
+	// TokenExpired and RetryUntil are the store's structured state, for
+	// callers that report it (ls); Pick judges Reading and Err only.
+	TokenExpired bool
+	RetryUntil   time.Time // zero = not rate-limited
 }
 
 // Env supplies credentials and usage to Pick.

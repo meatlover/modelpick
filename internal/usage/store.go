@@ -26,6 +26,10 @@ type Result struct {
 	Reading  *adapter.Reading
 	Err      error
 	Warnings []string
+	// TokenExpired: the local credential is expired, so no call was made.
+	TokenExpired bool
+	// RetryUntil: a server Retry-After that has not elapsed; zero = none.
+	RetryUntil time.Time
 }
 
 // Store reads and writes per-account usage state under Dir.
@@ -100,6 +104,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	res.Reading = st.LastGood
 
 	if a.Credential(acct).Expired {
+		res.TokenExpired = true
 		if st.LastGood == nil {
 			res.Err = adapter.ErrTokenExpired
 		} else {
@@ -110,6 +115,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	}
 
 	if now.Before(st.RetryUntil) {
+		res.RetryUntil = st.RetryUntil
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: rate-limited until %s", name, stamp(st.RetryUntil)))
 		if st.LastGood == nil {
 			res.Err = fmt.Errorf("no usage reading yet; rate-limited until %s%s", stamp(st.RetryUntil), failedClause(st))
@@ -153,6 +159,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 		var he *adapter.HTTPError
 		if errors.As(callErr, &he) && he.RetryAfter > 0 {
 			st.RetryUntil = now.Add(he.RetryAfter)
+			res.RetryUntil = st.RetryUntil
 		}
 		st.LastError, st.LastErrorAt = callErr.Error(), now
 	}

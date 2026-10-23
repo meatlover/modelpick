@@ -30,6 +30,7 @@ type fakeAdapter struct {
 	readings  map[string]adapter.Reading
 	errs      map[string]error
 	usage     map[string]int // Usage calls per account
+	expired   map[string]bool
 	credCalls map[string]int
 	models    map[string][]adapter.Model   // Models per account; missing = error
 	checks    map[string][]adapter.Finding // Check findings per account
@@ -41,6 +42,7 @@ func newFake(vendor string) *fakeAdapter {
 		readings:  map[string]adapter.Reading{},
 		errs:      map[string]error{},
 		usage:     map[string]int{},
+		expired:   map[string]bool{},
 		credCalls: map[string]int{},
 		models:    map[string][]adapter.Model{},
 		checks:    map[string][]adapter.Finding{},
@@ -51,7 +53,7 @@ func (f *fakeAdapter) Vendor() string { return f.vendor }
 
 func (f *fakeAdapter) Credential(acct adapter.Account) adapter.CredStatus {
 	f.credCalls[acct.Name]++
-	return adapter.CredStatus{Present: true, Source: "fake: " + acct.Name}
+	return adapter.CredStatus{Present: true, Expired: f.expired[acct.Name], Source: "fake: " + acct.Name}
 }
 
 func (f *fakeAdapter) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, error) {

@@ -87,7 +87,8 @@ func (e *env) Usage(name string) core.AccountState {
 	st := core.AccountState{Err: err}
 	if err == nil {
 		res := e.store.Get(context.Background(), a, acct, e.refresh)
-		st = core.AccountState{Reading: res.Reading, Warnings: res.Warnings}
+		st = core.AccountState{Reading: res.Reading, Warnings: res.Warnings,
+			TokenExpired: res.TokenExpired, RetryUntil: res.RetryUntil}
 		if res.Err != nil {
 			st.Err = usageError(acct.Vendor, res.Err)
 		}

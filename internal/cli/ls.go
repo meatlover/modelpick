@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -82,7 +81,7 @@ func lsRows(cfg *core.Config, e *env, now time.Time) []lsAccount {
 	rows := make([]lsAccount, 0, len(names))
 	for _, n := range names {
 		st := e.Usage(n)
-		row := lsAccount{Account: n, Vendor: cfg.Accounts[n].Vendor, State: lsState(st, now), Windows: []lsWindow{}}
+		row := lsAccount{Account: n, Vendor: cfg.Accounts[n].Vendor, State: lsState(st), Windows: []lsWindow{}}
 		if st.Reading != nil {
 			age := int64(usage.Age(st.Reading.TakenAt, now) / time.Second)
 			row.AgeSeconds = &age
@@ -110,29 +109,17 @@ func cmpOr(a, b string) string {
 	return b
 }
 
-var rateLimitedUntil = regexp.MustCompile(`rate-limited until (\d{4}-\d\d-\d\dT[^\s;]+)`)
-
-// lsState derives the STATE column from the store's outcome (Ruling: no
-// error is ok; a rate limit, even on a cached reading, wins over ok).
-func lsState(st core.AccountState, now time.Time) string {
-	texts := append([]string(nil), st.Warnings...)
-	if st.Err != nil {
-		texts = append(texts, st.Err.Error())
-	}
-	for _, t := range texts {
-		if m := rateLimitedUntil.FindStringSubmatch(t); m != nil {
-			return "rate-limited until " + m[1]
-		}
-	}
-	if st.Err == nil {
-		return "ok"
-	}
+// lsState derives the STATE column from the store's outcome: an expired
+// token or an unexpired Retry-After wins over ok, even on a cached reading.
+func lsState(st core.AccountState) string {
 	var he *adapter.HTTPError
 	switch {
-	case errors.Is(st.Err, adapter.ErrTokenExpired):
+	case st.TokenExpired, errors.Is(st.Err, adapter.ErrTokenExpired):
 		return "expired token"
-	case errors.As(st.Err, &he) && he.Status == 429 && he.RetryAfter > 0:
-		return "rate-limited until " + now.Add(he.RetryAfter).UTC().Format(time.RFC3339)
+	case !st.RetryUntil.IsZero():
+		return "rate-limited until " + st.RetryUntil.UTC().Format(time.RFC3339)
+	case st.Err == nil:
+		return "ok"
 	case errors.As(st.Err, &he) && he.Status == 429:
 		return "rate-limited (no retry time given)"
 	}

@@ -150,6 +150,43 @@ func TestLsStates(t *testing.T) {
 	}
 }
 
+// TestLsStatesWithCachedReading: an expired token or a rate limit wins over
+// ok even when the store answers from a cached reading.
+func TestLsStatesWithCachedReading(t *testing.T) {
+	claude := newFake("claude")
+	claude.readings["claude-main"] = claudeReading(40, 10)
+	claude.readings["claude-rec"] = claudeReading(20, 10)
+	codex := newFake("codex")
+	codex.readings["codex-main"] = claudeReading(1, 1)
+	d := testDeps(t, testConfig, claude, codex)
+	if _, _, code := run(d, "ls"); code != 0 {
+		t.Fatalf("first run exit %d", code)
+	}
+	claude.expired["claude-main"] = true
+	claude.errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
+	stdout, _, code := run(d, "ls", "--json", "--refresh")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var got []gotAccount
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"claude-main": "expired token",
+		"claude-rec":  "rate-limited until 2026-10-22T12:10:00Z",
+		"codex-main":  "ok",
+	}
+	for _, a := range got {
+		if a.State != want[a.Account] {
+			t.Errorf("%s state = %q, want %q", a.Account, a.State, want[a.Account])
+		}
+		if a.Account != "codex-main" && len(a.Windows) != 2 {
+			t.Errorf("%s: want the cached reading's 2 windows, got %+v", a.Account, a.Windows)
+		}
+	}
+}
+
 func TestLsBadArgsAndConfig(t *testing.T) {
 	d := testDeps(t, `{"version": 2}`, newFake("claude"))
 	if _, stderr, code := run(d, "ls"); code != 1 || !strings.Contains(stderr, "version") {

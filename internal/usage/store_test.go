@@ -346,6 +346,46 @@ func TestExpiredTokenDoesNotUseFloor(t *testing.T) {
 	}
 }
 
+// TestResultFlags checks the structured state Get reports for callers that
+// must not parse warning text: TokenExpired and RetryUntil.
+func TestResultFlags(t *testing.T) {
+	c := newClock()
+	s := newStore(t, c)
+	f := &fakeAdapter{expired: true}
+
+	if r := s.Get(context.Background(), f, acct, false); !r.TokenExpired || r.Reading != nil {
+		t.Fatalf("expired, no reading: want TokenExpired, got %+v", r)
+	}
+	f.set(func(f *fakeAdapter) { f.expired = false; f.reading = reading(10, t0) })
+	if r := s.Get(context.Background(), f, acct, false); r.TokenExpired || !r.RetryUntil.IsZero() {
+		t.Fatalf("good call: want no flags, got %+v", r)
+	}
+	f.set(func(f *fakeAdapter) { f.expired = true })
+	if r := s.Get(context.Background(), f, acct, false); !r.TokenExpired || r.Reading == nil {
+		t.Fatalf("expired, cached reading: want TokenExpired with the reading, got %+v", r)
+	}
+
+	// A 429 with Retry-After: 30m, then a Get inside the window.
+	c.advance(20 * time.Minute)
+	until := c.t.Add(30 * time.Minute)
+	f.set(func(f *fakeAdapter) {
+		f.expired = false
+		f.err = &adapter.HTTPError{Status: 429, RetryAfter: 30 * time.Minute}
+	})
+	if r := s.Get(context.Background(), f, acct, false); !r.RetryUntil.Equal(until) || r.TokenExpired {
+		t.Fatalf("429 call: want RetryUntil %v, got %+v", until, r)
+	}
+	c.advance(time.Minute)
+	if r := s.Get(context.Background(), f, acct, true); !r.RetryUntil.Equal(until) || r.Reading == nil {
+		t.Fatalf("inside Retry-After: want RetryUntil %v with the reading, got %+v", until, r)
+	}
+	c.advance(30 * time.Minute)
+	f.set(func(f *fakeAdapter) { f.err = nil })
+	if r := s.Get(context.Background(), f, acct, false); !r.RetryUntil.IsZero() {
+		t.Fatalf("after Retry-After: want RetryUntil zero, got %+v", r)
+	}
+}
+
 func TestCorruptStateIsIgnored(t *testing.T) {
 	c := newClock()
 	s := newStore(t, c)
