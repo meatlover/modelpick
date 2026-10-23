@@ -404,14 +404,7 @@ func TestUsageErrorMessages(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	cases := [][]string{
-		{},
-		{"pick"},
-		{"pick", "a", "b"},
-		{"pick", "two-claude", "--refrsh"},
-		{"bogus"},
-	}
-	for _, args := range cases {
+	for _, args := range [][]string{{}, {"bogus"}} {
 		claude := newFake("claude")
 		stdout, stderr, code := run(testDeps(t, testConfig, claude), args...)
 		if code != 1 || stdout != "" || !strings.Contains(stderr, "usage:") {
@@ -419,6 +412,36 @@ func TestUsageErrors(t *testing.T) {
 		}
 		if claude.totalUsage() != 0 {
 			t.Errorf("%q: made usage calls", args)
+		}
+	}
+}
+
+// TestPickUsageErrorsPrintFailedJSON: a launcher reads stdout, so a bad pick
+// command line still yields a failed result there, with usage on stderr.
+func TestPickUsageErrorsPrintFailedJSON(t *testing.T) {
+	for _, c := range []struct {
+		args    []string
+		profile string
+		reason  string
+	}{
+		{[]string{"pick"}, "", "pick: missing <profile>"},
+		{[]string{"pick", "--refresh"}, "", "pick: missing <profile>"},
+		{[]string{"pick", "a", "b"}, "a", `pick: unexpected argument "b"`},
+		{[]string{"pick", "two-claude", "--refrsh"}, "two-claude", `pick: unknown flag "--refrsh"`},
+	} {
+		claude := newFake("claude")
+		stdout, stderr, code := run(testDeps(t, testConfig, claude), c.args...)
+		if code != 1 || !strings.Contains(stderr, "usage:") {
+			t.Errorf("%q: exit %d stderr %q; want 1 with usage on stderr", c.args, code, stderr)
+			continue
+		}
+		p := parsePick(t, stdout)
+		if p.Status != "failed" || p.Profile != c.profile || p.Reason == nil || *p.Reason != c.reason ||
+			p.Skipped == nil || p.Errors == nil || p.Warnings == nil {
+			t.Errorf("%q: got %+v, want failed, profile %q, reason %q", c.args, p, c.profile, c.reason)
+		}
+		if claude.totalUsage() != 0 {
+			t.Errorf("%q: made usage calls", c.args)
 		}
 	}
 }

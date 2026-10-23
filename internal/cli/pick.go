@@ -14,22 +14,28 @@ import (
 func runPick(args []string, stdout, stderr io.Writer, d Deps) int {
 	profile, refresh, err := parsePickArgs(args)
 	if err != nil {
-		return badUsage(stderr, err.Error())
+		// A launcher reads stdout: it gets a failed result, the user the usage.
+		res := core.Failed(profile, err.Error())
+		_, _ = stdout.Write(res.JSON())
+		badUsage(stderr, err.Error())
+		return res.ExitCode()
 	}
 	res := pick(profile, refresh, d)
 	_, _ = stdout.Write(res.JSON())
 	return res.ExitCode()
 }
 
+// parsePickArgs returns the profile seen so far even on error, so the
+// failed result can name it.
 func parsePickArgs(args []string) (profile string, refresh bool, err error) {
 	for _, a := range args {
 		switch {
 		case a == "--refresh":
 			refresh = true
 		case strings.HasPrefix(a, "-"):
-			return "", false, fmt.Errorf("pick: unknown flag %q", a)
+			return profile, false, fmt.Errorf("pick: unknown flag %q", a)
 		case profile != "":
-			return "", false, fmt.Errorf("pick: unexpected argument %q", a)
+			return profile, false, fmt.Errorf("pick: unexpected argument %q", a)
 		default:
 			profile = a
 		}
