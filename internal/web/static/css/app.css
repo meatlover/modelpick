@@ -1360,6 +1360,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 /* ---------- schedule chips and picker (chips.js, Profiles.dc.html) ---------- */
 
+/* A chip is a label, not text to edit or copy: the default arrow over it
+   (its x keeps the pointing hand) and no drag selection (owner, round 4). */
 .sched-chip {
   display: inline-flex;
   align-items: center;
@@ -1370,6 +1372,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   font-size: 13px;
   background: var(--chip-bg);
   color: var(--chip-text);
+  cursor: default;
+  user-select: none;
 }
 
 .sched-chip.is-allow {
@@ -1479,6 +1483,11 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border: 1px dashed var(--dashed);
   background: transparent;
   color: var(--text-2);
+}
+
+/* Hover cue on an option (owner, round 4), as on the other controls. */
+.sched-pick:hover {
+  background: var(--hover-bg);
 }
 
 /* The hover preview (weekpeek.js): one schedule's week beside the picker,

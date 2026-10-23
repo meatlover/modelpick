@@ -105,11 +105,16 @@ export function writeCap(cap, pos, value) {
 }
 
 // trashAction is what trash does on position pos: "default" (the last
-// explicit one), "uncap" (the first box when none is explicit) or null
-// (disabled: anything else would leave a default before an explicit one).
-export function trashAction(cap, pos) {
+// explicit one), "uncap" (the first box when none is explicit), "discard"
+// (the first default box holding a value typed but not yet saved: the box
+// shows it as the last explicit one, and trash puts the default back) or
+// null (disabled: anything else would leave a default before an explicit
+// one). drafted says the box holds such a value (typed, or sent and not yet
+// answered).
+export function trashAction(cap, pos, drafted = false) {
   if (cap.length === 0) return pos === 0 ? "uncap" : null;
-  return pos === cap.length - 1 ? "default" : null;
+  if (pos === cap.length - 1) return "default";
+  return drafted && pos === cap.length ? "discard" : null;
 }
 
 // switchKind is what the frame shows after a switch to kind: the stored
@@ -307,7 +312,15 @@ function commit(key, p, value) {
   });
 }
 
-// trashNow applies trash on position p.
+// drafted says box p holds a value not yet in the stored cap: typed in
+// the open frame, or sent and not yet answered.
+function drafted(key, p) {
+  return (isOpen(key, p) && edit.text !== null) || pending.has(pendKey(key, p));
+}
+
+// trashNow applies trash on position p to the card as it stands when its
+// turn comes: a value sent before it has been saved by then, and a typed
+// one that was never sent leaves nothing to remove.
 function trashNow(key, p) {
   const ctx = liveCtx(key);
   const cap = ctx ? ctx.choice.cap : null;
@@ -422,6 +435,13 @@ function draft(ctx, p, els, text) {
   els.input.value = text;
   fit(els.input);
   place(els, previewOf(kind, text, baseOf(ctx, p)));
+  trashState(ctx, p, els);
+}
+
+// trashState enables the frame's trash by the box as it shows now, so
+// typing a value into the first default box enables it at once.
+function trashState(ctx, p, els) {
+  els.trash.disabled = trashAction(ctx.choice.cap, p, drafted(cardKey(ctx), p)) === null;
 }
 
 // keep stops a press on a frame button from taking focus from the value.
@@ -441,12 +461,11 @@ function switchRow(ctx, p, els) {
   els.pace = h("button", { type: "button", class: "cap-sw cap-sw-pace", "aria-label": "Time pace",
     "data-key": `${boxKey(ctx, p)}-pace`, onMouseDown: keep, onClick: () => to("pace") },
   clock(12), h("span", { class: "cap-raquo" }, "»"));
-  const cap = ctx.choice.cap;
+  els.trash = h("button", { type: "button", class: "btn btn-trash cap-trash", "aria-label": "Delete this cap",
+    "data-key": `${boxKey(ctx, p)}-trash`, onMouseDown: keep, onClick: () => trash(key, p) }, trashIcon());
+  trashState(ctx, p, els);
   return h("div", { class: "cap-row" },
-    h("div", { class: "cap-switch", role: "group", "aria-label": "Cap type" }, els.pct, els.pace),
-    h("button", { type: "button", class: "btn btn-trash cap-trash", "aria-label": "Delete this cap",
-      "data-key": `${boxKey(ctx, p)}-trash`, disabled: trashAction(cap, p) === null,
-      onMouseDown: keep, onClick: () => trash(key, p) }, trashIcon()));
+    h("div", { class: "cap-switch", role: "group", "aria-label": "Cap type" }, els.pct, els.pace), els.trash);
 }
 
 function bar(ctx, p, els) {
