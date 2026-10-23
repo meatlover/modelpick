@@ -28,7 +28,8 @@
   --accent-soft: #EEF3FD;
   --accent-ring: #C9D8F6;
   --accent-line: #9DB3E3;
-  --paint: #2B5FD0;
+  --accent-mid: #2B5FD0;
+  --paint: #C2560F;
 
   --chip-bg: #ECEBE6;
   --chip-text: #3A3935;
@@ -84,7 +85,8 @@
     --accent-soft: #1C2742;
     --accent-ring: #2C4373;
     --accent-line: #4C6499;
-    --paint: #7099EE;
+    --accent-mid: #7099EE;
+    --paint: #E3803F;
 
     --chip-bg: #33332F;
     --chip-text: #D2D1CA;

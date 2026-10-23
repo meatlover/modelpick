@@ -23,11 +23,12 @@ let listening = false;
 let adding = false;
 let newDraft = "";
 
-// grid is the week grid's state, kept across repaints: the schedule it is
-// for, the keyboard cell (active, [day, hour] as shown), the Shift anchor,
+// grid is the week grid's state, kept across repaints: the schedule and
+// zone it is for, the keyboard cell (active, [day, hour] as shown), the Shift anchor,
 // the pointer drag, and the rectangle whose paint op is in flight
 // (pending). el and cells are the elements of the latest repaint.
-const grid = { name: null, active: [0, 0], anchor: null, drag: null, pending: null, el: null, cells: [] };
+const grid = { name: null, zone: null, active: [0, 0], anchor: null, drag: null, pending: null, el: null,
+  cells: [] };
 
 function offset() {
   return zone() === "local" ? localOffsetMinutes() : 0;
@@ -111,7 +112,11 @@ function startDrag(e) {
   const t = e.target.closest ? e.target.closest("[data-day]") : null;
   if (!t || e.button !== 0 || grid.pending) return;
   const start = [Number(t.dataset.day), Number(t.dataset.hour)];
-  grid.el.setPointerCapture(e.pointerId); // the press itself focuses the grid
+  try {
+    grid.el.setPointerCapture(e.pointerId); // the press itself focuses the grid
+  } catch {
+    // the pointer is already gone; the window listeners still end the drag
+  }
   grid.drag = { id: e.pointerId, start, end: start };
   grid.active = start;
   grid.anchor = null;
@@ -343,6 +348,8 @@ function paint() {
   if (!sched || sched.name !== grid.name) {
     Object.assign(grid, { name: sched ? sched.name : null, active: [0, 0], anchor: null, drag: null });
   }
+  // A Shift selection is in shown cells, which a zone switch moves.
+  if (zone() !== grid.zone) Object.assign(grid, { zone: zone(), anchor: null });
   host.append(h("div", { class: "p-body" },
     scheduleList(st.schedules, sched, errorSubjects()), sched && scheduleMain(sched)));
   restoreFocus();

@@ -162,10 +162,12 @@ export function utcCellsFor(day, hour, offsetMinutes) {
 
 // shownFraction is the covered fraction of the shown hour: the UTC cells it
 // overlaps, each weighted by the minutes of overlap. A missing cell is 0.
+// Rounded to 1e-9, so float drift never makes a full cell read below 1.
 export function shownFraction(cells, day, hour, offsetMinutes) {
   const lead = utcStart(day, hour, offsetMinutes) % 60;
   const weights = lead === 0 ? [1] : [(60 - lead) / 60, lead / 60];
   const value = ([d, h]) => Number((cells[d] || [])[h]) || 0;
   const pairs = utcCellsFor(day, hour, offsetMinutes);
-  return pairs.reduce((sum, c, i) => sum + value(c) * weights[i], 0);
+  const sum = pairs.reduce((acc, c, i) => acc + value(c) * weights[i], 0);
+  return Math.round(sum * 1e9) / 1e9;
 }

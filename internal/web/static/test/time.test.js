@@ -5,10 +5,14 @@ import { setZone, fmtLeft, fmtReset, fmtAge, utcCellsFor, shownFraction } from "
 const NOW = "2026-10-23T07:10:00Z";
 
 // The demo's deepseek-peak: Mon–Fri (days 1–5, 0 = Sun) UTC 01–03 and 06–09
-// full; Wed 12 a quarter and Sat 07 half, for the partial cases.
+// full; Wed 12 a quarter, Sat 07 half, Sun 03 three quarters and Tue 14–15
+// 0.9, for the partial, wrap and rounding cases.
 function fixture() {
   const cells = Array.from({ length: 7 }, () => new Array(24).fill(0));
   for (let d = 1; d <= 5; d++) for (const hr of [1, 2, 3, 6, 7, 8, 9]) cells[d][hr] = 1;
+  cells[0][3] = 0.75;
+  cells[2][14] = 0.9;
+  cells[2][15] = 0.9;
   cells[3][12] = 0.25;
   cells[6][7] = 0.5;
   return cells;
@@ -45,6 +49,8 @@ export const cases = [
   ["shownFraction Fri 06 at +30 half", () => shownFraction(fixture(), 5, 6, 30), 0.5],
   ["shownFraction Mon 06 at +345 weighted", () => shownFraction(fixture(), 1, 6, 345), 0.25],
   ["shownFraction Sat 12 at +330 weighted", () => shownFraction(fixture(), 6, 12, 330), 0.25],
+  ["shownFraction Sat 23 at -240 wraps to Sun 03", () => shownFraction(fixture(), 6, 23, -240), 0.75],
+  ["shownFraction Tue 14 at -4 no float drift", () => shownFraction(fixture(), 2, 14, -4), 0.9],
 ];
 
 function check([name, fn, want]) {

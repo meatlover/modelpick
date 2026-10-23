@@ -807,12 +807,12 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 /* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
 .p-card:focus {
   outline: none;
-  border-color: var(--paint);
+  border-color: var(--accent-mid);
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .p-card.is-dragging {
-  border-color: var(--paint);
+  border-color: var(--accent-mid);
   box-shadow: 0 10px 28px var(--shadow-drag);
   transform: rotate(-0.4deg);
 }
@@ -829,7 +829,7 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 
 .p-slot {
   height: 56px;
-  border: 2px dashed var(--paint);
+  border: 2px dashed var(--accent-mid);
   border-radius: 10px;
   background: var(--accent-soft);
   display: flex;
@@ -950,7 +950,7 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 }
 
 .cap-box.is-pace {
-  border-color: var(--paint);
+  border-color: var(--accent-mid);
   background: var(--accent-soft);
 }
 
@@ -1308,7 +1308,8 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 /* ---------- schedules ----------
    The list and title row reuse the profiles classes (.p-list, .p-link,
    .p-title). The week grid follows Schedules.dc.html; painted cells use
-   --paint, a partial cell's fill height is set from the data (CSSOM). */
+   --paint (the mockup's orange), the drag preview the accent blue; a
+   partial cell's fill height is set from the data (CSSOM). */
 
 .s-week {
   align-self: flex-start;
@@ -1366,7 +1367,7 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
 
 .s-cell.is-preview {
   background: var(--accent-ring);
-  box-shadow: inset 0 0 0 1px var(--paint);
+  box-shadow: inset 0 0 0 1px var(--accent-mid);
 }
 
 .s-cell.is-preview .s-fill {
