@@ -840,10 +840,13 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 /* An illustration, not an editable box. Its width is a card box's
-   (content-box 104 px), so a longer text cannot widen it. */
+   (content-box 104 px), so a longer text cannot widen it. Both boxes
+   take the default box's background, so the solid one does not look
+   clickable (owner, round 5); only the border tells them apart. */
 .p-defcap .cap-box {
   width: 104px;
   cursor: default;
+  background: var(--default-bg);
 }
 
 /* .cap-val keeps its 15 px line, so the box is as tall as a card's; the
