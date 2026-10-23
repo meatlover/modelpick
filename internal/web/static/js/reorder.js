@@ -13,6 +13,16 @@ export function dropIndex(mids, y) {
   return n;
 }
 
+// slotAbove says whether the "Drop here" slot goes above the dragged card
+// while the pointer (y) is over the card's own place: above when y is in the
+// upper half of the card (top, height as laid out now), else below. Either
+// side is a drop with no move. The slot shifts only the card itself, by the
+// slot's height: above pushes the card down, so y lands higher in it; below
+// leaves it, so the side chosen chooses itself again and does not flicker.
+export function slotAbove(y, top, height) {
+  return y < top + height / 2;
+}
+
 // keyAction maps a keydown on a card to {move: ±1}, {focus: ±1} or null.
 // mac picks the modifier: ⌘ on a Mac, Ctrl elsewhere.
 export function keyAction(e, mac) {
@@ -84,8 +94,12 @@ function place(ol, y) {
     return r.top + r.height / 2;
   });
   drag.to = dropIndex(mids, y);
-  // Landing in its own place: show the slot just above the dragged card.
-  const before = drag.to === drag.from ? drag.li : items[drag.to] || null;
+  let before = items[drag.to] || null;
+  // Landing in its own place: the slot goes above or below the dragged card.
+  if (drag.to === drag.from) {
+    const r = drag.li.getBoundingClientRect();
+    if (slotAbove(y, r.top, r.height)) before = drag.li;
+  }
   if (drag.slot.parentNode !== ol || drag.slot.nextSibling !== before) ol.insertBefore(drag.slot, before);
 }
 
