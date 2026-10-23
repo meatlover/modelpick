@@ -1,0 +1,105 @@
+/* Every colour the page uses. Light values are the mockups' hexes
+   (docs/superpowers/mockups/2026-10-23-v2), dark values their *Dark boards.
+   ::backdrop is listed because older engines do not let it inherit :root. */
+:root,
+::backdrop {
+  color-scheme: light dark;
+
+  --font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --bg: #F6F6F3;
+  --surface: #FFFFFF;
+  --sunken: #F1F0EB;
+  --text: #1A1A19;
+  --text-2: #3A3935;
+  --text-3: #5E5D58;
+  --muted: #77766F;
+  --border: #DEDDD7;
+  --border-soft: #EEEDE8;
+  --input-border: #BDBCB5;
+  --dashed: #9C9B94;
+  --track: #ECEBE6;
+  --fill: #8E9BB5;
+
+  --accent: #1F4FB8;
+  --accent-strong: #163B8A;
+  --accent-soft: #EEF3FD;
+  --accent-ring: #C9D8F6;
+  --accent-line: #9DB3E3;
+  --paint: #2B5FD0;
+
+  --ok-bg: #E3ECFB;
+  --ok-text: #163B8A;
+
+  --warn-bg: #FCE9DC;
+  --warn-border: #F0C4A4;
+  --warn-text: #5C2606;
+  --warn-note: #8A3A0B;
+  --warn-dot: #C2560F;
+
+  --danger: #B42318;
+  --danger-border: #E8A9A9;
+  --danger-bg: #FBE4E4;
+  --danger-text: #6E1414;
+  --danger-edge: #9B2C2C;
+  --danger-line: #F3C1BB;
+
+  --default-bg: #FAFAF8;
+  --terminal: #16181D;
+
+  --shadow-pop: rgba(26, 26, 25, 0.16);
+  --shadow-toast: rgba(26, 26, 25, 0.12);
+  --shadow-drag: rgba(26, 26, 25, 0.18);
+  --backdrop: rgba(26, 26, 25, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  ::backdrop {
+    --bg: #151514;
+    --surface: #1F1F1D;
+    --sunken: #262624;
+    --text: #ECEBE6;
+    --text-2: #D2D1CA;
+    --text-3: #A8A79F;
+    --muted: #94938C;
+    --border: #3A3936;
+    --border-soft: #2A2A27;
+    --input-border: #5A5954;
+    --dashed: #7D7C75;
+    --track: #33332F;
+    --fill: #6F7E9C;
+
+    --accent: #8AAEF5;
+    --accent-strong: #B3CAF7;
+    --accent-soft: #1C2742;
+    --accent-ring: #2C4373;
+    --accent-line: #4C6499;
+    --paint: #7099EE;
+
+    --ok-bg: #1F2E4D;
+    --ok-text: #B3CAF7;
+
+    --warn-bg: #3D2617;
+    --warn-border: #70411F;
+    --warn-text: #F7C7A2;
+    --warn-note: #F2A877;
+    --warn-dot: #E3803F;
+
+    --danger: #F28B82;
+    --danger-border: #7A3434;
+    --danger-bg: #3A1C1C;
+    --danger-text: #F5B5B5;
+    --danger-edge: #F28B82;
+    --danger-line: #6E2A24;
+
+    --default-bg: #191918;
+    --terminal: #16181D;
+
+    --shadow-pop: rgba(0, 0, 0, 0.16);
+    --shadow-toast: rgba(0, 0, 0, 0.12);
+    --shadow-drag: rgba(0, 0, 0, 0.18);
+    --backdrop: rgba(0, 0, 0, 0.18);
+  }
+}
