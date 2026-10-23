@@ -22,8 +22,9 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 	if json.Unmarshal(raw, &s) == nil {
 		if m := paceRE.FindStringSubmatch(s); m != nil {
 			v, _ := strconv.Atoi(m[1])
-			if v < 1 || v > 100 {
-				return nil, refuse("%s: %q: %d must be 1-100", where, s, v)
+			// Owner ruling 2026-10-23 (round 3): pace N is 0–50.
+			if v < 0 || v > 50 {
+				return nil, refuse("%s: %q: %d must be 0-50", where, s, v)
 			}
 			return s, nil
 		}

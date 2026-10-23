@@ -59,6 +59,9 @@
   --danger-line: #F3C1BB;
 
   --default-bg: #FAFAF8;
+  /* Under the pointer on an area the mouse edits (owner, round 3; no
+     mockup). */
+  --hover-bg: #F1F0EB;
   --terminal: #16181D;
   /* Under the pointer on anything the mouse can edit (owner, round 3;
      no mockup): a shade off both --surface and --bg. */
@@ -121,6 +124,7 @@
     --danger-line: #6E2A24;
 
     --default-bg: #191918;
+    --hover-bg: #2A2A27;
     --terminal: #16181D;
     --hover-bg: #2A2A27;
 
