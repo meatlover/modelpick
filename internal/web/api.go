@@ -16,8 +16,8 @@
 //     page then numbers the cap boxes); it is recomputed on every State, so
 //     a Refresh or account.add shows on the next reload.
 //  5. A Refused reason is shown verbatim as a fragment; a schedule.remove
-//     with Uses > 0 opens a confirm; a refresh refusal leads with the
-//     account name.
+//     with Uses > 0 opens a confirm; a refresh refusal (unknown account,
+//     read-only config) leads with the account name.
 //  6. Doctor subjects: an account name, "profile <p>", "profile <p>,
 //     choice <n>" (1-based), "schedule <name>" or "config"; only "error"
 //     reddens; Errors and Warnings count Findings.
@@ -33,7 +33,9 @@
 //     reading_age_seconds may be null (the server also normalises).
 //  12. Accounts, schedules, profiles and usage rows are sorted by name.
 //  13. Conflict is HTTP 409 (the page reloads); 200 carries the new
-//     sha256; refresh answers the account's full row.
+//     sha256; refresh answers the account's full row whatever the call's
+//     outcome, which its state carries (expired token, rate-limited until,
+//     error: …).
 //  14. GET /api/ping answers 204 (also with ?t=<token> and no cookie);
 //     any 401 reads as stopped.
 //  15. Account.Fields holds locator keys only (config_dir, codex_home,

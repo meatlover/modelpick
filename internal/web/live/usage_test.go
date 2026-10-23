@@ -1,12 +1,18 @@
 package live
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
 	"github.com/meatlover/modelpick/internal/web"
@@ -107,25 +113,54 @@ func TestRefresh(t *testing.T) {
 	}
 }
 
-func TestRefreshRefusalsAndFailures(t *testing.T) {
+// Controller ruling (task 11 review): a refresh whose store call completes
+// answers the row, and its state carries the outcome; 422 only for an
+// unknown account or read-only config, or a plain error for an internal
+// failure (the server redacts it).
+func TestRefreshOutcomesAreRows(t *testing.T) {
 	f := newFixture(t)
 	l := f.live()
 	f.codex.Expired["codex-main"] = true
-	cases := map[string]string{"codex-main": "codex-main: expired token", "nope": "nope: unknown account"}
-	for name, want := range cases {
-		_, err := l.Refresh(name)
-		if r, ok := err.(web.Refused); !ok || r.Reason != want {
-			t.Errorf("%s: %#v, want Refused %q", name, err, want)
+	f.claude.Errs["claude-main"] = errBoom
+	f.claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: time.Hour}
+	want := map[string]string{"codex-main": "expired token", "claude-main": "error: boom",
+		"claude-rec": "rate-limited until 2026-10-22T13:00:00Z"}
+	for name, state := range want {
+		row, err := l.Refresh(name)
+		if err != nil || row.State != state {
+			t.Errorf("%s: %+v %v, want state %q", name, row, err, state)
 		}
 	}
 	if f.codex.Calls["codex-main"] != 0 {
 		t.Error("an expired token was refreshed")
 	}
-	f.claude.Errs["claude-main"] = errBoom
-	_, err := l.Refresh("claude-main")
+	if row, _ := l.Refresh("claude-main"); row.ReadingAgeSeconds == nil || len(row.Windows) == 0 {
+		t.Errorf("a failed call drops the saved reading: %+v", row)
+	}
+	if _, err := l.Refresh("nope"); err != (web.Refused{Reason: "nope: unknown account"}) {
+		t.Errorf("unknown account: %#v", err)
+	}
+}
+
+// A call the store could not even record (its lock fails) is an internal
+// failure: the saved state does not carry it, so no row can.
+func TestRefreshInternalFailure(t *testing.T) {
+	f := newFixture(t)
+	l := f.live()
+	cfg, err := app.LoadConfig(f.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(app.NewStore(f.d, cfg).Dir, "claude-rec.lock"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err = l.Refresh("claude-rec")
 	var r web.Refused
-	if err == nil || errors.As(err, &r) || !errors.Is(err, errBoom) {
-		t.Errorf("failed call: %#v, want a plain error wrapping the cause", err)
+	if err == nil || errors.As(err, &r) {
+		t.Errorf("got %#v, want a plain error", err)
+	}
+	if f.claude.Calls["claude-rec"] != 0 {
+		t.Errorf("called without the lock: %d", f.claude.Calls["claude-rec"])
 	}
 }
 
@@ -186,9 +221,9 @@ func TestReadFirstHonoursTheStore(t *testing.T) {
 	}
 	f.claude.Readings["claude-rec"] = apptest.ClaudeReading(5, 6)
 	f.codex.Expired["codex-main"] = true
-	l.readFirst("claude-rec")
-	l.readFirst("claude-rec")
-	l.readFirst("codex-main")
+	l.readFirst(context.Background(), "claude-rec")
+	l.readFirst(context.Background(), "claude-rec")
+	l.readFirst(context.Background(), "codex-main")
 	if f.claude.Calls["claude-rec"] != 1 || f.codex.Calls["codex-main"] != 0 {
 		t.Errorf("calls: claude-rec %d (want 1), codex-main %d (want 0)",
 			f.claude.Calls["claude-rec"], f.codex.Calls["codex-main"])
@@ -203,7 +238,8 @@ func TestNewTakesFirstReadings(t *testing.T) {
 	f := newFixture(t)
 	apptest.WriteStored(t, f.d, "claude-rec", claudeStored)
 	apptest.WriteStored(t, f.d, "codex-main", claudeStored)
-	New(f.d, f.path)
+	l := New(f.d, f.path)
+	defer l.Close() // before TempDir cleanup: the reading may still be unlocking
 	cfg, err := app.LoadConfig(f.d)
 	if err != nil {
 		t.Fatal(err)
@@ -231,5 +267,59 @@ func TestDoctorRerunsChecksKeepsModels(t *testing.T) {
 	}
 	if d1.Errors+d1.Warnings != len(d1.Findings) || d1.Findings == nil {
 		t.Errorf("doctor %+v", d1)
+	}
+}
+
+// Close cancels the first readings' context and waits for them (Task 12
+// closes the back end on shutdown).
+func TestCloseCancelsAndWaits(t *testing.T) {
+	f := newFixture(t)
+	var mu sync.Mutex
+	finished := 0
+	l := newLive(f.d, f.path, func(ctx context.Context, _ string) {
+		<-ctx.Done()
+		mu.Lock()
+		finished++
+		mu.Unlock()
+	})
+	done := make(chan struct{})
+	go func() { l.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return finished
+	}
+	if n := count(); n != 3 {
+		t.Errorf("Close returned with %d of 3 first readings finished", n)
+	}
+	if !l.closed() {
+		t.Error("not closed")
+	}
+	l.start("late") // after Close: starts nothing
+	l.Close()       // twice is fine, and would wait for "late"
+	if n := count(); n != 3 {
+		t.Errorf("a first reading started after Close (%d ran)", n)
+	}
+}
+
+// A panic in a first reading is logged, not fatal to the server.
+func TestFirstReadingPanicIsLogged(t *testing.T) {
+	var buf bytes.Buffer
+	errorLog.SetOutput(&buf)
+	t.Cleanup(func() { errorLog.SetOutput(os.Stderr) })
+	f := newFixture(t)
+	l := newLive(f.d, f.path, func(_ context.Context, name string) {
+		if name == "go-1" {
+			panic("adapter bug")
+		}
+	})
+	l.Close()
+	if !strings.Contains(buf.String(), "go-1") || !strings.Contains(buf.String(), "adapter bug") {
+		t.Errorf("log %q", buf.String())
 	}
 }

@@ -23,6 +23,9 @@ type Harness struct {
 	Break    func(t *testing.T) // makes it unparsable
 	Fix      func(t *testing.T)
 	Secrets  []string // must never appear in any response body
+	// Refreshable names an account whose refresh succeeds with a reading
+	// that has windows.
+	Refreshable string
 }
 
 // The fixture behind New must have at least one account, one profile and
@@ -490,22 +493,50 @@ func refreshNames(t *testing.T, h Harness) {
 	}
 }
 
+// refreshRow: a refresh of a known account answers its full row, whatever
+// the call's outcome (the state carries it; controller ruling, task 11
+// review), and that row is the one Usage reports next.
 func refreshRow(t *testing.T, h Harness) {
+	if h.Refreshable == "" {
+		t.Fatal("the harness names no refreshable account")
+	}
 	b := h.New(t)
 	for _, a := range b.State().Accounts {
 		row, err := b.Refresh(a.Name)
 		if err != nil {
-			if r, ok := asRefused(err); ok && !strings.HasPrefix(r.Reason, a.Name) {
-				t.Errorf("%s: reason %q does not lead with the account", a.Name, r.Reason)
-			}
+			t.Errorf("%s: refresh answered %#v, want its row", a.Name, err)
 			continue
 		}
 		checkRow(t, row)
 		if row.Account != a.Name || row.Vendor != a.Vendor {
 			t.Errorf("%s: row for %s/%s", a.Name, row.Account, row.Vendor)
 		}
-		if row.ReadingAgeSeconds != nil && len(b.State().Windows[a.Name]) == 0 {
-			t.Errorf("%s: refreshed with a reading, but state has no windows for it", a.Name)
+		if u := usageRow(t, b, a.Name); u.State != row.State || u.CanRefresh != row.CanRefresh {
+			t.Errorf("%s: refresh row %q/%v, usage then says %q/%v", a.Name, row.State, row.CanRefresh, u.State, u.CanRefresh)
+		}
+		if a.Name == h.Refreshable {
+			refreshed(t, b, row)
 		}
 	}
+}
+
+func refreshed(t *testing.T, b web.Backend, row web.UsageRow) {
+	t.Helper()
+	if row.State != "ok" || row.ReadingAgeSeconds == nil || len(row.Windows) == 0 {
+		t.Errorf("%s: refreshed row %+v, want ok with a reading and windows", row.Account, row)
+	}
+	if len(b.State().Windows[row.Account]) == 0 {
+		t.Errorf("%s: refreshed, but state has no windows for it", row.Account)
+	}
+}
+
+func usageRow(t *testing.T, b web.Backend, account string) web.UsageRow {
+	t.Helper()
+	for _, r := range b.Usage() {
+		if r.Account == account {
+			return r
+		}
+	}
+	t.Fatalf("usage has no row for %s", account)
+	return web.UsageRow{}
 }

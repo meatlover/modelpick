@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
+	"os"
 	"sort"
 	"sync"
 
@@ -19,43 +21,88 @@ import (
 	"github.com/meatlover/modelpick/internal/web"
 )
 
+// errorLog receives what the page is not shown.
+var errorLog = log.New(os.Stderr, "modelpick ui: ", log.LstdFlags)
+
 // Live serves one config file for one run of the server. It holds the one
-// app.Editor of the run (the safety copy is written once per run).
+// app.Editor of the run (the safety copy is written once per run). Close
+// ends the background first readings.
 type Live struct {
 	d     app.Deps
 	path  string
 	ed    *app.Editor
-	first func(account string) // takes an account's first reading; blocks
+	first func(ctx context.Context, account string) // takes an account's first reading; blocks
 
-	mu      sync.Mutex
-	started map[string]bool // accounts whose first reading was started
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
+	mu       sync.Mutex
+	started  map[string]bool // accounts whose first reading was started
+	isClosed bool
 }
 
 var _ web.Backend = (*Live)(nil)
 
 // New serves the config file at path. Every account without a saved
 // reading gets its first reading in the background, now or when it is
-// added.
+// added, until Close.
 func New(d app.Deps, path string) *Live { return newLive(d, path, nil) }
 
 // newLive takes first readings with first (nil: readFirst), so tests can
 // see which accounts it is started for.
-func newLive(d app.Deps, path string, first func(string)) *Live {
+func newLive(d app.Deps, path string, first func(context.Context, string)) *Live {
 	l := &Live{d: d, path: path, ed: app.NewEditor(d, path), started: map[string]bool{}}
+	l.ctx, l.cancel = context.WithCancel(context.Background())
 	l.first = first
 	if l.first == nil {
 		l.first = l.readFirst
 	}
-	// The editor already starts this in its own goroutine.
 	l.ed.OnAccountAdded = l.maybeFirst
 	if snap, err := l.ed.Load(); err == nil && snap.Config != nil {
 		for _, n := range sortedNames(snap.Config.Accounts) {
 			if l.claim(snap.Config, n) {
-				go l.first(n)
+				l.start(n)
 			}
 		}
 	}
 	return l
+}
+
+// start runs one first reading in a goroutine Close waits for; after
+// Close it starts nothing. A panic is logged, not fatal to the server.
+func (l *Live) start(name string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.isClosed {
+		return
+	}
+	l.wg.Add(1)
+	go func() {
+		defer l.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				errorLog.Printf("first reading of %s: panic: %v", name, r)
+			}
+		}()
+		l.first(l.ctx, name)
+	}()
+}
+
+// Close cancels the first readings still running and waits for them. It
+// may be called more than once.
+func (l *Live) Close() {
+	l.mu.Lock()
+	l.isClosed = true
+	l.mu.Unlock()
+	l.cancel()
+	l.wg.Wait()
+}
+
+func (l *Live) closed() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.isClosed
 }
 
 // claim reports whether account n gets its first reading now: once per
@@ -78,17 +125,17 @@ func (l *Live) claim(cfg *core.Config, n string) bool {
 	return true
 }
 
-// maybeFirst takes an added account's first reading unless it has one.
+// maybeFirst starts an added account's first reading unless it has one.
 func (l *Live) maybeFirst(name string) {
 	if snap, err := l.ed.Load(); err == nil && snap.Config != nil && l.claim(snap.Config, name) {
-		l.first(name)
+		l.start(name)
 	}
 }
 
 // readFirst is the store's normal read, without refresh: the floor,
 // Retry-After and an expired token all hold. The store keeps the outcome,
 // error included; nothing is returned.
-func (l *Live) readFirst(name string) {
+func (l *Live) readFirst(ctx context.Context, name string) {
 	snap, err := l.ed.Load()
 	if err != nil || snap.Config == nil {
 		return
@@ -97,7 +144,7 @@ func (l *Live) readFirst(name string) {
 	if err != nil {
 		return
 	}
-	app.NewStore(l.d, snap.Config).Get(context.Background(), a, acct, false)
+	app.NewStore(l.d, snap.Config).Get(ctx, a, acct, false)
 }
 
 func sortedNames[V any](m map[string]V) []string {
@@ -229,9 +276,12 @@ func (l *Live) row(cfg *core.Config, env *app.Env, name string) web.UsageRow {
 }
 
 // Refresh reads the account through the store with refresh=true and
-// returns its new row. Refusals lead with the account name (contract 5);
-// a failed call is a plain error, which the server reports without its
-// detail.
+// answers its row, whatever the call's outcome: the state carries it
+// (expired token, rate-limited until, error: …; controller ruling, task 11
+// review). An unknown account or a read-only config is refused, leading
+// with the account name (contract 5). An outcome the saved state does not
+// carry (the store could not record the call) is a plain error, which the
+// server reports without its detail.
 func (l *Live) Refresh(account string) (web.UsageRow, error) {
 	snap, err := l.ed.Load()
 	if err != nil || snap.Config == nil {
@@ -241,18 +291,16 @@ func (l *Live) Refresh(account string) (web.UsageRow, error) {
 	if _, ok := cfg.Accounts[account]; !ok {
 		return web.UsageRow{}, web.Refused{Reason: account + ": unknown account"}
 	}
-	env := app.NewEnv(l.d, cfg, false)
-	acct, a, err := env.AdapterFor(account)
+	acct, a, err := app.NewEnv(l.d, cfg, false).AdapterFor(account)
 	if err != nil {
 		return web.UsageRow{}, fmt.Errorf("refresh %s: %w", account, err)
 	}
-	if row := l.row(cfg, env, account); !row.CanRefresh {
-		return web.UsageRow{}, web.Refused{Reason: account + ": " + row.State}
-	}
-	if res := app.NewStore(l.d, cfg).Get(context.Background(), a, acct, true); res.Err != nil {
+	res := app.NewStore(l.d, cfg).Get(context.Background(), a, acct, true)
+	row := l.row(cfg, app.NewEnv(l.d, cfg, false), account)
+	if res.Err != nil && (row.State == "ok" || row.State == "no reading yet") {
 		return web.UsageRow{}, fmt.Errorf("refresh %s: %w", account, res.Err)
 	}
-	return l.row(cfg, app.NewEnv(l.d, cfg, false), account), nil
+	return row, nil
 }
 
 // Doctor re-runs each account's local Check (binary, credential) and

@@ -78,6 +78,7 @@ func (g *goServer) count() int {
 }
 
 type fixture struct {
+	t       *testing.T
 	d       app.Deps
 	path    string
 	claude  *apptest.Fake
@@ -94,13 +95,14 @@ func newFixture(t *testing.T) *fixture {
 	if err := os.WriteFile(keyFile, []byte("# keys\n"+secretKey+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{claude: apptest.NewFake("claude"), codex: apptest.NewFake("codex"),
+	f := &fixture{t: t, claude: apptest.NewFake("claude"), codex: apptest.NewFake("codex"),
 		goSrv: &goServer{}, firstCh: make(chan string, 16)}
 	opus := adapter.Model{ID: "claude-opus-5-5", Thinking: []string{"low", "high"}}
 	fable := adapter.Model{ID: "claude-fable-5-1", Thinking: []string{"high"}}
 	sonnet := adapter.Model{ID: "claude-sonnet-5-5", Thinking: []string{"medium"}}
 	f.claude.ModelList["claude-main"] = []adapter.Model{opus, fable}
 	f.claude.ModelList["claude-rec"] = []adapter.Model{sonnet}
+	f.claude.Readings["claude-main"] = apptest.ClaudeReading(30, 50)
 	f.codex.ModelList["codex-main"] = []adapter.Model{{ID: "gpt-6.1-sol", Thinking: []string{"low", "high"}}}
 	f.d = apptest.NewDeps(t, fmt.Sprintf(configTmpl, keyFile), f.claude, f.codex)
 	f.d.Adapters["opencode-go"] = opencodego.New(opencodego.Options{BaseURL: "http://usage.invalid",
@@ -115,14 +117,19 @@ func newFixture(t *testing.T) *fixture {
 }
 
 // first records a first-reading trigger instead of taking the reading.
-func (f *fixture) first(name string) {
+func (f *fixture) first(_ context.Context, name string) {
 	f.mu.Lock()
 	f.firsts = append(f.firsts, name)
 	f.mu.Unlock()
 	f.firstCh <- name
 }
 
-func (f *fixture) live() *Live { return newLive(f.d, f.path, f.first) }
+// live serves the fixture's config; the test's cleanup closes it.
+func (f *fixture) live() *Live {
+	l := newLive(f.d, f.path, f.first)
+	f.t.Cleanup(l.Close)
+	return l
+}
 
 func TestConformance(t *testing.T) {
 	var f *fixture
@@ -148,9 +155,10 @@ func TestConformance(t *testing.T) {
 			}
 			write(t, []byte(strings.Replace(string(b), `"default_cap": 90`, `"default_cap": 85`, 1)))
 		},
-		Break:   func(t *testing.T) { write(t, []byte(`{"version": 1, "accounts": `)) },
-		Fix:     func(t *testing.T) { write(t, orig) },
-		Secrets: []string{secretKey},
+		Break:       func(t *testing.T) { write(t, []byte(`{"version": 1, "accounts": `)) },
+		Fix:         func(t *testing.T) { write(t, orig) },
+		Secrets:     []string{secretKey},
+		Refreshable: "claude-main",
 	})
 }
 

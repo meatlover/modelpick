@@ -21,6 +21,7 @@ func TestConformance(t *testing.T) {
 		Break:    func(*testing.T) { d.SetBroken("config: version: must be 1") },
 		Fix:      func(*testing.T) { d.SetBroken("") },
 		// The demo holds no credential; this stands for one.
-		Secrets: []string{"sk-demo-never-held"},
+		Secrets:     []string{"sk-demo-never-held"},
+		Refreshable: "claude-main",
 	})
 }

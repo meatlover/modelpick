@@ -353,12 +353,12 @@ func TestRefreshRules(t *testing.T) {
 	now := t0
 	d := New(func() time.Time { return now })
 	for _, c := range []struct{ acct, want string }{
-		{"claude-rec", "claude-rec: expired token"},
-		{"go-3", "go-3: rate-limited until 2026-10-23T09:32:00Z"}} {
-		_, err := d.Refresh(c.acct)
-		var r web.Refused
-		if !errors.As(err, &r) || r.Reason != c.want {
-			t.Errorf("%s: got %#v want %q", c.acct, err, c.want)
+		{"claude-rec", "expired token"},
+		{"go-3", "rate-limited until 2026-10-23T09:32:00Z"}} {
+		// The row answers, unchanged; its state says why it was not read.
+		row, err := d.Refresh(c.acct)
+		if err != nil || row.State != c.want || row.CanRefresh {
+			t.Errorf("%s: got %+v %v, want state %q", c.acct, row, err, c.want)
 		}
 	}
 	now = t0.Add(time.Hour)
@@ -568,8 +568,8 @@ func TestNoReadingIsRefreshableUnlessBlocked(t *testing.T) {
 	if !ok || strings.Join(w["opencode-go/deepseek-v4.1-flash"], ",") != "5h,7d,30d" {
 		t.Fatalf("windows[go-4] after refresh: %v", d.State().Windows)
 	}
-	if _, err := d.Refresh("claude-rec"); err == nil {
-		t.Error("claude-rec refreshed")
+	if row, err := d.Refresh("claude-rec"); err != nil || row.ReadingAgeSeconds != nil || row.State != "expired token" {
+		t.Errorf("claude-rec refreshed: %+v %v", row, err)
 	}
 }
 

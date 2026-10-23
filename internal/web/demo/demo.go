@@ -307,8 +307,10 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 			d.addAccountModels(a)
 			return d.row(a), nil
 		}
+		// A blocked account answers its row unchanged: the state carries
+		// why (controller ruling, task 11 review).
 		if !r.canRefresh {
-			return web.UsageRow{}, web.Refused{Reason: account + ": " + r.state}
+			return d.row(a), nil
 		}
 		r.readAt = d.now()
 		return d.row(a), nil
