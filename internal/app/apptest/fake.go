@@ -21,7 +21,9 @@ var (
 	Later = Now.Add(72 * time.Hour)
 )
 
-// Fake serves canned usage per account name and counts calls. An
+// Fake serves canned usage per account name and counts calls. ModelList,
+// Checks, Readings, Errs and Expired must not be mutated once a call may be
+// running: only the call counters are guarded. An
 // account missing from Readings and Errs has unknown usage (ErrShape).
 type Fake struct {
 	vendor     string
@@ -34,7 +36,10 @@ type Fake struct {
 	Checks     map[string][]adapter.Finding // Check findings per account
 	CheckCalls map[string]int               // Check calls per account
 	ModelCalls map[string]int               // Models calls per account
-	ModelDelay time.Duration                // each Models call takes this long
+	ModelDelay time.Duration                // each Models call takes this long, or until its ctx ends
+	ModelPanic map[string]bool              // Models panics for these accounts
+	ModelDone  map[string]int               // Models calls that ran to the end (not cancelled)
+	ModelEnded map[string]int               // Models calls that returned, cancelled or not
 
 	mu sync.Mutex // guards the call counters: Models and Check run concurrently
 }
@@ -58,6 +63,8 @@ func NewFake(vendor string) *Fake {
 		Checks:     map[string][]adapter.Finding{},
 		CheckCalls: map[string]int{},
 		ModelCalls: map[string]int{},
+		ModelDone:  map[string]int{},
+		ModelEnded: map[string]int{},
 	}
 }
 
@@ -83,11 +90,27 @@ func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, 
 	return adapter.Reading{}, adapter.ErrShape
 }
 
-func (f *Fake) Models(_ context.Context, acct adapter.Account) ([]adapter.Model, error) {
+func (f *Fake) Models(ctx context.Context, acct adapter.Account) ([]adapter.Model, error) {
 	f.mu.Lock()
 	f.ModelCalls[acct.Name]++
 	f.mu.Unlock()
-	time.Sleep(f.ModelDelay)
+	defer func() {
+		f.mu.Lock()
+		f.ModelEnded[acct.Name]++
+		f.mu.Unlock()
+	}()
+	if f.ModelPanic[acct.Name] {
+		panic("fake: Models panics for " + acct.Name)
+	}
+	select {
+	case <-time.After(f.ModelDelay):
+	case <-ctx.Done():
+		time.Sleep(100 * time.Millisecond) // a cancelled call is slow to unwind
+		return nil, ctx.Err()
+	}
+	f.mu.Lock()
+	f.ModelDone[acct.Name]++
+	f.mu.Unlock()
 	if m, ok := f.ModelList[acct.Name]; ok {
 		return m, nil
 	}
@@ -193,4 +216,18 @@ func WriteStored(t *testing.T, d app.Deps, account, json string) {
 	if err := os.WriteFile(filepath.Join(st.Dir, account+".json"), []byte(json), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// ModelDoneCount is the Models calls of account that ran to the end.
+func (f *Fake) ModelDoneCount(account string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ModelDone[account]
+}
+
+// ModelEndedCount is the Models calls of account that have returned.
+func (f *Fake) ModelEndedCount(account string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ModelEnded[account]
 }

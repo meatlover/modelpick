@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,4 +74,56 @@ func TestCheckCacheSlowAccountDoesNotBlockOthers(t *testing.T) {
 	}
 	close(b.release)
 	<-done
+}
+
+// A listing cut short by its ctx is not cached: the next call lists again.
+func TestModelsCtxCancelledListingIsNotCached(t *testing.T) {
+	fk := apptest.NewFake("codex")
+	fk.ModelDelay = 5 * time.Second
+	fk.ModelList["a"] = []adapter.Model{{ID: "m"}}
+	cache := &app.CheckCache{}
+	acct := adapter.Account{Name: "a"}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for fk.ModelCallCount("a") == 0 {
+			time.Sleep(time.Millisecond)
+		}
+		cancel()
+	}()
+	if _, err := cache.ModelsCtx(ctx, acct, fk); err == nil {
+		t.Fatal("cancelled listing returned no error")
+	}
+	fk.ModelDelay = 0
+	ms, err := cache.Models(acct, fk)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("second listing: %v, %v", ms, err)
+	}
+	if fk.ModelCallCount("a") != 2 {
+		t.Errorf("Models calls %d, want 2 (cancelled result must not be cached)", fk.ModelCallCount("a"))
+	}
+	cache.Models(acct, fk)
+	if fk.ModelCallCount("a") != 2 {
+		t.Errorf("a finished listing was not cached: %d calls", fk.ModelCallCount("a"))
+	}
+}
+
+// A panicking adapter fails its own listing: logged, an error, not cached.
+func TestModelsPanicIsContained(t *testing.T) {
+	var log strings.Builder
+	app.CapturePanicLog(t, &log)
+	fk := apptest.NewFake("codex")
+	fk.ModelPanic = map[string]bool{"a": true}
+	cache := &app.CheckCache{}
+	acct := adapter.Account{Name: "a"}
+	for i := 0; i < 2; i++ {
+		if _, err := cache.Models(acct, fk); err == nil {
+			t.Fatal("panicking listing returned no error")
+		}
+	}
+	if fk.ModelCallCount("a") != 2 {
+		t.Errorf("a panic was cached: %d calls, want 2", fk.ModelCallCount("a"))
+	}
+	if !strings.Contains(log.String(), "panicked") {
+		t.Errorf("panic not logged: %q", log.String())
+	}
 }

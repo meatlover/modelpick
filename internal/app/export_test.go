@@ -1,6 +1,8 @@
 package app
 
 import (
+	"io"
+	"log"
 	"testing"
 
 	"github.com/meatlover/modelpick/internal/core"
@@ -20,4 +22,12 @@ func SetTestOp(t *testing.T, name string, fn func(doc *core.Doc)) {
 		return nil
 	}
 	t.Cleanup(func() { delete(ops, name) })
+}
+
+// CapturePanicLog sends the adapter-panic log to w until the test ends.
+func CapturePanicLog(t *testing.T, w io.Writer) {
+	t.Helper()
+	old := panicLog
+	panicLog = log.New(w, "", 0)
+	t.Cleanup(func() { panicLog = old })
 }

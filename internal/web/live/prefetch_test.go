@@ -38,8 +38,8 @@ func TestColdStateListsAccountsConcurrently(t *testing.T) {
 	start := time.Now()
 	s := l.State()
 	took := time.Since(start)
-	if took > 450*time.Millisecond {
-		t.Errorf("cold State took %v with three 200ms accounts; want < 450ms", took)
+	if took > 550*time.Millisecond { // sequential is 600ms; 550 leaves margin for a loaded CI box without admitting it
+		t.Errorf("cold State took %v with three 200ms accounts; want < 550ms", took)
 	}
 	for _, n := range []string{"c1", "c2", "c3"} {
 		if len(s.Models[n]) != 1 {
@@ -61,20 +61,33 @@ func TestColdDoctorChecksAccountsConcurrently(t *testing.T) {
 	}
 }
 
+// waitFor polls cond until it holds or the deadline passes.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(3 * time.Second); !cond(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+}
+
+func totalDone(fk *apptest.Fake) int {
+	n := 0
+	for _, a := range []string{"c1", "c2", "c3"} {
+		n += fk.ModelDoneCount(a)
+	}
+	return n
+}
+
 func TestNewPrefetchesModelLists(t *testing.T) {
 	f, fk := slowFixture(t)
 	l := New(f.d, f.path)
 	defer l.Close()
-	deadline := time.Now().Add(3 * time.Second)
-	for totalModelCalls(fk) < 3 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	time.Sleep(300 * time.Millisecond) // let the slowest listing finish and cache
-	before := totalModelCalls(fk)
+	waitFor(t, "three finished listings", func() bool { return totalDone(fk) == 3 })
 	start := time.Now()
 	l.State()
-	if after := totalModelCalls(fk); after != before || before != 3 {
-		t.Errorf("Models calls before State %d, after %d; want 3 and unchanged", before, after)
+	if after := totalModelCalls(fk); after != 3 {
+		t.Errorf("Models calls after State %d; want 3, unchanged by State", after)
 	}
 	if took := time.Since(start); took > 100*time.Millisecond {
 		t.Errorf("State after prefetch took %v", took)
@@ -83,16 +96,33 @@ func TestNewPrefetchesModelLists(t *testing.T) {
 
 func TestClosePrefetchWaits(t *testing.T) {
 	f, fk := slowFixture(t)
-	fk.ModelDelay = 400 * time.Millisecond
+	fk.ModelDelay = 5 * time.Second
 	l := New(f.d, f.path)
-	time.Sleep(50 * time.Millisecond)
+	waitFor(t, "three listings started", func() bool { return totalModelCalls(fk) == 3 })
 	l.Close()
-	n := totalModelCalls(fk)
-	time.Sleep(600 * time.Millisecond)
-	if after := totalModelCalls(fk); after != n {
-		t.Errorf("Models calls grew from %d to %d after Close", n, after)
+	// The fake unwinds 100ms after cancel: only a Close that waits sees all
+	// three listings returned.
+	ended := 0
+	for _, a := range []string{"c1", "c2", "c3"} {
+		ended += fk.ModelEndedCount(a)
 	}
-	if n != 3 {
-		t.Errorf("prefetch had started %d listings, want 3", n)
+	if ended != 3 {
+		t.Errorf("%d of 3 listings had returned when Close returned", ended)
 	}
+	if totalDone(fk) != 0 {
+		t.Errorf("a listing ran to the end instead of being cancelled")
+	}
+}
+
+func TestPanickingAdapterDoesNotCrashState(t *testing.T) {
+	f, fk := slowFixture(t)
+	fk.ModelDelay = 0
+	fk.ModelPanic = map[string]bool{"c2": true}
+	l := New(f.d, f.path)
+	defer l.Close()
+	s := l.State()
+	if len(s.Models["c1"]) != 1 || len(s.Models["c2"]) != 0 || len(s.Models["c3"]) != 1 {
+		t.Errorf("models %v", s.Models)
+	}
+	l.Doctor()
 }

@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -92,8 +95,11 @@ func (c *CheckCache) ModelsCtx(ctx context.Context, acct adapter.Account, a adap
 	defer e.modelsMu.Unlock()
 	if !e.listed {
 		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		ms, err := a.Models(cctx, acct)
+		ms, err, panicked := callModels(cctx, acct, a)
 		cancel()
+		if panicked {
+			return nil, err
+		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -128,9 +134,9 @@ func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []ad
 	defer e.checkMu.Unlock()
 	if stale := e.stale.Swap(false); !e.checked || stale {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		e.findings = a.Check(ctx, acct)
+		f, ok := callCheck(ctx, acct, a)
 		cancel()
-		e.checked = true
+		e.findings, e.checked = f, ok
 	}
 	return e.findings
 }
@@ -161,4 +167,32 @@ func (c *CheckCache) warmChecks(e *Env, names []string) {
 		}()
 	}
 	wg.Wait()
+}
+
+// panicLog receives adapter panics, which the page is not shown.
+var panicLog = log.New(os.Stderr, "modelpick: ", log.LstdFlags)
+
+// callModels is a.Models turning a panic into an error (panicked), so one broken
+// adapter fails its own listing (not cached) instead of the server.
+func callModels(ctx context.Context, acct adapter.Account, a adapter.Adapter) (ms []adapter.Model, err error, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicLog.Printf("%s: listing models panicked: %v", acct.Name, r)
+			ms, err, panicked = nil, fmt.Errorf("listing models panicked: %v", r), true
+		}
+	}()
+	ms, err = a.Models(ctx, acct)
+	return ms, err, false
+}
+
+// callCheck is a.Check turning a panic into no findings; ok false keeps
+// the result out of the cache so the next use runs Check again.
+func callCheck(ctx context.Context, acct adapter.Account, a adapter.Adapter) (f []adapter.Finding, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicLog.Printf("%s: check panicked: %v", acct.Name, r)
+			f, ok = nil, false
+		}
+	}()
+	return a.Check(ctx, acct), true
 }
