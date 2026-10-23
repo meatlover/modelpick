@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -90,4 +92,23 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("usage endpoint returned HTTP %d", e.Status)
+}
+
+// MaxRetryAfter caps a server's Retry-After (Ruling 28).
+const MaxRetryAfter = 24 * time.Hour
+
+// ParseRetryAfter reads a delay-seconds Retry-After header, clamped to
+// MaxRetryAfter. Anything else (HTTP-date, empty, negative, non-numeric) is 0,
+// meaning unknown.
+func ParseRetryAfter(h string) time.Duration {
+	n, err := strconv.ParseUint(strings.TrimSpace(h), 10, 64)
+	switch {
+	case errors.Is(err, strconv.ErrRange):
+		return MaxRetryAfter // digits only, too many of them
+	case err != nil:
+		return 0
+	case n >= uint64(MaxRetryAfter/time.Second):
+		return MaxRetryAfter
+	}
+	return time.Duration(n) * time.Second
 }

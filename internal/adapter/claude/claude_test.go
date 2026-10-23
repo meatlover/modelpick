@@ -287,6 +287,18 @@ func TestUsage401(t *testing.T) {
 	}
 }
 
+func TestUsage429RetryAfterIsClamped(t *testing.T) {
+	f := newFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "10000000000")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	_, err := f.a.Usage(context.Background(), f.acct)
+	var he *adapter.HTTPError
+	if !errors.As(err, &he) || he.Status != 429 || he.RetryAfter != 24*time.Hour {
+		t.Fatalf("want HTTPError{429, 24h}, got %v (%+v)", err, he)
+	}
+}
+
 func TestUsage429RetryAfter(t *testing.T) {
 	f := newFixture(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "120")

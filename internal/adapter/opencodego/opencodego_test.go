@@ -192,6 +192,7 @@ func TestUsageHTTPErrors(t *testing.T) {
 		want   time.Duration
 	}{
 		{429, "120", 120 * time.Second},
+		{429, "10000000000", 24 * time.Hour},
 		{429, "Wed, 21 Oct 2026 07:28:00 GMT", 0},
 		{429, "", 0},
 		{403, "30", 0},

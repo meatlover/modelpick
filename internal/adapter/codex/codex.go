@@ -10,8 +10,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
@@ -95,7 +93,7 @@ func (a *Adapter) Usage(ctx context.Context, acct adapter.Account) (adapter.Read
 	case http.StatusUnauthorized:
 		return adapter.Reading{}, fmt.Errorf("codex: %w", adapter.ErrUnauthorized)
 	case http.StatusTooManyRequests:
-		return adapter.Reading{}, &adapter.HTTPError{Status: resp.StatusCode, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
+		return adapter.Reading{}, &adapter.HTTPError{Status: resp.StatusCode, RetryAfter: adapter.ParseRetryAfter(resp.Header.Get("Retry-After"))}
 	default:
 		return adapter.Reading{}, &adapter.HTTPError{Status: resp.StatusCode}
 	}
@@ -110,15 +108,6 @@ func (a *Adapter) Usage(ctx context.Context, acct adapter.Account) (adapter.Read
 	}
 	r.TakenAt = a.o.Now()
 	return r, nil
-}
-
-// retryAfter reads a delay-seconds Retry-After; anything else is 0 (unknown).
-func retryAfter(v string) time.Duration {
-	n, err := strconv.Atoi(strings.TrimSpace(v))
-	if err != nil || n < 0 {
-		return 0
-	}
-	return time.Duration(n) * time.Second
 }
 
 type usageJSON struct {
