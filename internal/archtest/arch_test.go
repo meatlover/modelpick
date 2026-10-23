@@ -17,6 +17,8 @@ var allowed = map[string][]string{
 	"internal/adapter":  {},
 	"internal/core":     {"internal/adapter", "internal/pathx"},
 	"internal/usage":    {"internal/adapter", "internal/platform"},
+	"internal/web":      {},
+	"internal/web/demo": {"internal/web"},
 }
 
 // vendorAllowed is the allowance for internal/adapter/<vendor>.
