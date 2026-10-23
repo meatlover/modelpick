@@ -33,6 +33,11 @@ modelpick doctor                       validates the config and everything it de
 `--refresh` forces a usage call even when the last reading is younger than the
 floor. It still honours a server `Retry-After` that has not elapsed.
 
+`doctor` and `ls models` make no usage calls, but they do list each account's
+models locally: Claude from a list built into modelpick, Codex from
+`<codex_home>/models_cache.json`, and OpenCode Go by running
+`opencode models opencode-go`, which may contact OpenCode.
+
 ## Configuration
 
 The config file is, in order: `$MODELPICK_CONFIG`,
