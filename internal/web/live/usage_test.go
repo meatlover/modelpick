@@ -15,6 +15,7 @@ import (
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
+	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/web"
 )
 
@@ -39,10 +40,10 @@ func TestUsageRowFromSavedReading(t *testing.T) {
 	l := f.live()
 	r := rowOf(t, l.Usage(), "claude-main")
 	want := `{"account":"claude-main","vendor":"claude","state":"ok","reading_age_seconds":600,"can_refresh":true,"windows":[` +
-		`{"label":"weekly","length":"7d","used_pct":58,"resets_at":"2026-10-24T00:00:00Z","scope":null},` +
-		`{"label":"session","length":"5h","used_pct":0,"resets_at":"2026-10-22T11:00:00Z","scope":null},` +
-		`{"label":"weekly-fable","length":"7d","used_pct":12,"resets_at":"","scope":"fable"},` +
-		`{"label":"other","length":"7d","used_pct":1,"resets_at":"","scope":"claude-haiku-5-5"}]}`
+		`{"label":"7d","length":"7d","used_pct":58,"resets_at":"2026-10-24T00:00:00Z","scope":null},` +
+		`{"label":"5h","length":"5h","used_pct":0,"resets_at":"2026-10-22T11:00:00Z","scope":null},` +
+		`{"label":"7d fable","length":"7d","used_pct":12,"resets_at":"","scope":"fable"},` +
+		`{"label":"7d claude-haiku-5-5","length":"7d","used_pct":1,"resets_at":"","scope":"claude-haiku-5-5"}]}`
 	if got := mustJSON(t, r); got != want {
 		t.Errorf("row:\n got %s\nwant %s", got, want)
 	}
@@ -101,7 +102,7 @@ func TestRefresh(t *testing.T) {
 		t.Fatalf("refresh claude-rec: %+v %v", row, err)
 	}
 	// Ruling 5: the next State shows the new reading's window labels.
-	if got := mustJSON(t, l.State().Windows["claude-rec"]); got != `{"claude-sonnet-5-5":["session","weekly"]}` {
+	if got := mustJSON(t, l.State().Windows["claude-rec"]); got != `{"claude-sonnet-5-5":["5h","7d"]}` {
 		t.Errorf("windows after refresh: %s", got)
 	}
 	l.Refresh("claude-rec")
@@ -321,5 +322,28 @@ func TestFirstReadingPanicIsLogged(t *testing.T) {
 	l.Close()
 	if !strings.Contains(buf.String(), "go-1") || !strings.Contains(buf.String(), "adapter bug") {
 		t.Errorf("log %q", buf.String())
+	}
+}
+
+// The window label is the display label (wire-format.md), not the vendor's.
+func TestDisplayLabelsOnTheWire(t *testing.T) {
+	week := 7 * 24 * time.Hour
+	ws := []adapter.Window{
+		{Label: "session", Length: 5 * time.Hour},
+		{Label: "weekly_all", Length: week},
+		{Label: "weekly_scoped", Length: week, ScopeModelID: "claude-fable-5-1", ScopeModelName: "Fable"},
+	}
+	got := windowLabels(ws, "claude-fable-5-1")
+	if g := strings.Join(got, ","); g != "5h,7d,7d Fable" {
+		t.Errorf("windowLabels: %s", g)
+	}
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	st := core.AccountState{Reading: &adapter.Reading{TakenAt: now, Windows: ws}}
+	var rows []string
+	for _, w := range usageRow("a", "claude", st, now).Windows {
+		rows = append(rows, w.Label)
+	}
+	if g := strings.Join(rows, ","); g != "5h,7d,7d Fable" {
+		t.Errorf("usage rows: %s", g)
 	}
 }

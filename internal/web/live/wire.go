@@ -120,11 +120,7 @@ func wireModels(ms []adapter.Model) []web.Model {
 // windowLabels are the labels of the windows that apply to model, in the
 // order its cap positions map to them.
 func windowLabels(ws []adapter.Window, model string) []string {
-	out := []string{}
-	for _, w := range core.OrderWindows(ws, model) {
-		out = append(out, w.Label)
-	}
-	return out
+	return core.DisplayLabels(core.OrderWindows(ws, model))
 }
 
 // usageRow is the ls --json row (contract 1–3, ruling 2): the v1 state
@@ -145,8 +141,10 @@ func usageRow(name, vendor string, st core.AccountState, now time.Time) web.Usag
 		age = int(d / time.Second)
 	}
 	row.ReadingAgeSeconds = &age
-	for _, w := range core.ApplyResets(*st.Reading, now).Windows {
-		uw := web.UsageWindow{Label: w.Label, Length: core.FormatLength(w.Length), UsedPct: w.UsedPct}
+	windows := core.ApplyResets(*st.Reading, now).Windows
+	labels := core.DisplayLabels(windows)
+	for i, w := range windows {
+		uw := web.UsageWindow{Label: labels[i], Length: core.FormatLength(w.Length), UsedPct: w.UsedPct}
 		if !w.ResetsAt.IsZero() {
 			uw.ResetsAt = w.ResetsAt.UTC().Format(time.RFC3339)
 		}

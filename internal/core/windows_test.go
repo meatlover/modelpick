@@ -173,3 +173,38 @@ func TestEffectiveCapsDefaultElem(t *testing.T) {
 		t.Fatalf("warns %q", warns)
 	}
 }
+
+func TestDisplayLabel(t *testing.T) {
+	h := time.Hour
+	cases := []struct {
+		name string
+		w    adapter.Window
+		want string
+	}{
+		{"5h general", adapter.Window{Label: "session", Length: 5 * h}, "5h"},
+		{"7d general", adapter.Window{Label: "weekly_all", Length: 168 * h}, "7d"},
+		{"7d scoped name", adapter.Window{Label: "weekly_scoped", Length: 168 * h, ScopeModelID: "claude-fable-5-1", ScopeModelName: "Fable"}, "7d Fable"},
+		{"scoped id only", adapter.Window{Label: "x", Length: 168 * h, ScopeModelID: "claude-haiku-5-5"}, "7d claude-haiku-5-5"},
+		{"unknown length", adapter.Window{Label: "primary_window"}, "primary_window"},
+	}
+	for _, c := range cases {
+		if got := DisplayLabel(c.w); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestDisplayLabelsDuplicatesKeepRaw(t *testing.T) {
+	h := time.Hour
+	ws := []adapter.Window{
+		{Label: "weekly", Length: 168 * h},
+		{Label: "monthly_a", Length: 720 * h},
+		{Label: "session", Length: 5 * h},
+		{Label: "monthly_b", Length: 720 * h},
+	}
+	got := DisplayLabels(ws)
+	want := []string{"7d", "monthly_a", "5h", "monthly_b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v want %v", got, want)
+	}
+}

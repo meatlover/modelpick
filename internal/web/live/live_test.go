@@ -195,8 +195,8 @@ func TestStateModelsWindowsSchedulesProfiles(t *testing.T) {
 	s := f.live().State()
 	checks := map[string]string{
 		"models": mustJSON(t, s.Models),
-		"windows": `{"claude-main":{"claude-fable-5-1":["session","weekly","weekly-fable"],` +
-			`"claude-opus-5-5":["session","weekly"]}}`,
+		"windows": `{"claude-main":{"claude-fable-5-1":["5h","7d","7d fable"],` +
+			`"claude-opus-5-5":["5h","7d"]}}`,
 		"profiles": `[{"name":"coder","choices":[` +
 			`{"account":"claude-main","model":"claude-opus-5-5","thinking":"high","cap":[90,"default","pace+10"],"skip_during":[],"allow_during":[]},` +
 			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":null,"skip_during":["night"],"allow_during":[]},` +

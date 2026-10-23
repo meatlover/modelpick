@@ -308,11 +308,7 @@ func (e *Editor) opEnv(cfg *core.Config) OpEnv {
 			if err != nil || s.Reading == nil {
 				return nil
 			}
-			var labels []string
-			for _, w := range core.OrderWindows(s.Reading.Windows, model) {
-				labels = append(labels, w.Label)
-			}
-			return labels
+			return core.DisplayLabels(core.OrderWindows(s.Reading.Windows, model))
 		},
 	}
 }

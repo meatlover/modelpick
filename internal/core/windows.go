@@ -119,7 +119,7 @@ func EffectiveCaps(account string, cap []CapElem, ordered []adapter.Window, defa
 		caps[i] = CapElem{CapFixed, defaultCap}
 		if w.Length <= 0 {
 			warnings = append(warnings, fmt.Sprintf("%s: unrecognised window %q capped at default_cap %g",
-				account, w.Label, defaultCap))
+				account, DisplayLabel(w), defaultCap))
 		}
 	}
 	return caps, warnings
@@ -162,4 +162,39 @@ func paceWhere(length time.Duration, elapsed float64) string {
 	pos := elapsed / 100 * float64(length) / float64(unit)
 	return fmt.Sprintf("%s %s of %s", name, formatPct(math.Round(pos*10)/10),
 		formatPct(math.Round(float64(length)/float64(unit)*10)/10))
+}
+
+// DisplayLabel is the name a window carries on screen: its length, plus the
+// model it is scoped to ("5h", "7d", "7d Fable"). A window of unknown length
+// keeps the vendor's label.
+func DisplayLabel(w adapter.Window) string {
+	if w.Length <= 0 {
+		return w.Label
+	}
+	label := FormatLength(w.Length)
+	scope := w.ScopeModelName
+	if scope == "" {
+		scope = w.ScopeModelID
+	}
+	if scope != "" {
+		label += " " + scope
+	}
+	return label
+}
+
+// DisplayLabels labels one reading's windows. Windows whose display labels
+// collide keep their vendor labels: unambiguous beats pretty.
+func DisplayLabels(ws []adapter.Window) []string {
+	out := make([]string, len(ws))
+	seen := map[string]int{}
+	for i, w := range ws {
+		out[i] = DisplayLabel(w)
+		seen[out[i]]++
+	}
+	for i, w := range ws {
+		if seen[out[i]] > 1 {
+			out[i] = w.Label
+		}
+	}
+	return out
 }
