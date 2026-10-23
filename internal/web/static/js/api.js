@@ -53,30 +53,53 @@ export async function ping() {
   }
 }
 
-export async function load() {
+async function fetchAll() {
   const [state, usage, doctor] = await Promise.all(
     [getJSON("/api/state"), getJSON("/api/usage"), getJSON("/api/doctor")]);
-  store.set({ state, usage, doctor });
   return { state, usage, doctor };
 }
 
-// reload is load that never rejects: on failure it shows the stopped banner
-// when the server is gone. It resolves true when the store was reloaded.
-export async function reload() {
+// Reloads overlap (focus, the 60 s timer, after each op); generation counts
+// them so that only the newest one started may write the store. An older
+// one, whenever it finishes, is dropped and resolves as the newest does.
+let generation = 0;
+let newest = Promise.resolve(true);
+
+async function reloadAs(mine) {
+  let data;
   try {
-    await load();
-    stopped(false);
-    return true;
+    data = await fetchAll();
   } catch {
-    stopped(!(await ping()));
+    const up = await ping(); // a newer reload may start meanwhile
+    if (mine !== generation) return newest;
+    stopped(!up);
     return false;
   }
+  if (mine !== generation) return newest;
+  store.set(data);
+  stopped(false);
+  return true;
+}
+
+// reload never rejects: on failure it shows the stopped banner when the
+// server is gone. It resolves true when the store was reloaded.
+export function reload() {
+  generation += 1;
+  newest = reloadAs(generation);
+  return newest;
 }
 
 // notApplied shows the refusal toast; a caller that sent with opts.quiet
 // uses it for a refusal it does not handle itself.
 export function notApplied(reason) {
   toast(`${String(reason).replace(new RegExp("[.\\s]+$"), "")}. config.json is unchanged.`, "Not applied.");
+}
+
+// patchSHA records a new base in the store; seen follows, so a reload that
+// brings back the state as it was before the op still counts as a change.
+function patchSHA(sha) {
+  store.state.sha256 = sha;
+  seen.state = JSON.stringify(store.state);
 }
 
 async function attempt(op, args, retry, opts) {
@@ -90,7 +113,7 @@ async function attempt(op, args, retry, opts) {
   }
   if (r.status === 200) {
     // The new base is known now, even if the reload below fails.
-    if (store.state && r.data.sha256) store.state.sha256 = r.data.sha256;
+    if (store.state && r.data.sha256) patchSHA(r.data.sha256);
     await reload();
     return { ok: true, findings: r.data.findings || [] };
   }
