@@ -989,6 +989,12 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--muted);
 }
 
+/* A default box after the first default one: shown, not editable. */
+.cap-box.is-locked,
+.cap-box.is-locked .cap-val {
+  cursor: default;
+}
+
 .cap-add {
   min-width: 54px;
   min-height: 54px;

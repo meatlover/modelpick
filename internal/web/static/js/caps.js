@@ -55,25 +55,28 @@ export function capArg(p) {
   return p.raw;
 }
 
-// writeCap is cap with position pos set to value (null: back to the
-// default). Trailing default positions are dropped; a default position
-// before one with its own value is written as def, the current default cap
-// (the config has no placeholder for "default").
-export function writeCap(cap, pos, value, def) {
-  const DEF = {};
+// The cap array runs from the shortest window up; positions past its end
+// take the default. A default position before an explicit one never
+// happens, so the page never writes the default cap as a number.
+
+// writeCap is cap with position pos set to value: an explicit position is
+// replaced, the first default one appended; null removes the last explicit
+// one. Anything else is null (nothing to send).
+export function writeCap(cap, pos, value) {
+  if (!Number.isInteger(pos) || pos < 0) return null;
+  if (value === null) return cap.length > 0 && pos === cap.length - 1 ? cap.slice(0, -1) : null;
+  if (pos > cap.length) return null;
   const out = cap.slice();
-  while (out.length <= pos) out.push(DEF);
-  out[pos] = value === null ? DEF : value;
-  while (out.length && out[out.length - 1] === DEF) out.pop();
-  return out.map((v) => (v === DEF ? def : v));
+  out[pos] = value;
+  return out;
 }
 
-// trashAction is what trash does on position pos: "default" (it has its
-// own value), "uncap" (no position has one) or null (disabled: removing a
-// default position would shift the ones after it).
+// trashAction is what trash does on position pos: "default" (the last
+// explicit one), "uncap" (the first box when none is explicit) or null
+// (disabled: anything else would leave a default before an explicit one).
 export function trashAction(cap, pos) {
-  if (pos < cap.length) return "default";
-  return cap.length === 0 ? "uncap" : null;
+  if (cap.length === 0) return pos === 0 ? "uncap" : null;
+  return pos === cap.length - 1 ? "default" : null;
 }
 
 // switchKind keeps the number: fixed v → pace+v (1–75), pace N → fixed N.
@@ -102,13 +105,17 @@ export function effect(shown) {
 }
 
 // positions lists the boxes: one per window label when the account has a
-// stored reading, else numbered (at least one, plus those added with +).
-// A hand-written cap longer than that keeps a numbered box per extra value.
+// stored reading, else numbered (at least one; + adds the one default box
+// after the explicit ones). A hand-written cap longer than that keeps a
+// numbered box per extra value. Only the explicit boxes and the first
+// default one are editable.
 export function positions(cap, labels, extra) {
   const named = Array.isArray(labels) && labels.length > 0;
-  const n = named ? Math.max(labels.length, cap.length) : Math.max(cap.length, 1, extra);
+  const n = named ? Math.max(labels.length, cap.length)
+    : Math.max(cap.length, Math.min(Math.max(1, extra), cap.length + 1));
   return Array.from({ length: n }, (_, i) => ({
-    label: named && i < labels.length ? labels[i] : String(i + 1), explicit: i < cap.length }));
+    label: named && i < labels.length ? labels[i] : String(i + 1), explicit: i < cap.length,
+    editable: i <= cap.length }));
 }
 
 // ---------- state that survives repaints ----------
@@ -215,8 +222,8 @@ function commit(key, p, text) {
     if (!now) return unpend(key, p, text); // the card is gone
     if (parsed.kind === "empty") return trashNow(key, p, text);
     const cap = now.choice.cap || [];
-    const next = writeCap(cap, p, capArg(parsed), defaultCap());
-    if (JSON.stringify(next) !== JSON.stringify(cap)) return send(key, p, next, text);
+    const next = writeCap(cap, p, capArg(parsed));
+    if (next !== null && JSON.stringify(next) !== JSON.stringify(cap)) return send(key, p, next, text);
     unpend(key, p, text);
     rerender(key); // "90" shows as "90%" again
     return null;
@@ -234,7 +241,7 @@ function trashNow(key, p, text) {
     rerender(key);
     return null;
   }
-  return send(key, p, act === "uncap" ? null : writeCap(cap, p, null, defaultCap()), text);
+  return send(key, p, act === "uncap" ? null : writeCap(cap, p, null), text);
 }
 
 // focusCard puts focus on the card when the control that had it is gone.
@@ -407,12 +414,15 @@ function frame(ctx, p, pos) {
   return el;
 }
 
+// box draws a closed position; a default one after the first default is
+// shown but disabled (it cannot be written before the ones ahead of it).
 function box(ctx, p, pos) {
   const v = pos.explicit ? elementOf(ctx.choice.cap[p]) : null;
-  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-pace"] },
+  return h("label", { class: ["cap-box", !pos.explicit && "is-default", v && v.kind === "pace" && "is-pace",
+    !pos.editable && "is-locked"] },
     h("span", { class: "mono cap-win" }, pos.label),
     h("input", { type: "text", class: "cap-val", "aria-label": `${pos.label} cap`, "data-key": boxKey(ctx, p),
-      value: boxText(ctx, p), onFocus: () => openBox(ctx, p) }));
+      value: boxText(ctx, p), disabled: !pos.editable, onFocus: () => openBox(ctx, p) }));
 }
 
 function addCaps(ctx) {
@@ -450,7 +460,8 @@ function fill(container, ctx) {
   const labels = byModel ? byModel[c.model] : null;
   const list = positions(c.cap, labels, extra.get(key) || 0);
   list.forEach((pos, p) => container.append(isOpen(key, p) ? frame(ctx, p, pos) : box(ctx, p, pos)));
-  if (!(Array.isArray(labels) && labels.length)) container.append(plus(ctx, list.length));
+  const named = Array.isArray(labels) && labels.length > 0;
+  if (!named && list.every((x) => x.explicit)) container.append(plus(ctx, list.length));
 }
 
 // rerender redraws one card's caps in place. Focus goes to the element

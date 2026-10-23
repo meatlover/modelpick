@@ -4,7 +4,6 @@
 import { parseCap, capArg, writeCap, trashAction, positions, switchKind } from "../js/caps.js";
 
 const json = (x) => JSON.stringify(x);
-const DEF = 95;
 
 // sent is what a typed box puts on the wire.
 const sent = (text) => json(capArg(parseCap(text)));
@@ -24,33 +23,57 @@ export const cases = [
   ["' Pace+10 ' is sent as pace+10", () => sent(" Pace+10 "), `"pace+10"`],
   ["bad text is sent as typed", () => sent("abc"), `"abc"`],
   ["empty box is trash", () => parseCap("").kind === "empty" && trashAction([90], 0), "default"],
-  ["writeCap sets an explicit position", () => json(writeCap([90, "pace+10"], 1, 80, DEF)), "[90,80]"],
-  ["writeCap default before explicit is the default number",
-    () => json(writeCap([], 2, 90, DEF)), "[95,95,90]"],
-  ["writeCap trailing defaults trimmed", () => json(writeCap([90, "pace+10"], 1, null, DEF)), "[90]"],
-  ["writeCap middle back to default", () => json(writeCap([90, 80, 70], 1, null, DEF)), "[90,95,70]"],
-  ["writeCap last explicit to default", () => json(writeCap([90], 0, null, DEF)), "[]"],
+  // Owner ruling 2026-10-23: the cap array runs from the shortest window
+  // up; a default position before an explicit one never happens, so
+  // writeCap never writes a default number.
+  ["writeCap sets an explicit position", () => json(writeCap([90, "pace+10"], 1, 80)), "[90,80]"],
+  ["writeCap sets the first position", () => json(writeCap([90, 80], 0, "pace+5")), `["pace+5",80]`],
+  ["writeCap appends on the first default", () => json(writeCap([90], 1, 80)), "[90,80]"],
+  ["writeCap appends to an empty cap", () => json(writeCap([], 0, 90)), "[90]"],
+  ["writeCap past the first default → null", () => writeCap([], 2, 90), null],
+  ["writeCap two past the end → null", () => writeCap([90], 2, 70), null],
+  ["writeCap negative position → null", () => writeCap([90], -1, 70), null],
+  ["writeCap null on the last explicit → shorter", () => json(writeCap([90, "pace+10"], 1, null)), "[90]"],
+  ["writeCap null on the only explicit → []", () => json(writeCap([90], 0, null)), "[]"],
+  ["writeCap null on a middle position → null", () => writeCap([90, 80, 70], 1, null), null],
+  ["writeCap null on the first default → null", () => writeCap([90], 1, null), null],
+  ["writeCap null on an empty cap → null", () => writeCap([], 0, null), null],
   ["writeCap leaves the input alone", () => {
     const cap = [90];
-    writeCap(cap, 2, 70, DEF);
+    writeCap(cap, 1, 70);
+    writeCap(cap, 0, null);
     return json(cap);
   }, "[90]"],
-  ["trashAction explicit → default", () => trashAction([90, 80], 1), "default"],
-  ["trashAction all default → uncap (cap: null)", () => trashAction([], 0), "uncap"],
-  ["trashAction all default, later box → uncap", () => trashAction([], 2), "uncap"],
+  ["trashAction last explicit → default", () => trashAction([90, 80], 1), "default"],
+  ["trashAction only explicit → default", () => trashAction([90], 0), "default"],
+  ["trashAction middle explicit → disabled", () => trashAction([90, 80, 70], 1), null],
+  ["trashAction first of two explicit → disabled", () => trashAction([90, 80], 0), null],
+  ["trashAction empty cap, first box → uncap (cap: null)", () => trashAction([], 0), "uncap"],
+  ["trashAction empty cap, later box → disabled", () => trashAction([], 2), null],
   ["trashAction default after an explicit → disabled", () => trashAction([90], 1), null],
   ["positions labelled", () => json(positions([90, "pace+10"], ["5h", "7d"], 0)),
-    `[{"label":"5h","explicit":true},{"label":"7d","explicit":true}]`],
-  ["positions labelled, all default", () => json(positions([], ["5h", "7d", "7d Fable"], 0)),
-    `[{"label":"5h","explicit":false},{"label":"7d","explicit":false},{"label":"7d Fable","explicit":false}]`],
+    `[{"label":"5h","explicit":true,"editable":true},{"label":"7d","explicit":true,"editable":true}]`],
+  ["positions labelled, all default: only the first editable",
+    () => json(positions([], ["5h", "7d", "7d Fable"], 0)),
+    `[{"label":"5h","explicit":false,"editable":true},{"label":"7d","explicit":false,"editable":false},` +
+    `{"label":"7d Fable","explicit":false,"editable":false}]`],
+  ["positions labelled, one explicit: the next editable",
+    () => json(positions([90], ["5h", "7d", "7d Fable"], 0)),
+    `[{"label":"5h","explicit":true,"editable":true},{"label":"7d","explicit":false,"editable":true},` +
+    `{"label":"7d Fable","explicit":false,"editable":false}]`],
   ["positions labelled, longer cap numbered", () => json(positions([90, 80, 70], ["5h"], 0)),
-    `[{"label":"5h","explicit":true},{"label":"2","explicit":true},{"label":"3","explicit":true}]`],
+    `[{"label":"5h","explicit":true,"editable":true},{"label":"2","explicit":true,"editable":true},` +
+    `{"label":"3","explicit":true,"editable":true}]`],
   ["positions no reading → one numbered", () => json(positions([], undefined, 0)),
-    `[{"label":"1","explicit":false}]`],
+    `[{"label":"1","explicit":false,"editable":true}]`],
   ["positions empty labels → numbered", () => json(positions([90], [], 0)),
-    `[{"label":"1","explicit":true}]`],
-  ["positions numbered plus added", () => json(positions([90], null, 3)),
-    `[{"label":"1","explicit":true},{"label":"2","explicit":false},{"label":"3","explicit":false}]`],
+    `[{"label":"1","explicit":true,"editable":true}]`],
+  ["positions numbered plus added → one default box", () => json(positions([90], null, 2)),
+    `[{"label":"1","explicit":true,"editable":true},{"label":"2","explicit":false,"editable":true}]`],
+  ["positions numbered, stale added count → still one default box", () => json(positions([90], null, 3)),
+    `[{"label":"1","explicit":true,"editable":true},{"label":"2","explicit":false,"editable":true}]`],
+  ["positions numbered, empty cap with added → one box", () => json(positions([], null, 3)),
+    `[{"label":"1","explicit":false,"editable":true}]`],
   ["switchKind 90 → pace clamps to 75", () => json(switchKind({ kind: "fixed", n: 90 }, "pace")),
     `{"kind":"pace","n":75}`],
   ["switchKind 10 → pace+10", () => json(switchKind({ kind: "fixed", n: 10 }, "pace")),
