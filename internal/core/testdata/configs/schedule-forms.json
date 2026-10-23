@@ -1,0 +1,4 @@
+{"version":1,"schedules":{
+  "one":{"days":["mon"],"utc":["22:00-24:00"]},
+  "many":[{"days":["sat"],"utc":["08:00-12:00"]},{"days":["sun"],"utc":["09:00-11:00"]}],
+  "none":{"days":[],"utc":[]}}}

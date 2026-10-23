@@ -1,0 +1,4 @@
+{"version":1,"accounts":{
+	"a":{"vendor":"claude","config_dir":"~"},
+	"b":{"vendor":"codex","codex_home":"~/.codex"},
+	"c":{"vendor":"opencode-go","key_file":"/k/keys","key_line":1}}}

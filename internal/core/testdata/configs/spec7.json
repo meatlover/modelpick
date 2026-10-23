@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "settings": {"default_cap": 92.5, "min_call_interval_minutes": 10},
+  "accounts": {
+    "claude-main": {"vendor": "claude", "config_dir": "~/.claude"},
+    "go-1": {"vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1}
+  },
+  "schedules": {
+    "deepseek-peak": { "days": ["mon", "tue", "wed", "thu", "fri"],
+                       "utc": ["01:00-04:00", "06:00-10:00"] },
+    "weekend-mornings": [ { "days": ["sat"], "utc": ["08:00-12:00"] },
+                          { "days": ["sun"], "utc": ["09:00-11:00"] } ],
+    "empty": { "days": [], "utc": [] }
+  },
+  "profiles": {
+    "tester": [
+      { "account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null,
+        "cap": [95, "pace+10", "default", 12.5], "allow_during": ["weekend-mornings", "empty"] },
+      { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium",
+        "cap": ["pace+5"], "skip_during": ["deepseek-peak"] },
+      { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "low", "cap": [] }
+    ]
+  }
+}

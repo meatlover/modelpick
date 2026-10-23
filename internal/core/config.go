@@ -56,6 +56,9 @@ type Config struct {
 type ConfigError struct{ Path, Field, Msg string }
 
 func (e *ConfigError) Error() string {
+	if e.Path == "" { // from ParseDoc, which has no file name
+		return fmt.Sprintf("config: %s: %s", e.Field, e.Msg)
+	}
 	return fmt.Sprintf("config %s: %s: %s", e.Path, e.Field, e.Msg)
 }
 
@@ -78,33 +81,6 @@ func Load(path, home string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 	return Parse(data, path, home)
-}
-
-type rawSettings struct {
-	MinCallIntervalMinutes *float64 `json:"min_call_interval_minutes"`
-	DefaultCap             *float64 `json:"default_cap"`
-}
-
-type rawSchedule struct {
-	Days []string `json:"days"`
-	UTC  []string `json:"utc"`
-}
-
-type rawChoice struct {
-	Account     *string         `json:"account"`
-	Model       *string         `json:"model"`
-	Thinking    json.RawMessage `json:"thinking"`
-	Cap         json.RawMessage `json:"cap"`
-	SkipDuring  []string        `json:"skip_during"`
-	AllowDuring []string        `json:"allow_during"`
-}
-
-type rawTop struct {
-	Version   *int                       `json:"version"`
-	Settings  *rawSettings               `json:"settings"`
-	Accounts  map[string]json.RawMessage `json:"accounts"`
-	Schedules map[string]json.RawMessage `json:"schedules"`
-	Profiles  map[string]json.RawMessage `json:"profiles"`
 }
 
 // parser carries the path so every failure becomes a *ConfigError.
@@ -162,65 +138,65 @@ func join(prefix, field string) string {
 // Parse validates data and returns the Config. home expands "~" in paths.
 func Parse(data []byte, path, home string) (*Config, error) {
 	p := parser{path: path}
-	var top rawTop
-	if err := p.strict(data, &top, ""); err != nil {
+	doc, err := p.decodeDoc(data)
+	if err != nil {
 		return nil, err
 	}
-	if top.Version == nil || *top.Version != 1 {
+	return p.validate(doc, home)
+}
+
+// validate runs the cross-checks and expansions over a decoded Doc.
+func (p parser) validate(doc *Doc, home string) (*Config, error) {
+	if doc.Version != 1 {
 		return nil, p.fail("version", "must be 1")
 	}
-	cfg := &Config{Path: path}
+	cfg := &Config{Path: p.path}
 	var err error
-	if cfg.Settings, err = p.settings(top.Settings); err != nil {
+	if cfg.Settings, err = p.settings(doc.Settings); err != nil {
 		return nil, err
 	}
-	if cfg.Accounts, err = p.accounts(top.Accounts, home); err != nil {
+	if cfg.Accounts, err = p.accounts(doc.Accounts, home); err != nil {
 		return nil, err
 	}
-	if cfg.Schedules, err = p.schedules(top.Schedules); err != nil {
+	if cfg.Schedules, err = p.schedules(doc.Schedules); err != nil {
 		return nil, err
 	}
-	if cfg.Profiles, err = p.profiles(top.Profiles, cfg); err != nil {
+	if cfg.Profiles, err = p.profiles(doc.Profiles, cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
 
-func (p parser) settings(raw *rawSettings) (Settings, error) {
+func (p parser) settings(set map[string]float64) (Settings, error) {
 	var d rawSettings
 	if err := json.Unmarshal(defaultsJSON, &d); err != nil || d.MinCallIntervalMinutes == nil || d.DefaultCap == nil {
 		panic("core: embedded defaults.json is malformed")
 	}
 	minutes, capPct := *d.MinCallIntervalMinutes, *d.DefaultCap
-	if raw != nil {
-		if raw.MinCallIntervalMinutes != nil {
-			if *raw.MinCallIntervalMinutes < 0 {
-				return Settings{}, p.fail("settings.min_call_interval_minutes", "must not be negative")
-			}
-			minutes = *raw.MinCallIntervalMinutes
+	if v, ok := set["min_call_interval_minutes"]; ok {
+		if v < 0 {
+			return Settings{}, p.fail("settings.min_call_interval_minutes", "must not be negative")
 		}
-		if raw.DefaultCap != nil {
-			if *raw.DefaultCap < 0 || *raw.DefaultCap > 100 {
-				return Settings{}, p.fail("settings.default_cap", "must be between 0 and 100")
-			}
-			capPct = *raw.DefaultCap
+		minutes = v
+	}
+	if v, ok := set["default_cap"]; ok {
+		if v < 0 || v > 100 {
+			return Settings{}, p.fail("settings.default_cap", "must be between 0 and 100")
 		}
+		capPct = v
 	}
 	return Settings{MinCallInterval: time.Duration(minutes * float64(time.Minute)), DefaultCap: capPct}, nil
 }
 
-func (p parser) accounts(raws map[string]json.RawMessage, home string) (map[string]adapter.Account, error) {
+func (p parser) accounts(docs map[string]DocAccount, home string) (map[string]adapter.Account, error) {
 	out := map[string]adapter.Account{}
-	for _, name := range sortedKeys(raws) {
+	for _, name := range sortedKeys(docs) {
 		prefix := "accounts." + name
 		if name == ReservedAccountName {
 			return nil, p.fail(prefix, "reserved name")
 		}
-		var a adapter.Account
-		if err := p.strict(raws[name], &a, prefix); err != nil {
-			return nil, err
-		}
-		a.Name = name
+		d := docs[name]
+		a := adapter.Account{Name: name, Vendor: d.Vendor, ConfigDir: d.ConfigDir, CodexHome: d.CodexHome, KeyFile: d.KeyFile, KeyLine: d.KeyLine}
 		if err := p.checkVendorFields(a, prefix); err != nil {
 			return nil, err
 		}
@@ -281,29 +257,12 @@ func (p parser) checkVendorFields(a adapter.Account, prefix string) error {
 	return nil
 }
 
-func (p parser) schedules(raws map[string]json.RawMessage) (map[string]Schedule, error) {
+func (p parser) schedules(docs map[string][]DocRule) (map[string]Schedule, error) {
 	out := map[string]Schedule{}
-	for _, name := range sortedKeys(raws) {
-		prefix := "schedules." + name
-		raw := bytes.TrimSpace(raws[name])
-		if len(raw) == 0 || raw[0] != '[' {
-			rule, err := p.scheduleRule(raw, prefix)
-			if err != nil {
-				return nil, err
-			}
-			out[name] = Schedule{Rules: []ScheduleRule{rule}}
-			continue
-		}
-		var items []json.RawMessage
-		if err := p.strict(raw, &items, prefix); err != nil {
-			return nil, err
-		}
-		if len(items) == 0 {
-			return nil, p.fail(prefix, "must not be empty")
-		}
+	for _, name := range sortedKeys(docs) {
 		s := Schedule{}
-		for i, item := range items {
-			rule, err := p.scheduleRule(item, fmt.Sprintf("%s[%d]", prefix, i))
+		for i, r := range docs[name] {
+			rule, err := p.scheduleRule(r, fmt.Sprintf("schedules.%s[%d]", name, i))
 			if err != nil {
 				return nil, err
 			}
@@ -314,13 +273,9 @@ func (p parser) schedules(raws map[string]json.RawMessage) (map[string]Schedule,
 	return out, nil
 }
 
-// scheduleRule parses one {days, utc} object. Both lists present and empty is
+// scheduleRule checks one {days, utc} rule. Both lists present and empty is
 // the valid empty rule; one empty list alone is refused, as is a missing one.
-func (p parser) scheduleRule(raw []byte, prefix string) (ScheduleRule, error) {
-	var rs rawSchedule
-	if err := p.strict(raw, &rs, prefix); err != nil {
-		return ScheduleRule{}, err
-	}
+func (p parser) scheduleRule(rs DocRule, prefix string) (ScheduleRule, error) {
 	bothListed := rs.Days != nil && rs.UTC != nil
 	if !(bothListed && len(rs.Days) == 0 && len(rs.UTC) == 0) {
 		if len(rs.Days) == 0 {
@@ -348,20 +303,12 @@ func (p parser) scheduleRule(raw []byte, prefix string) (ScheduleRule, error) {
 	return s.Rules[0], nil
 }
 
-func (p parser) profiles(raws map[string]json.RawMessage, cfg *Config) (map[string][]Choice, error) {
+func (p parser) profiles(docs map[string][]DocChoice, cfg *Config) (map[string][]Choice, error) {
 	out := map[string][]Choice{}
-	for _, name := range sortedKeys(raws) {
-		prefix := "profiles." + name
-		var items []json.RawMessage
-		if err := p.strict(raws[name], &items, prefix); err != nil {
-			return nil, err
-		}
-		if len(items) == 0 {
-			return nil, p.fail(prefix, "must not be empty")
-		}
-		choices := make([]Choice, 0, len(items))
-		for i, item := range items {
-			c, err := p.choice(item, fmt.Sprintf("%s[%d]", prefix, i), cfg)
+	for _, name := range sortedKeys(docs) {
+		choices := make([]Choice, 0, len(docs[name]))
+		for i, d := range docs[name] {
+			c, err := p.choice(d, fmt.Sprintf("profiles.%s[%d]", name, i), cfg)
 			if err != nil {
 				return nil, err
 			}
@@ -372,72 +319,39 @@ func (p parser) profiles(raws map[string]json.RawMessage, cfg *Config) (map[stri
 	return out, nil
 }
 
-func (p parser) choice(raw json.RawMessage, prefix string, cfg *Config) (Choice, error) {
-	var rc rawChoice
-	if err := p.strict(raw, &rc, prefix); err != nil {
-		return Choice{}, err
-	}
+func (p parser) choice(d DocChoice, prefix string, cfg *Config) (Choice, error) {
 	var c Choice
-	if rc.Account == nil || *rc.Account == "" {
+	if d.Account == "" {
 		return c, p.fail(join(prefix, "account"), "required")
 	}
-	if _, ok := cfg.Accounts[*rc.Account]; !ok {
-		return c, p.fail(join(prefix, "account"), "unknown account %q", *rc.Account)
+	if _, ok := cfg.Accounts[d.Account]; !ok {
+		return c, p.fail(join(prefix, "account"), "unknown account %q", d.Account)
 	}
-	c.Account = *rc.Account
-	if rc.Model == nil || *rc.Model == "" {
+	if d.Model == "" {
 		return c, p.fail(join(prefix, "model"), "required")
 	}
-	c.Model = *rc.Model
-	if rc.Thinking == nil {
-		return c, p.fail(join(prefix, "thinking"), "required (use null for none)")
-	}
-	if string(bytes.TrimSpace(rc.Thinking)) != "null" {
-		var s string
-		if err := json.Unmarshal(rc.Thinking, &s); err != nil {
-			return c, p.fail(join(prefix, "thinking"), "must be a string or null")
-		}
-		c.Thinking = &s
-	}
-	if rc.Cap != nil {
-		if string(bytes.TrimSpace(rc.Cap)) == "null" {
-			return c, p.fail(join(prefix, "cap"), "cap must not be null: omit cap for no limit")
-		}
-		c.Capped = true
-		var items []json.RawMessage
-		if err := json.Unmarshal(rc.Cap, &items); err != nil {
-			return c, p.fail(join(prefix, "cap"), "must be an array")
-		}
-		c.Cap = make([]CapElem, 0, len(items))
-		for j, item := range items {
-			e, err := ParseCapElem(item)
-			if err != nil {
-				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "%s", err.Error())
-			}
-			c.Cap = append(c.Cap, e)
-		}
-	}
-	return c, p.choiceSchedules(&c, rc, prefix, cfg)
+	c = Choice{Account: d.Account, Model: d.Model, Thinking: d.Thinking, Cap: d.Cap, Capped: d.Capped}
+	return c, p.choiceSchedules(&c, d, prefix, cfg)
 }
 
 // choiceSchedules checks skip_during / allow_during and stores them on c.
-func (p parser) choiceSchedules(c *Choice, rc rawChoice, prefix string, cfg *Config) error {
-	if rc.AllowDuring != nil && len(rc.AllowDuring) == 0 {
+func (p parser) choiceSchedules(c *Choice, d DocChoice, prefix string, cfg *Config) error {
+	if d.AllowDuring != nil && len(d.AllowDuring) == 0 {
 		return p.fail(join(prefix, "allow_during"), "must not be empty")
 	}
-	if len(rc.SkipDuring) > 0 && len(rc.AllowDuring) > 0 {
+	if len(d.SkipDuring) > 0 && len(d.AllowDuring) > 0 {
 		return p.fail(prefix, "use skip_during or allow_during, not both")
 	}
 	for _, kind := range []struct {
 		key  string
 		list []string
-	}{{"skip_during", rc.SkipDuring}, {"allow_during", rc.AllowDuring}} {
+	}{{"skip_during", d.SkipDuring}, {"allow_during", d.AllowDuring}} {
 		for _, s := range kind.list {
 			if _, ok := cfg.Schedules[s]; !ok {
 				return p.fail(join(prefix, kind.key), "unknown schedule %q", s)
 			}
 		}
 	}
-	c.SkipDuring, c.AllowDuring = rc.SkipDuring, rc.AllowDuring
+	c.SkipDuring, c.AllowDuring = d.SkipDuring, d.AllowDuring
 	return nil
 }
