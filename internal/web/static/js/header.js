@@ -5,9 +5,10 @@ import { zone, setZone, onZone, localZoneName } from "./time.js";
 
 export const TABS = [["usage", "Usage"], ["profiles", "Profiles"], ["schedules", "Schedules"], ["accounts", "Accounts"]];
 
-// currentTab is the tab the hash names, "usage" for anything else.
+// currentTab is the tab the hash names, "usage" for anything else. A tab
+// may carry a sub-path after a slash (#profiles/<name>).
 export function currentTab() {
-  const id = location.hash.slice(1);
+  const id = location.hash.slice(1).split("/")[0];
   return TABS.some(([t]) => t === id) ? id : "usage";
 }
 

@@ -619,3 +619,315 @@ body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"
   cursor: progress;
   opacity: 0.7;
 }
+
+/* ---------- profiles ---------- */
+
+/* Visually hidden, still read by assistive technology. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.p-capbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 18px;
+}
+
+.p-cap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.p-cap-input {
+  width: 72px;
+  min-height: 36px;
+  font-weight: 600;
+}
+
+.p-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.p-legend-box {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 104px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--dashed);
+  background: var(--default-bg);
+}
+
+.p-legend-win {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.p-legend-val {
+  font: 500 15px var(--font);
+  color: var(--muted);
+}
+
+.p-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+.p-list {
+  flex: 1 1 200px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p-list-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.p-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.p-link:hover {
+  color: var(--text);
+  border-color: var(--input-border);
+}
+
+.p-link[aria-current="true"] {
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.p-link.is-error,
+.p-link.is-error:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.p-link.is-error[aria-current="true"] {
+  border-color: var(--danger-edge);
+}
+
+.p-new,
+.p-add {
+  justify-content: flex-start;
+}
+
+.p-new-input {
+  min-height: 44px;
+  border-radius: 8px;
+}
+
+.p-main {
+  flex: 999 1 640px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.p-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.p-title h1 {
+  overflow-wrap: anywhere;
+}
+
+.p-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+.p-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p-card {
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
+.p-card:focus {
+  outline: none;
+  border-color: var(--paint);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.p-card.is-dragging {
+  border-color: var(--paint);
+  box-shadow: 0 10px 28px var(--shadow-drag);
+  transform: rotate(-0.4deg);
+}
+
+.p-card.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.p-card.is-error:focus {
+  border-color: var(--danger-edge);
+}
+
+.p-slot {
+  height: 56px;
+  border: 2px dashed var(--paint);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-strong);
+}
+
+.p-pos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.p-handle {
+  display: inline-flex;
+  padding: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.p-handle svg {
+  fill: var(--muted);
+}
+
+.p-n {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.p-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.p-selects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.p-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.p-card.is-error .p-field {
+  color: var(--danger-text);
+}
+
+.p-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Filled by caps.js and chips.js; an empty area takes no gap. */
+.p-caps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.p-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.p-caps:empty,
+.p-chips:empty {
+  display: none;
+}
+
+.p-card-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+}
+
+@media (max-width: 720px) {
+  .p-selects {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .p-list {
+    max-width: none;
+  }
+}

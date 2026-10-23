@@ -22,7 +22,8 @@ function mainEl() {
 
 function renderTab() {
   const id = currentTab();
-  if (location.hash !== `#${id}`) history.replaceState(null, "", `#${id}`);
+  const hash = location.hash;
+  if (hash !== `#${id}` && !hash.startsWith(`#${id}/`)) history.replaceState(null, "", `#${id}`);
   clear(mainEl());
   MODULES[id].render(mainEl());
   tick(mainEl());
