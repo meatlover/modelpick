@@ -17,6 +17,10 @@ import (
 	"github.com/meatlover/modelpick/internal/pathx"
 )
 
+// ReservedAccountName cannot name an account: it is the key under which the
+// config API lists models.
+const ReservedAccountName = "models"
+
 //go:embed defaults.json
 var defaultsJSON []byte
 
@@ -31,7 +35,7 @@ type Choice struct {
 	Account    string
 	Model      string
 	Thinking   *string   // nil = JSON null
-	Cap        []float64 // meaningful only when Capped
+	Cap        []CapElem // meaningful only when Capped
 	Capped     bool      // false = "cap" key absent → no limit
 	SkipDuring []string
 }
@@ -205,6 +209,9 @@ func (p parser) accounts(raws map[string]json.RawMessage, home string) (map[stri
 	out := map[string]adapter.Account{}
 	for _, name := range sortedKeys(raws) {
 		prefix := "accounts." + name
+		if name == ReservedAccountName {
+			return nil, p.fail(prefix, "reserved name")
+		}
 		var a adapter.Account
 		if err := p.strict(raws[name], &a, prefix); err != nil {
 			return nil, err
@@ -360,20 +367,17 @@ func (p parser) choice(raw json.RawMessage, prefix string, cfg *Config) (Choice,
 			return c, p.fail(join(prefix, "cap"), "cap must not be null: omit cap for no limit")
 		}
 		c.Capped = true
-		var vals []*float64
-		if err := json.Unmarshal(rc.Cap, &vals); err != nil {
-			return c, p.fail(join(prefix, "cap"), "must be an array of numbers")
+		var items []json.RawMessage
+		if err := json.Unmarshal(rc.Cap, &items); err != nil {
+			return c, p.fail(join(prefix, "cap"), "must be an array")
 		}
-		c.Cap = make([]float64, 0, len(vals))
-		for j, pv := range vals {
-			if pv == nil {
-				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "must be a number")
+		c.Cap = make([]CapElem, 0, len(items))
+		for j, item := range items {
+			e, err := ParseCapElem(item)
+			if err != nil {
+				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "%s", err.Error())
 			}
-			v := *pv
-			c.Cap = append(c.Cap, v)
-			if v < 0 || v > 100 {
-				return c, p.fail(fmt.Sprintf("%s.cap[%d]", prefix, j), "must be between 0 and 100")
-			}
+			c.Cap = append(c.Cap, e)
 		}
 	}
 	for _, s := range rc.SkipDuring {

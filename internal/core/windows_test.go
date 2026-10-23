@@ -76,8 +76,8 @@ func twoWindows() []adapter.Window {
 }
 
 func TestEffectiveCapsFill(t *testing.T) {
-	caps, warns := EffectiveCaps("codex-main", []float64{98}, twoWindows(), 95)
-	if want := []float64{98, 95}; !reflect.DeepEqual(caps, want) {
+	caps, warns := EffectiveCaps("codex-main", []CapElem{{CapFixed, 98}}, twoWindows(), 95)
+	if want := []CapElem{{CapFixed, 98}, {CapFixed, 95}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
 	want := []string{"codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95"}
@@ -87,8 +87,8 @@ func TestEffectiveCapsFill(t *testing.T) {
 }
 
 func TestEffectiveCapsEmptyArray(t *testing.T) {
-	caps, warns := EffectiveCaps("x", []float64{}, twoWindows(), 95)
-	if want := []float64{95, 95}; !reflect.DeepEqual(caps, want) {
+	caps, warns := EffectiveCaps("x", []CapElem{}, twoWindows(), 95)
+	if want := []CapElem{{CapFixed, 95}, {CapFixed, 95}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
 	want := []string{"x: account reports 2 windows (5h, 7d), cap has 0 values; filled positions 1, 2 with default_cap 95"}
@@ -99,8 +99,8 @@ func TestEffectiveCapsEmptyArray(t *testing.T) {
 
 func TestEffectiveCapsTrim(t *testing.T) {
 	ws := []adapter.Window{{Label: "a", Length: 7 * 24 * time.Hour}}
-	caps, warns := EffectiveCaps("codex-main", []float64{90, 80, 70}, ws, 95)
-	if want := []float64{90}; !reflect.DeepEqual(caps, want) {
+	caps, warns := EffectiveCaps("codex-main", []CapElem{{CapFixed, 90}, {CapFixed, 80}, {CapFixed, 70}}, ws, 95)
+	if want := []CapElem{{CapFixed, 90}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
 	want := []string{"codex-main: account reports 1 window (7d), cap has 3 values; ignored the last 2"}
@@ -110,16 +110,16 @@ func TestEffectiveCapsTrim(t *testing.T) {
 }
 
 func TestEffectiveCapsExactNoWarning(t *testing.T) {
-	caps, warns := EffectiveCaps("x", []float64{90, 80}, twoWindows(), 95)
-	if !reflect.DeepEqual(caps, []float64{90, 80}) || len(warns) != 0 {
+	caps, warns := EffectiveCaps("x", []CapElem{{CapFixed, 90}, {CapFixed, 80}}, twoWindows(), 95)
+	if !reflect.DeepEqual(caps, []CapElem{{CapFixed, 90}, {CapFixed, 80}}) || len(warns) != 0 {
 		t.Fatalf("caps %v warns %q", caps, warns)
 	}
 }
 
 func TestEffectiveCapsUnknownWindow(t *testing.T) {
 	ws := append(twoWindows(), adapter.Window{Label: "weird"})
-	caps, warns := EffectiveCaps("claude-main", []float64{90, 80}, ws, 95)
-	if want := []float64{90, 80, 95}; !reflect.DeepEqual(caps, want) {
+	caps, warns := EffectiveCaps("claude-main", []CapElem{{CapFixed, 90}, {CapFixed, 80}}, ws, 95)
+	if want := []CapElem{{CapFixed, 90}, {CapFixed, 80}, {CapFixed, 95}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
 	want := []string{`claude-main: unrecognised window "weird" capped at default_cap 95`}
@@ -161,5 +161,15 @@ func TestFormatLength(t *testing.T) {
 		if got := FormatLength(d); got != want {
 			t.Errorf("%v: got %q want %q", d, got, want)
 		}
+	}
+}
+
+func TestEffectiveCapsDefaultElem(t *testing.T) {
+	caps, warns := EffectiveCaps("x", []CapElem{{CapDefault, 0}, {CapFixed, 80}}, twoWindows(), 95)
+	if want := []CapElem{{CapFixed, 95}, {CapFixed, 80}}; !reflect.DeepEqual(caps, want) {
+		t.Fatalf("caps %v", caps)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("warns %q", warns)
 	}
 }

@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,7 +24,7 @@ func TestExampleConfigParses(t *testing.T) {
 	if cd[3].Capped {
 		t.Error("coder-difficult[3] must be uncapped")
 	}
-	if !cd[1].Capped || !reflect.DeepEqual(cd[1].Cap, []float64{90, 98, 95}) {
+	if !cd[1].Capped || !reflect.DeepEqual(cd[1].Cap, []CapElem{{CapFixed, 90}, {CapFixed, 98}, {CapFixed, 95}}) {
 		t.Errorf("coder-difficult[1].Cap = %v capped=%v", cd[1].Cap, cd[1].Capped)
 	}
 	if th := cfg.Profiles["tester"][0].Thinking; th != nil {
@@ -161,5 +162,52 @@ func TestConfigErrorString(t *testing.T) {
 	e := &ConfigError{Path: "p.json", Field: "a.b", Msg: "bad"}
 	if e.Error() != "config p.json: a.b: bad" {
 		t.Errorf("Error() = %q", e.Error())
+	}
+}
+
+func TestCapElements(t *testing.T) {
+	const field = "profiles.p[0].cap[0]"
+	parse := func(capJSON string) (*Config, error) {
+		doc := strings.Replace(minimal, `"thinking":null`, `"thinking":null,"cap":`+capJSON, 1)
+		return Parse([]byte(doc), "c.json", "/h")
+	}
+	cfg, err := parse(`[90, "pace+10", "default", 12.5]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CapElem{{CapFixed, 90}, {CapPace, 10}, {CapDefault, 0}, {CapFixed, 12.5}}
+	if got := cfg.Profiles["p"][0].Cap; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Cap = %v, want %v", got, want)
+	}
+	if got := fmt.Sprint(want[0], want[1], want[2], want[3]); got != "90 pace+10 default 12.5" {
+		t.Errorf("String() = %q", got)
+	}
+	refusals := []struct{ raw, msg string }{
+		{`["pace+51"]`, `"pace+51": N must be 5–50`},
+		{`["pace+2"]`, `"pace+2": N must be 5–50`},
+		{`["pace+1.5"]`, `"pace+1.5": N must be a whole number`},
+		{`["x"]`, `must be a number, "pace+N" or "default"`},
+		{`[120]`, `must be between 0 and 100`},
+		{`[null]`, `must be a number`},
+	}
+	for _, c := range refusals {
+		_, err := parse(c.raw)
+		var ce *ConfigError
+		if !errors.As(err, &ce) {
+			t.Errorf("%s: err = %v, want *ConfigError", c.raw, err)
+			continue
+		}
+		if ce.Field != field || ce.Msg != c.msg {
+			t.Errorf("%s: got %q: %q, want %q: %q", c.raw, ce.Field, ce.Msg, field, c.msg)
+		}
+	}
+}
+
+func TestReservedAccountName(t *testing.T) {
+	doc := `{"version":1,"accounts":{"models":{"vendor":"claude","config_dir":"/c"}}}`
+	_, err := Parse([]byte(doc), "c.json", "/h")
+	var ce *ConfigError
+	if !errors.As(err, &ce) || ce.Field != "accounts.models" || ce.Msg != "reserved name" {
+		t.Fatalf("err = %v", err)
 	}
 }

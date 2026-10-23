@@ -92,9 +92,13 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 	caps, warnings := EffectiveCaps(c.Account, c.Cap, ordered, p.cfg.Settings.DefaultCap)
 	p.addWarnings(warnings)
 	for i, w := range ordered {
-		if w.UsedPct >= caps[i] {
+		limit := caps[i].N
+		if caps[i].Kind == CapPace {
+			limit = p.cfg.Settings.DefaultCap // until the pace rule lands (Task 3)
+		}
+		if w.UsedPct >= limit {
 			return fmt.Sprintf("%s window %s%% >= cap %s",
-				FormatLength(w.Length), formatPct(w.UsedPct), formatPct(caps[i])), false
+				FormatLength(w.Length), formatPct(w.UsedPct), formatPct(limit)), false
 		}
 	}
 	return "", true

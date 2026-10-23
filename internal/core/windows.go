@@ -82,9 +82,9 @@ func plural(n int, one, many string) string {
 }
 
 // EffectiveCaps returns one cap per ordered window. Known-length windows take
-// cap[i] when present, else defaultCap; unknown-length windows always take
+// cap[i] when present ("default" reads as defaultCap), else defaultCap; unknown-length windows always take
 // defaultCap. Mismatches and unknown windows are described in warnings.
-func EffectiveCaps(account string, cap []float64, ordered []adapter.Window, defaultCap float64) (caps []float64, warnings []string) {
+func EffectiveCaps(account string, cap []CapElem, ordered []adapter.Window, defaultCap float64) (caps []CapElem, warnings []string) {
 	var knownLabels []string
 	for _, w := range ordered {
 		if w.Length > 0 {
@@ -106,13 +106,16 @@ func EffectiveCaps(account string, cap []float64, ordered []adapter.Window, defa
 		warnings = append(warnings, fmt.Sprintf("%s; ignored the last %d", head, m-n))
 	}
 
-	caps = make([]float64, len(ordered))
+	caps = make([]CapElem, len(ordered))
 	for i, w := range ordered {
 		if w.Length > 0 && i < m {
 			caps[i] = cap[i]
+			if cap[i].Kind == CapDefault {
+				caps[i] = CapElem{CapFixed, defaultCap}
+			}
 			continue
 		}
-		caps[i] = defaultCap
+		caps[i] = CapElem{CapFixed, defaultCap}
 		if w.Length <= 0 {
 			warnings = append(warnings, fmt.Sprintf("%s: unrecognised window %q capped at default_cap %g",
 				account, w.Label, defaultCap))
