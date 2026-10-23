@@ -152,46 +152,77 @@ func TestApplyReadOnly(t *testing.T) {
 }
 
 func TestApplyParseRefused(t *testing.T) {
+	app.SetTestOp(t, "test.version2", func(doc *core.Doc) { doc.Version = 2 })
 	f := newEditorFx(t, editorConfig(goodFirst))
 	s := f.load(t)
-	_, _, err := f.ed.Apply(s.SHA256, "account.add",
-		json.RawMessage(`{"name":"claude-x","vendor":"claude","fields":{"config_dir":"relative"}}`))
-	wantRefused(t, err, "Config: accounts.claude-x.config_dir: must be an absolute path or start with ~")
+	_, _, err := f.ed.Apply(s.SHA256, "test.version2", nil)
+	wantRefused(t, err, "Config: version: must be 1")
 	if string(f.bytes(t)) != editorConfig(goodFirst) {
 		t.Fatal("file changed")
 	}
 }
 
+const badThinkingErr = `thinking "max" not supported by claude-opus-5-5 (supported: low, high)`
+
+// A second copy of an existing error is new; the refusal quotes the copy's
+// real subject, and the refused change does not leak into the next apply.
 func TestApplyGateNewError(t *testing.T) {
-	t.Run("thinking error moves to a new choice", func(t *testing.T) {
-		f := newEditorFx(t, editorConfig(badThinking))
-		s := f.load(t)
-		_, _, err := f.ed.Apply(s.SHA256, "choice.move",
-			json.RawMessage(`{"profile":"p","from":0,"to":1,"expect":`+badThinking+`}`))
-		wantRefused(t, err, `Profile p, choice 2: thinking "max" not supported by claude-opus-5-5 (supported: low, high)`)
-		if string(f.bytes(t)) != editorConfig(badThinking) {
-			t.Fatal("file changed")
-		}
-		// The refused move must not leak into the next operation.
-		s1, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := s1.Config.Profiles["p"][0].Account; got != "claude-main" {
-			t.Fatalf("choice 1 account = %s: the refused move leaked", got)
-		}
+	app.SetTestOp(t, "test.dup", func(doc *core.Doc) {
+		cs := doc.Profiles["p"]
+		doc.Profiles["p"] = append([]core.DocChoice{cs[0], cs[0]}, cs[1:]...)
 	})
-	t.Run("added account fails its check", func(t *testing.T) {
-		f := newEditorFx(t, editorConfig(goodFirst))
-		f.claude.Checks["claude-new"] = []adapter.Finding{{Severity: adapter.SeverityError, Message: "no credentials in ~/.claude-new"}}
-		s := f.load(t)
-		_, _, err := f.ed.Apply(s.SHA256, "account.add",
-			json.RawMessage(`{"name":"claude-new","vendor":"claude","fields":{"config_dir":"~/.claude-new"}}`))
-		wantRefused(t, err, "claude-new: no credentials in ~/.claude-new")
-		if string(f.bytes(t)) != editorConfig(goodFirst) {
-			t.Fatal("file changed")
-		}
-	})
+	f := newEditorFx(t, editorConfig(badThinking))
+	s := f.load(t)
+	_, _, err := f.ed.Apply(s.SHA256, "test.dup", nil)
+	wantRefused(t, err, "Profile p, choice 2: "+badThinkingErr)
+	if string(f.bytes(t)) != editorConfig(badThinking) {
+		t.Fatal("file changed")
+	}
+	s1, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(s1.Config.Profiles["p"]); n != 2 {
+		t.Fatalf("profile p has %d choices: the refused copy leaked", n)
+	}
+}
+
+// An existing error that changes position is still the same error.
+func TestApplyGateErrorMoves(t *testing.T) {
+	f := newEditorFx(t, editorConfig(badThinking))
+	s := f.load(t)
+	s1, fs, err := f.ed.Apply(s.SHA256, "choice.move",
+		json.RawMessage(`{"profile":"p","from":0,"to":1,"expect":`+badThinking+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s1.Config.Profiles["p"][1].Account != "claude-main" {
+		t.Fatal("not moved")
+	}
+	want := app.Finding{Severity: "error", Subject: "profile p, choice 2", Message: badThinkingErr}
+	if len(fs) == 0 || fs[0] != want {
+		t.Fatalf("findings = %+v, want %+v first", fs, want)
+	}
+}
+
+// Adapter Check findings are machine state, not config validity: a new
+// account whose credential is missing is added, and the finding reported.
+func TestApplyCheckFindingsDoNotGate(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	f.claude.Checks["claude-new"] = []adapter.Finding{{Severity: adapter.SeverityError, Message: "no credential in ~/.claude-new"}}
+	s := f.load(t)
+	s1, fs, err := f.ed.Apply(s.SHA256, "account.add",
+		json.RawMessage(`{"name":"claude-new","vendor":"claude","fields":{"config_dir":"~/.claude-new"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s1.Config.Accounts["claude-new"]; !ok {
+		t.Fatal("account not written")
+	}
+	want := app.Finding{Severity: "error", Subject: "claude-new", Message: "no credential in ~/.claude-new"}
+	if len(fs) == 0 || fs[0] != want {
+		t.Fatalf("findings = %+v, want %+v first", fs, want)
+	}
 }
 
 func TestApplyGateOldErrorTolerated(t *testing.T) {

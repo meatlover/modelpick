@@ -40,8 +40,8 @@ const (
 // Editor applies page operations to config.json (spec §8.4): every
 // operation re-reads the file, is checked against the sha the page saw, runs
 // on a fresh decode, and is written only if core.Parse accepts the result
-// and the doctor finds no error the current file lacks. One mutex serialises
-// Load and Apply.
+// and the doctor finds no config error beyond the current file's (see
+// newError). One mutex serialises Load and Apply.
 type Editor struct {
 	// OnAccountAdded, if set, is started in its own goroutine after an
 	// account.add is written, so the account's first reading happens in
@@ -150,30 +150,50 @@ func (e *Editor) candidate(cur Snapshot, op string, args json.RawMessage, accoun
 	if op == "account.add" && account != "" {
 		e.checks.Forget(account) // a stale entry from a refused add of this name
 	}
-	before := Doctor(cur.Config, e.d, &e.checks)
-	after := Doctor(cand, e.d, &e.checks)
+	before := doctor(cur.Config, e.d, &e.checks)
+	after := doctor(cand, e.d, &e.checks)
 	if f, ok := newError(before, after); ok {
 		return nil, nil, &Refused{Reason: findingReason(f)}
 	}
-	return data, after, nil
+	return data, after.list, nil
 }
 
-// newError is the first error finding of after that before lacks, compared
-// by subject and message.
-func newError(before, after []Finding) (Finding, bool) {
+// newError is the first error finding of after in excess of before. Errors
+// are compared as a multiset of (subject, message) with a choice's position
+// dropped from the subject, so moving, inserting or removing choices does not
+// turn an existing error into a new one, while a second copy of it is new.
+// Findings from an adapter's Check (binary, credential) are machine state,
+// not config validity, and never block an edit.
+func newError(before, after findings) (Finding, bool) {
 	type key struct{ subject, message string }
-	had := map[key]bool{}
-	for _, f := range before {
-		if f.Severity == sevError {
-			had[key{f.Subject, f.Message}] = true
+	gated := func(fs findings, f Finding) bool { return f.Severity == sevError && !fs.fromCheck[f] }
+	count := map[key]int{}
+	for _, f := range before.list {
+		if gated(before, f) {
+			count[key{gateSubject(f.Subject), f.Message}]++
 		}
 	}
-	for _, f := range after {
-		if f.Severity == sevError && !had[key{f.Subject, f.Message}] {
+	for _, f := range after.list {
+		if !gated(after, f) {
+			continue
+		}
+		k := key{gateSubject(f.Subject), f.Message}
+		if count[k] == 0 {
 			return f, true
 		}
+		count[k]--
 	}
 	return Finding{}, false
+}
+
+// gateSubject drops the choice position: "profile p, choice 3" -> "profile p".
+func gateSubject(subject string) string {
+	if strings.HasPrefix(subject, "profile ") {
+		if i := strings.Index(subject, ", choice "); i >= 0 {
+			return subject[:i]
+		}
+	}
+	return subject
 }
 
 // findingReason is "<subject>: <message>", capitalised unless the subject is

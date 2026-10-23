@@ -77,10 +77,13 @@ func (c *CheckCache) check(name string, acct adapter.Account, a adapter.Adapter)
 	return r
 }
 
-// findings collects findings, dropping exact repeats.
+// findings collects findings, dropping exact repeats. fromCheck marks the
+// ones an adapter's Check reported: machine state, which the editor's gate
+// does not compare.
 type findings struct {
-	list []Finding
-	seen map[Finding]bool
+	list      []Finding
+	seen      map[Finding]bool
+	fromCheck map[Finding]bool
 }
 
 func (f *findings) add(sev, subject, msg string) {
@@ -100,6 +103,11 @@ func (f *findings) add(sev, subject, msg string) {
 // per-account Check and Models results come from cache (nil = a fresh one).
 // The result is sorted by severity (errors first), subject, message.
 func Doctor(cfg *core.Config, d Deps, cache *CheckCache) []Finding {
+	return doctor(cfg, d, cache).list
+}
+
+// doctor is Doctor keeping which findings came from an adapter's Check.
+func doctor(cfg *core.Config, d Deps, cache *CheckCache) findings {
 	if cache == nil {
 		cache = &CheckCache{}
 	}
@@ -123,7 +131,7 @@ func Doctor(cfg *core.Config, d Deps, cache *CheckCache) []Finding {
 		neverFindings(cfg, p, f.add)
 	}
 	sortFindings(f.list)
-	return f.list
+	return f
 }
 
 func sortFindings(fs []Finding) {
@@ -163,6 +171,10 @@ func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, a
 				subject = n
 			}
 			f.add(string(x.Severity), subject, x.Message)
+			if f.fromCheck == nil {
+				f.fromCheck = map[Finding]bool{}
+			}
+			f.fromCheck[Finding{string(x.Severity), subject, x.Message}] = true
 		}
 		if r.modelsErr != nil {
 			f.add(sevWarning, n, "cannot list models, thinking values not checked: "+UsageError(acct.Vendor, r.modelsErr).Error())

@@ -2,6 +2,8 @@ package app
 
 import (
 	"math"
+	"path/filepath"
+	"strings"
 
 	"github.com/meatlover/modelpick/internal/core"
 )
@@ -55,6 +57,10 @@ func setAccountField(acct *core.DocAccount, name string, f accountField, v any) 
 	s, ok := v.(string)
 	if !ok {
 		return refuse("Account %s needs %s", name, f.what)
+	}
+	// The rule core.Parse applies, refused here in the form's words.
+	if !filepath.IsAbs(s) && s != "~" && !strings.HasPrefix(s, "~/") {
+		return refuse("Account %s: %s must be an absolute path or start with ~", name, strings.TrimPrefix(f.what, "a "))
 	}
 	switch f.key {
 	case "config_dir":
