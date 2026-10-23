@@ -96,7 +96,7 @@ func (d *Demo) Apply(req web.OpRequest) (web.OpResult, error) {
 
 func (d *Demo) checkNew(kind, name string, taken func(string) bool) error {
 	if !nameRE.MatchString(name) {
-		return refuse("%s name %q must match ^[a-z0-9][a-z0-9-]*$", capital(kind), name)
+		return refuse("%s name %q: use a–z, 0–9 and -, starting with a letter or digit", capital(kind), name)
 	}
 	if kind == "account" && name == "models" {
 		return refuse("models is a reserved account name")
@@ -110,7 +110,7 @@ func (d *Demo) checkNew(kind, name string, taken func(string) bool) error {
 func (d *Demo) opDefaultCap(a opArgs) error {
 	var v float64
 	if err := json.Unmarshal(a.Value, &v); err != nil || v < 0 || v > 100 {
-		return refuse("default_cap: %s is outside 0–100", strings.TrimSpace(string(a.Value)))
+		return refuse("Global default cap: %s is outside 0–100%%", strings.TrimSpace(string(a.Value)))
 	}
 	d.defaultCap = v
 	return nil
