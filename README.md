@@ -37,7 +37,7 @@ modelpick pick [<profile>] [--refresh]           JSON for one profile; with none
 modelpick env <profile> [--refresh]              the pick as sh export lines, for eval
 modelpick ls [<account>…] [--refresh] [--json]   usage of the named accounts (default: every account): windows, % used, resets, reading age
 modelpick ls models [--json]                     models each configured account's subscription offers
-modelpick config                                 the effective configuration. No network.
+modelpick config                                 the effective configuration. No network; alias: modelpick conf.
 modelpick doctor [all]                           validates the config and everything it depends on. No usage calls, unless `all`.
 modelpick ui [--port N] [--no-open]              a local page to read usage and edit the config
 ```
