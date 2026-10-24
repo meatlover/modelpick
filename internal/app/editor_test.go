@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -296,7 +297,7 @@ func TestApplyGateErrorMoves(t *testing.T) {
 		t.Fatal("not moved")
 	}
 	want := app.Finding{Severity: "error", Subject: "profile p, choice 2", Message: badThinkingErr}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
@@ -316,7 +317,7 @@ func TestApplyCheckFindingsDoNotGate(t *testing.T) {
 		t.Fatal("account not written")
 	}
 	want := app.Finding{Severity: "error", Subject: "claude-new", Message: "no credential in ~/.claude-new"}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
@@ -330,7 +331,7 @@ func TestApplyGateOldErrorTolerated(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := app.Finding{Severity: "error", Subject: "claude-main", Message: "claude not found on PATH"}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 	if f.claude.CheckCalls["claude-main"] != 1 {
@@ -444,5 +445,29 @@ func TestApplyAccountOps(t *testing.T) {
 	}
 	if len(added) != 0 {
 		t.Fatal("OnAccountAdded called for an operation that is not account.add")
+	}
+}
+
+// A tool missing for one account is an ungrouped Check finding; adding a
+// second account with the same missing tool turns it into a grouped one. The
+// gate must not count the grouped finding as new.
+func TestGateIgnoresGroupedCheckErrors(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	for _, n := range []string{"claude-main", "claude-new"} {
+		f.claude.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityError, Account: n, Message: "claude not found on PATH"}}
+	}
+	s := f.load(t)
+	s1, fs, err := f.ed.Apply(s.SHA256, "account.add",
+		json.RawMessage(`{"name":"claude-new","vendor":"claude","fields":{"config_dir":"~/.claude-new"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s1.Config.Accounts["claude-new"]; !ok {
+		t.Fatal("account not written")
+	}
+	want := app.Finding{Severity: "error", Subject: "claude-main, claude-new", Message: "claude not found on PATH",
+		Accounts: []string{"claude-main", "claude-new"}}
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
+		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }

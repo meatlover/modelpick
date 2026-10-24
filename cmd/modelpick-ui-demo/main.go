@@ -51,7 +51,7 @@ func run(port int, noOpen bool) error {
 	}()
 	url := fmt.Sprintf("http://127.0.0.1:%d/?t=%s", actual, token)
 	fmt.Println("modelpick-ui-demo: " + url)
-	fmt.Println("demo: type edit, break, fix or error + Enter")
+	fmt.Println("demo: type edit, break, fix, error or tool + Enter")
 	if !noOpen {
 		openURL(url)
 	}
@@ -69,13 +69,20 @@ func waitForSignal(srv *http.Server) error {
 	return nil
 }
 
-// readCommands applies one demo command per stdin line; EOF just stops reading.
+// readCommands applies one demo command per stdin line and prints ok once
+// it has run, which a test driving the demo waits for; EOF just stops
+// reading. tool toggles opencode missing for the go accounts.
 func readCommands(d *demo.Demo) {
+	toolGone := false
 	commands := map[string]func(){
 		"edit":  d.HandEdit,
 		"break": func() { d.SetBroken("config.json: line 12: invalid character '}'") },
 		"fix":   func() { d.SetBroken("") },
 		"error": d.AddError,
+		"tool": func() {
+			toolGone = !toolGone
+			d.SetToolMissing(toolGone)
+		},
 	}
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
@@ -85,6 +92,7 @@ func readCommands(d *demo.Demo) {
 		}
 		if fn, ok := commands[w]; ok {
 			fn()
+			fmt.Println("ok")
 			continue
 		}
 		fmt.Println("demo: unknown command " + w)

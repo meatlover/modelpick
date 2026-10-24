@@ -17,3 +17,16 @@ export function profileHasError(red, profile) {
   }
   return false;
 }
+
+// accountErrorSet is the set of names to redden: the subject of every error
+// finding, and each name in its accounts (a grouped finding's subject is
+// those names joined, which names no card itself). Warnings add nothing.
+export function accountErrorSet(findings) {
+  const red = new Set();
+  for (const f of findings || []) {
+    if (f.severity !== "error") continue;
+    red.add(f.subject);
+    for (const a of f.accounts || []) red.add(a);
+  }
+  return red;
+}

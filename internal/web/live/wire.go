@@ -162,7 +162,10 @@ func usageRow(name, vendor string, st core.AccountState, now time.Time) web.Usag
 func wireFindings(fs []app.Finding) []web.Finding {
 	out := []web.Finding{}
 	for _, f := range fs {
-		out = append(out, web.Finding{Severity: f.Severity, Subject: f.Subject, Message: f.Message})
+		// A copy, so the wire never shares the app's slice; nil stays nil
+		// and is omitted.
+		out = append(out, web.Finding{Severity: f.Severity, Subject: f.Subject, Message: f.Message,
+			Accounts: append([]string(nil), f.Accounts...)})
 	}
 	return out
 }

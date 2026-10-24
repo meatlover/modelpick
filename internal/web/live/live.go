@@ -1,7 +1,8 @@
 // Package live is the real web.Backend: the page's view of config.json,
 // the saved usage readings and the doctor, and its operations through the
-// app editor. A read never calls a vendor: only Refresh, and one background
-// first reading per account that has none (owner, 2026-10-23), do.
+// app editor. A read never calls a vendor: only Refresh, DoctorAll (Check
+// all), and one background first reading per account that has none (owner,
+// 2026-10-23), do.
 package live
 
 import (
@@ -26,7 +27,7 @@ var errorLog = log.New(os.Stderr, "modelpick ui: ", log.LstdFlags)
 
 // Live serves one config file for one run of the server. It holds the one
 // app.Editor of the run (the safety copy is written once per run). Close
-// ends the background first readings.
+// ends the background work and any Check all still running.
 type Live struct {
 	d     app.Deps
 	path  string
@@ -40,6 +41,13 @@ type Live struct {
 	mu       sync.Mutex
 	started  map[string]bool // accounts whose first reading was started
 	isClosed bool
+	checking *checkRun // the Check all running now; nil when none
+}
+
+// checkRun is one Check all; res is set before done closes.
+type checkRun struct {
+	done chan struct{}
+	res  web.Doctor
 }
 
 var _ web.Backend = (*Live)(nil)
@@ -57,12 +65,9 @@ func New(d app.Deps, path string) *Live {
 // cache State and Doctor use, so the first page load finds them. Model
 // listing only: no vendor usage call. Close cancels and awaits it.
 func (l *Live) startPrefetch() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.isClosed {
+	if !l.track() {
 		return
 	}
-	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		defer func() {
@@ -101,12 +106,9 @@ func newLive(d app.Deps, path string, first func(context.Context, string)) *Live
 // start runs one first reading in a goroutine Close waits for; after
 // Close it starts nothing. A panic is logged, not fatal to the server.
 func (l *Live) start(name string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.isClosed {
+	if !l.track() {
 		return
 	}
-	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		defer func() {
@@ -118,8 +120,20 @@ func (l *Live) start(name string) {
 	}()
 }
 
-// Close cancels the first readings still running and waits for them. It
-// may be called more than once.
+// track counts one piece of work Close waits for; the caller ends it with
+// wg.Done. Once closed it counts nothing and answers false.
+func (l *Live) track() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.isClosed {
+		return false
+	}
+	l.wg.Add(1)
+	return true
+}
+
+// Close cancels the work still running (first readings, the model
+// prefetch, a Check all) and waits for it. It may be called more than once.
 func (l *Live) Close() {
 	l.mu.Lock()
 	l.isClosed = true
@@ -299,7 +313,7 @@ func (l *Live) row(cfg *core.Config, env *app.Env, name string) web.UsageRow {
 	switch {
 	case err != nil:
 		st.Err = err
-	case saved.LastError != "" && (saved.Reading == nil || saved.LastAttempt.After(saved.Reading.TakenAt)):
+	case app.LastAttemptFailed(saved):
 		st.Err = errors.New(saved.LastError)
 	}
 	return usageRow(name, acct.Vendor, st, now)
@@ -337,15 +351,74 @@ func (l *Live) Refresh(account string) (web.UsageRow, error) {
 // reuses the model lists (ruling 4). A file that is missing or does not
 // parse is its one finding.
 func (l *Live) Doctor() web.Doctor {
+	cfg, bad := l.doctorConfig()
+	if cfg == nil {
+		return bad
+	}
+	l.ed.Checks().ForgetChecks()
+	return wireDoctor(app.Doctor(cfg, l.d, l.ed.Checks()))
+}
+
+// DoctorAll is Doctor after at most one usage call per account without a
+// fresh reading (contract 18). Like Doctor it holds no lock, so the page's
+// reads go on while the calls run; Close cancels them and waits for it. A
+// Check all sent while one runs (a second tab) waits for that one and
+// answers its result, so it makes no second set of calls. A file that is
+// missing or does not parse is its one finding, and no call is made; after
+// Close it is plain Doctor.
+func (l *Live) DoctorAll() web.Doctor {
+	cfg, bad := l.doctorConfig()
+	if cfg == nil {
+		return bad
+	}
+	run, first := l.joinCheck()
+	if run == nil {
+		return l.Doctor()
+	}
+	if !first {
+		<-run.done
+		return run.res
+	}
+	defer l.wg.Done()
+	defer func() {
+		l.mu.Lock()
+		l.checking = nil
+		l.mu.Unlock()
+		close(run.done)
+	}()
+	l.ed.Checks().ForgetChecks()
+	run.res = wireDoctor(app.DoctorAll(l.ctx, cfg, l.d, l.ed.Checks()))
+	return run.res
+}
+
+// joinCheck answers the Check all running now (first false), or starts one
+// that Close waits for (first true; the caller ends it with wg.Done after
+// closing run.done). Once closed it answers nil.
+func (l *Live) joinCheck() (run *checkRun, first bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.checking != nil {
+		return l.checking, false
+	}
+	if l.isClosed {
+		return nil, false
+	}
+	l.wg.Add(1)
+	l.checking = &checkRun{done: make(chan struct{})}
+	return l.checking, true
+}
+
+// doctorConfig is the config to check, or nil and the doctor answer for a
+// file that is missing or does not parse.
+func (l *Live) doctorConfig() (*core.Config, web.Doctor) {
 	snap, err := l.ed.Load()
 	switch {
 	case err != nil:
-		return wireDoctor([]app.Finding{app.ConfigFinding(errors.New(l.unreadable(err)))})
+		return nil, wireDoctor([]app.Finding{app.ConfigFinding(errors.New(l.unreadable(err)))})
 	case snap.Config == nil:
-		return wireDoctor([]app.Finding{app.ConfigFinding(errors.New(snap.ReadOnly))})
+		return nil, wireDoctor([]app.Finding{app.ConfigFinding(errors.New(snap.ReadOnly))})
 	}
-	l.ed.Checks().ForgetChecks()
-	return wireDoctor(app.Doctor(snap.Config, l.d, l.ed.Checks()))
+	return snap.Config, web.Doctor{}
 }
 
 // Apply runs one operation through the editor's gate.

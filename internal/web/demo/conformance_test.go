@@ -29,5 +29,10 @@ func TestConformance(t *testing.T) {
 		// The demo holds no credential; this stands for one.
 		Secrets:     []string{"sk-demo-never-held"},
 		Refreshable: "claude-main",
+		UsageCalls:  func() int { return 0 }, // the demo calls no vendor
+		MissingTool: func(*testing.T) []string {
+			d.SetToolMissing(true)
+			return []string{"go-1", "go-2", "go-3"}
+		},
 	})
 }

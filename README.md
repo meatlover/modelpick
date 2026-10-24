@@ -36,21 +36,31 @@ modelpick pick <profile> [--refresh]   JSON: the chosen vendor/account/model/thi
 modelpick ls [--refresh] [--json]      usage of every configured account: windows, % used, resets, reading age
 modelpick ls models [--json]           models each configured account's subscription offers
 modelpick config                       the effective configuration. No network.
-modelpick doctor                       validates the config and everything it depends on. No usage calls.
+modelpick doctor [all]                 validates the config and everything it depends on. No usage calls, unless `all`.
 modelpick ui [--port N] [--no-open]    a local page to read usage and edit the config
 ```
 
 `modelpick ui` serves a page on `127.0.0.1`, prints its URL and opens it.
-The page shows saved readings and calls a vendor only from its Refresh
-buttons (plus one first reading per run for an account that has none). Every
-edit applies to the config file at once, and only if it adds no `doctor`
-error. The first edit rewrites a hand-written file in a canonical layout;
-before it, the file is copied to `~/.cache/modelpick/config.before-ui.json`.
-One instance runs per user: a second `modelpick ui` opens the running one.
+The page shows saved readings. It calls a vendor only from its Refresh
+buttons and its Check all button (`doctor all`), which skip the floor like
+`--refresh`, and for one background first reading per run of an account that
+has none, which keeps the floor. None of them passes a server `Retry-After`
+or an expired token. Every edit applies to the config file at once, and only
+if it adds no `doctor` error. The first edit rewrites a hand-written file in a
+canonical layout; before it, the file is copied to
+`~/.cache/modelpick/config.before-ui.json`. One instance runs per user: a
+second `modelpick ui` opens the running one.
 See the [admin guide](docs/admin.md#the-ui-modelpick-ui).
 
 `--refresh` forces a usage call even when the last reading is younger than the
 floor. It still honours a server `Retry-After` that has not elapsed.
+
+`modelpick doctor all` does what `doctor` does and also checks that each
+account's usage can be read. An account whose saved reading is younger than
+`min_call_interval_minutes` is used as is; for any other account it calls the
+vendor once, like Refresh, ignoring the floor but not a server `Retry-After`
+or an expired token. A reading that fails shows as a warning, unless the vendor answered with a
+rate limit (`Retry-After`), which is not reported.
 
 `doctor` and `ls models` make no usage calls, but they do list each account's
 models locally: Claude from a list built into modelpick, Codex from
@@ -115,7 +125,25 @@ vendor is your decision. You decide whether to use it.
 
 Run `git config core.hooksPath .githooks` once after cloning; the pre-commit
 hook then runs `bash scripts/check.sh` (gofmt, vet, including the `live`-tagged
-smoke test, tests, four-target cross-build) and refuses a commit that fails.
+smoke test, tests, the browser tests, four-target cross-build) and refuses a
+commit that fails.
+
+The browser tests (`e2e/`, Playwright driving Chromium, development only)
+need Node.js 18 or later. Install the locked packages and the browser once:
+
+```sh
+cd e2e && npm ci && npx playwright install chromium
+```
+
+On a fresh Linux machine Chromium also needs system libraries; install it with
+`npx playwright install --with-deps chromium` instead (it runs the system
+package manager, so it may ask for sudo).
+
+`bash scripts/e2e.sh` runs them alone. It builds the test server
+`cmd/modelpick-e2e-server` (the live back end over fake vendors, in a temp
+directory) and the demo, and opens every JS unit test page
+(`internal/web/static/test/*.test.html`). Without Node, the packages or
+Chromium, it and `check.sh` fail and print the command above.
 
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):

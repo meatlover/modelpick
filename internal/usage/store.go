@@ -30,6 +30,10 @@ type Result struct {
 	TokenExpired bool
 	// RetryUntil: a server Retry-After that has not elapsed; zero = none.
 	RetryUntil time.Time
+	// CacheErr is the first failure to take the account's lock or to write
+	// its state file; nil when the cache worked. The same text is in Warnings
+	// (or Err), so a caller that only prints those can ignore it.
+	CacheErr error
 }
 
 // Store reads and writes per-account usage state under Dir.
@@ -117,6 +121,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 // withCacheWarning adds the "cache unavailable" warning when err is set.
 func withCacheWarning(res Result, name string, err error) Result {
 	if err != nil {
+		res.CacheErr = err
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%s: cache unavailable: %v", name, err))
 	}
 	return res
@@ -209,9 +214,9 @@ func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapt
 // warning, or an error naming the cache.
 func cacheUnavailable(name string, stored *adapter.Reading, err error, now time.Time) Result {
 	if stored == nil {
-		return Result{Err: fmt.Errorf("cache unavailable: %w; no usage call made", err)}
+		return Result{Err: fmt.Errorf("cache unavailable: %w; no usage call made", err), CacheErr: err}
 	}
-	return Result{Reading: stored, Warnings: []string{fmt.Sprintf("%s: cache unavailable: %v; using stored reading from %s (%d min old)",
+	return Result{Reading: stored, CacheErr: err, Warnings: []string{fmt.Sprintf("%s: cache unavailable: %v; using stored reading from %s (%d min old)",
 		name, err, stamp(stored.TakenAt), minutesOld(stored.TakenAt, now))}}
 }
 

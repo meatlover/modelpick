@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,7 +169,133 @@ func TestConformance(t *testing.T) {
 		Fix:         func(t *testing.T) { write(t, orig) },
 		Secrets:     []string{secretKey},
 		Refreshable: "claude-main",
+		UsageCalls:  func() int { return f.usageCalls() },
+		MissingTool: func(*testing.T) []string {
+			names := []string{"claude-main", "claude-rec"}
+			for _, n := range names {
+				f.claude.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityError, Account: n,
+					Message: "claude not found on PATH"}}
+			}
+			return names
+		},
 	})
+}
+
+// postDoctorAll sends POST /api/doctor/all through the real handler, logged
+// in, and answers the decoded body.
+func postDoctorAll(t *testing.T, l *Live) web.Doctor {
+	t.Helper()
+	const port, token = 4455, "live-test-token"
+	h := web.NewServer(l, port, token)
+	login := httptest.NewRecorder()
+	h.ServeHTTP(login, httptest.NewRequest("GET", "http://127.0.0.1:4455/?t="+token, nil))
+	r := httptest.NewRequest("POST", "http://127.0.0.1:4455/api/doctor/all", nil)
+	r.Header.Set("Origin", "http://127.0.0.1:4455")
+	for _, c := range login.Result().Cookies() {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var d web.Doctor
+	if err := json.Unmarshal(w.Body.Bytes(), &d); w.Code != 200 || err != nil {
+		t.Fatalf("POST /api/doctor/all: %d %s (%v)", w.Code, w.Body.String(), err)
+	}
+	return d
+}
+
+// TestLiveDoctorAllCallsStaleAccount: claude-main's reading is 20 minutes
+// old, past the 15-minute floor, so Check all calls it; claude-rec's is 5
+// minutes old and is not called. Plain doctor first calls nobody.
+func TestLiveDoctorAllCallsStaleAccount(t *testing.T) {
+	f := newFixture(t)
+	apptest.WriteStored(t, f.d, "claude-main", strings.Replace(claudeStored, "11:50:00Z", "11:40:00Z", 1))
+	apptest.WriteStored(t, f.d, "claude-rec", strings.Replace(claudeStored, "11:50:00Z", "11:55:00Z", 1))
+	l := f.live()
+	l.Doctor()
+	if n := f.claude.TotalUsage(); n != 0 {
+		t.Fatalf("plain doctor made %d claude usage calls", n)
+	}
+	postDoctorAll(t, l)
+	if n := f.claude.TotalUsage(); n != 1 {
+		t.Errorf("Check all made %d claude usage calls, want 1 (claude-main)", n)
+	}
+	if row := rowOf(t, l.Usage(), "claude-main"); row.ReadingAgeSeconds == nil || *row.ReadingAgeSeconds != 0 {
+		t.Errorf("claude-main after Check all: %+v, want a new reading", row)
+	}
+}
+
+// DoctorAll keeps Doctor's guard: a config that does not parse is its one
+// finding, and no account is called.
+func TestLiveDoctorAllReadOnlyMakesNoCall(t *testing.T) {
+	f := newFixture(t)
+	l := f.live()
+	if err := os.WriteFile(f.path, []byte(`{"version": 1, "accounts": `), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := postDoctorAll(t, l)
+	if d.Errors != 1 || len(d.Findings) != 1 || d.Findings[0].Subject != "config" {
+		t.Errorf("doctor all on a broken config: %+v", d)
+	}
+	if n := f.usageCalls(); n != 0 {
+		t.Errorf("doctor all on a broken config made %d usage calls", n)
+	}
+}
+
+// Close waits for a Check all still running, as for a first reading. The
+// cancelled usage call is slow to return (UsageSlow), so an untracked
+// DoctorAll is caught: every call it started must have returned when Close
+// does. (DoctorAll's own return can trail its tracked region, so the test
+// does not wait for that.) Once closed, Check all makes no call.
+func TestCloseWaitsForDoctorAll(t *testing.T) {
+	f := newFixture(t)
+	f.claude.UsageDelay = 5 * time.Second
+	f.claude.UsageSlow = 300 * time.Millisecond
+	l := f.live()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		l.DoctorAll()
+	}()
+	waitFor(t, "a usage call", func() bool { return f.claude.TotalUsage() > 0 })
+	l.Close()
+	if started, ended := f.claude.TotalUsage(), f.claude.UsageEnded(); ended != started {
+		t.Errorf("when Close returned: %d usage calls started, %d returned", started, ended)
+	}
+	<-done
+	before := f.usageCalls()
+	l.DoctorAll()
+	if after := f.usageCalls(); after != before {
+		t.Errorf("Check all after Close: usage calls %d -> %d", before, after)
+	}
+}
+
+// TestConcurrentDoctorAllShareOneRun: a Check all sent while one runs (a
+// second tab) waits for it and answers its result, so each account due a
+// call gets one. claude-rec, codex-main and go-1 have no reading;
+// claude-main's is fresh.
+func TestConcurrentDoctorAllShareOneRun(t *testing.T) {
+	f := newFixture(t)
+	f.claude.UsageDelay = 300 * time.Millisecond
+	l := f.live()
+	var got [2]web.Doctor
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		got[0] = l.DoctorAll()
+	}()
+	waitFor(t, "claude-rec's call", func() bool { return f.claude.TotalUsage() > 0 })
+	got[1] = l.DoctorAll()
+	wg.Wait()
+	calls := map[string]int{"claude-rec": f.claude.TotalUsage(), "codex-main": f.codex.TotalUsage(), "go-1": f.goSrv.count()}
+	for n, c := range calls {
+		if c != 1 {
+			t.Errorf("%s: %d usage calls over two concurrent Check alls, want 1", n, c)
+		}
+	}
+	if a, b := mustJSON(t, got[0]), mustJSON(t, got[1]); a != b {
+		t.Errorf("the second Check all answered\n%s\nwant the running one's\n%s", b, a)
+	}
 }
 
 func mustJSON(t *testing.T, v any) string {

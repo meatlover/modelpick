@@ -36,18 +36,27 @@ func NewServer(b Backend, port int, token string) http.Handler {
 	mux.HandleFunc("GET /api/doctor", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, normalDoctor(b.Doctor()))
 	})
-	// The catch-all "/" below would otherwise turn a wrong method into 404.
-	mux.HandleFunc("/api/usage/{account}/refresh", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/usage/{account}/refresh", postOnly(refreshHandler(b)))
+	mux.HandleFunc("/api/doctor/all", postOnly(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, normalDoctor(b.DoctorAll()))
+	}))
+	mux.HandleFunc("POST /api/op", opHandler(b))
+	mux.Handle("/", http.FileServerFS(sub))
+	return withHeaders(guard(mux, port, token))
+}
+
+// postOnly answers any other method 405 with Allow: POST. The routes it
+// wraps carry no method, because the catch-all "/" would otherwise turn a
+// wrong method into 404.
+func postOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		refreshHandler(b)(w, r)
-	})
-	mux.HandleFunc("POST /api/op", opHandler(b))
-	mux.Handle("/", http.FileServerFS(sub))
-	return withHeaders(guard(mux, port, token))
+		next(w, r)
+	}
 }
 
 func refreshHandler(b Backend) http.HandlerFunc {

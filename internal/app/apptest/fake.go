@@ -21,10 +21,12 @@ var (
 	Later = Now.Add(72 * time.Hour)
 )
 
-// Fake serves canned usage per account name and counts calls. ModelList,
-// Checks, Readings, Errs and Expired must not be mutated once a call may be
-// running: only the call counters are guarded. An
-// account missing from Readings and Errs has unknown usage (ErrShape).
+// Fake serves canned usage per account name and counts calls. Its maps are
+// set directly before any call may run; once one may, Errs, Checks and
+// ModelList change only through SetErr, SetChecks and SetModels, which take
+// the lock their readers take. Readings and Expired must not be mutated
+// then. An account missing from Readings and Errs has unknown usage
+// (ErrShape).
 type Fake struct {
 	vendor     string
 	Readings   map[string]adapter.Reading
@@ -40,8 +42,44 @@ type Fake struct {
 	ModelPanic map[string]bool              // Models panics for these accounts
 	ModelDone  map[string]int               // Models calls that ran to the end (not cancelled)
 	ModelEnded map[string]int               // Models calls that returned, cancelled or not
+	UsageDelay time.Duration                // each Usage call takes this long, or until its ctx ends
+	UsageSlow  time.Duration                // a Usage call its ctx ended takes this long more to return
+	usageEnded int                          // Usage calls that returned, cancelled or not
 
-	mu sync.Mutex // guards the call counters: Models and Check run concurrently
+	mu sync.Mutex // guards the call counters, Errs, Checks and ModelList: calls run concurrently
+}
+
+// SetErr makes account's Usage calls fail with err; nil removes the failure.
+func (f *Fake) SetErr(account string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err == nil {
+		delete(f.Errs, account)
+		return
+	}
+	f.Errs[account] = err
+}
+
+// SetChecks sets account's Check findings; nil removes them.
+func (f *Fake) SetChecks(account string, fs []adapter.Finding) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if fs == nil {
+		delete(f.Checks, account)
+		return
+	}
+	f.Checks[account] = fs
+}
+
+// SetModels sets account's model list; nil removes it, so Models fails.
+func (f *Fake) SetModels(account string, ms []adapter.Model) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if ms == nil {
+		delete(f.ModelList, account)
+		return
+	}
+	f.ModelList[account] = ms
 }
 
 // ModelCallCount is the Models calls for account, safe beside running calls.
@@ -77,11 +115,27 @@ func (f *Fake) Credential(acct adapter.Account) adapter.CredStatus {
 	return adapter.CredStatus{Present: true, Expired: f.Expired[acct.Name], Source: "fake: " + acct.Name}
 }
 
-func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, error) {
+func (f *Fake) Usage(ctx context.Context, acct adapter.Account) (adapter.Reading, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.Calls[acct.Name]++
-	if err, ok := f.Errs[acct.Name]; ok {
+	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.usageEnded++
+		f.mu.Unlock()
+	}()
+	if f.UsageDelay > 0 {
+		select {
+		case <-time.After(f.UsageDelay):
+		case <-ctx.Done():
+			time.Sleep(f.UsageSlow)
+			return adapter.Reading{}, ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	err, failed := f.Errs[acct.Name]
+	f.mu.Unlock()
+	if failed {
 		return adapter.Reading{}, err
 	}
 	if r, ok := f.Readings[acct.Name]; ok {
@@ -110,8 +164,9 @@ func (f *Fake) Models(ctx context.Context, acct adapter.Account) ([]adapter.Mode
 	}
 	f.mu.Lock()
 	f.ModelDone[acct.Name]++
+	m, ok := f.ModelList[acct.Name]
 	f.mu.Unlock()
-	if m, ok := f.ModelList[acct.Name]; ok {
+	if ok {
 		return m, nil
 	}
 	return nil, errors.New("fake: no models")
@@ -119,17 +174,28 @@ func (f *Fake) Models(ctx context.Context, acct adapter.Account) ([]adapter.Mode
 
 func (f *Fake) Check(_ context.Context, acct adapter.Account) []adapter.Finding {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.CheckCalls[acct.Name]++
-	f.mu.Unlock()
 	return f.Checks[acct.Name]
 }
 
+// TotalUsage is the Usage calls over all accounts, safe beside running calls.
 func (f *Fake) TotalUsage() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	n := 0
 	for _, c := range f.Calls {
 		n += c
 	}
 	return n
+}
+
+// UsageEnded is the Usage calls over all accounts that have returned,
+// cancelled or not; safe beside running calls.
+func (f *Fake) UsageEnded() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.usageEnded
 }
 
 // ClaudeReading reports a 5h and a 7d window, matching a two-value cap so no
@@ -145,10 +211,19 @@ func ClaudeReading(session, weekly float64) adapter.Reading {
 // XDG_CACHE_HOME at temp paths, so nothing real is read or written.
 func NewDeps(t *testing.T, configJSON string, fakes ...*Fake) app.Deps {
 	t.Helper()
-	dir := t.TempDir()
+	d, err := NewDepsDir(t.TempDir(), configJSON, fakes...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// NewDepsDir is NewDeps in dir: it writes dir/config.json and points
+// MODELPICK_CONFIG at it and XDG_CACHE_HOME at dir/cache. The clock is Now.
+func NewDepsDir(dir, configJSON string, fakes ...*Fake) (app.Deps, error) {
 	cfgPath := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(configJSON), 0o600); err != nil {
-		t.Fatal(err)
+		return app.Deps{}, err
 	}
 	vars := map[string]string{
 		"MODELPICK_CONFIG": cfgPath,
@@ -163,7 +238,7 @@ func NewDeps(t *testing.T, configJSON string, fakes ...*Fake) app.Deps {
 		Home:     "/home/u",
 		Now:      func() time.Time { return Now },
 		Adapters: adapters,
-	}
+	}, nil
 }
 
 // Config is a three-account, three-profile v1 config.

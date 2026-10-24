@@ -1,6 +1,6 @@
 // The shared header: name, config path, tabs, UTC/Local switch, doctor status.
 import { h, clear } from "./dom.js";
-import { store } from "./api.js";
+import { store, doctorAll } from "./api.js";
 import { zone, setZone, onZone, localZoneName } from "./time.js";
 
 export const TABS = [["usage", "Usage"], ["profiles", "Profiles"], ["schedules", "Schedules"], ["accounts", "Accounts"]];
@@ -59,19 +59,24 @@ function fillStatus(parts, doctor) {
   parts.findings = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity !== "error")];
   clear(parts.list);
   parts.list.append(...parts.findings.map(findingItem));
+  parts.none.hidden = parts.findings.length > 0;
   parts.sync();
 }
 
-// wirePopover: hover and keyboard focus show the findings while they last;
-// a click pins them open (or unpins: they then stay until the pointer
-// leaves); Escape or a click outside unpins and hides. A pointer press also
-// focuses the button, so that focus is not counted, or unpinning by click
-// would leave them open until blur.
+// wirePopover: hovering the status, or keyboard focus anywhere in it (the
+// button or the panel's Check all), shows the panel while there are
+// findings. A click pins it open even with none (it then says so), or
+// unpins it: it then stays only while hovered. Escape or a click outside
+// unpins and hides it; Escape from inside the panel puts focus back on the
+// button. A pointer press also focuses what it presses, so that focus is
+// not counted, or unpinning by click would leave the panel open until blur.
 function wirePopover(parts) {
   const on = { hover: false, focus: false, pinned: false };
   let pressing = false;
   parts.sync = () => {
-    parts.pop.hidden = !parts.findings.length || !(on.hover || on.focus || on.pinned);
+    const preview = (on.hover || on.focus) && parts.findings.length > 0;
+    parts.pop.hidden = !(on.pinned || preview);
+    parts.btn.setAttribute("aria-expanded", String(!parts.pop.hidden));
   };
   const set = (key, value) => { on[key] = value; parts.sync(); };
   const close = () => {
@@ -79,24 +84,51 @@ function wirePopover(parts) {
     on.focus = false;
     set("pinned", false);
   };
-  parts.btn.addEventListener("pointerdown", () => { pressing = true; });
+  parts.wrap.addEventListener("pointerdown", () => { pressing = true; });
   for (const type of ["pointerup", "pointercancel"]) {
     document.addEventListener(type, () => { pressing = false; }, true);
   }
   parts.btn.addEventListener("click", () => set("pinned", !on.pinned));
   parts.wrap.addEventListener("mouseenter", () => set("hover", true));
   parts.wrap.addEventListener("mouseleave", () => set("hover", false));
-  parts.btn.addEventListener("focus", () => { if (!pressing) set("focus", true); });
-  parts.btn.addEventListener("blur", () => set("focus", false));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  parts.wrap.addEventListener("focusin", () => { if (!pressing) set("focus", true); });
+  parts.wrap.addEventListener("focusout", (e) => { if (!parts.wrap.contains(e.relatedTarget)) set("focus", false); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (parts.pop.contains(document.activeElement)) parts.btn.focus();
+    close();
+  });
   document.addEventListener("click", (e) => { if (!parts.wrap.contains(e.target)) close(); });
+}
+
+// checkAllButton runs `doctor all`; it is aria-disabled while that runs, so
+// a second click does nothing. Not disabled: that would drop the keyboard
+// focus, and with it the panel the focus holds open.
+function checkAllButton() {
+  const btn = h("button", { type: "button", class: "btn btn-md btn-quiet check-all" }, "Check all");
+  btn.addEventListener("click", async () => {
+    if (btn.getAttribute("aria-disabled") === "true") return;
+    btn.setAttribute("aria-disabled", "true");
+    btn.classList.add("is-busy");
+    btn.textContent = "Checking…";
+    try {
+      await doctorAll();
+    } finally {
+      btn.removeAttribute("aria-disabled");
+      btn.classList.remove("is-busy");
+      btn.textContent = "Check all";
+    }
+  });
+  return btn;
 }
 
 function statusButton() {
   const parts = { label: h("span"), list: h("ul", { class: "pop-list" }), findings: [] };
-  parts.btn = h("button", { type: "button", class: "status", "aria-describedby": "doctor-pop" },
+  parts.none = h("p", { class: "pop-none" }, "No problems found");
+  parts.btn = h("button", { type: "button", class: "status", "aria-controls": "doctor-pop" },
     h("span", { class: "dot", "aria-hidden": "true" }), parts.label);
-  parts.pop = h("div", { id: "doctor-pop", class: "pop", role: "tooltip", hidden: true }, parts.list);
+  parts.pop = h("div", { id: "doctor-pop", class: "pop", role: "region", "aria-label": "Doctor findings", hidden: true },
+    parts.none, parts.list, checkAllButton());
   parts.wrap = h("div", { class: "status-wrap", hidden: true }, parts.btn, parts.pop);
   wirePopover(parts);
   return parts;

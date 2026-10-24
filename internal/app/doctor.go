@@ -17,8 +17,18 @@ const (
 // Finding is one doctor result. Subject is `<account>`, `profile <p>`,
 // `profile <p>, choice <n>` (1-based), `schedule <name>` or `config`. The UI
 // compares findings by subject and message, so neither carries a time or a
-// counter.
-type Finding struct{ Severity, Subject, Message string }
+// counter. Accounts is set only on a grouped finding (one cause shared by
+// two or more accounts): their names, sorted, with Subject their join.
+type Finding struct {
+	Severity, Subject, Message string
+	Accounts                   []string
+}
+
+// findingKey is what identifies a finding: Finding holds a slice, so it is
+// not comparable and cannot key a map itself.
+type findingKey struct{ sev, subject, msg string }
+
+func (x Finding) key() findingKey { return findingKey{x.Severity, x.Subject, x.Message} }
 
 // ConfigFinding is the one finding of a config that does not parse.
 func ConfigFinding(err error) Finding {
@@ -30,19 +40,19 @@ func ConfigFinding(err error) Finding {
 // does not compare.
 type findings struct {
 	list      []Finding
-	seen      map[Finding]bool
-	fromCheck map[Finding]bool
+	seen      map[findingKey]bool
+	fromCheck map[findingKey]bool
 }
 
 func (f *findings) add(sev, subject, msg string) {
-	x := Finding{sev, subject, msg}
-	if f.seen[x] {
+	x := Finding{Severity: sev, Subject: subject, Message: msg}
+	if f.seen[x.key()] {
 		return
 	}
 	if f.seen == nil {
-		f.seen = map[Finding]bool{}
+		f.seen = map[findingKey]bool{}
 	}
-	f.seen[x] = true
+	f.seen[x.key()] = true
 	f.list = append(f.list, x)
 }
 
@@ -66,8 +76,8 @@ func doctor(cfg *core.Config, d Deps, cache *CheckCache) findings {
 	}
 	sort.Strings(accounts)
 
-	models := accountFindings(&f, cfg, d, cache, accounts)
-	savedFindings(&f, cfg, d, accounts)
+	models, checked := accountFindings(&f, cfg, d, cache, accounts)
+	savedFindings(&f, cfg, d, accounts, checked)
 	scheduleFindings(cfg, f.add)
 	for _, p := range sortedProfiles(cfg) {
 		for i, c := range cfg.Profiles[p] {
@@ -78,6 +88,7 @@ func doctor(cfg *core.Config, d Deps, cache *CheckCache) findings {
 		}
 		neverFindings(cfg, p, f.add)
 	}
+	groupCheckFindings(&f)
 	sortFindings(f.list)
 	return f
 }
@@ -102,10 +113,12 @@ func sortFindings(fs []Finding) {
 }
 
 // accountFindings reports each account's adapter Check findings and returns
-// the model list of every account whose models could be listed.
-func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, accounts []string) map[string][]adapter.Model {
+// the model list of every account whose models could be listed, and the set
+// of accounts with a Check finding of any severity.
+func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, accounts []string) (map[string][]adapter.Model, map[string]bool) {
 	e := NewEnv(d, cfg, false)
 	models := map[string][]adapter.Model{}
+	checked := map[string]bool{}
 	cache.warmChecks(e, accounts)
 	for _, n := range accounts {
 		acct, a, err := e.AdapterFor(n)
@@ -114,29 +127,77 @@ func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, a
 			continue
 		}
 		r := cache.check(n, acct, a)
-		for _, x := range r.findings {
-			subject := x.Account
-			if subject == "" {
-				subject = n
-			}
-			f.add(string(x.Severity), subject, x.Message)
-			if f.fromCheck == nil {
-				f.fromCheck = map[Finding]bool{}
-			}
-			f.fromCheck[Finding{string(x.Severity), subject, x.Message}] = true
-		}
+		checkErr := checkFindings(f, n, r.findings)
+		checked[n] = len(r.findings) > 0
 		if r.modelsErr != nil {
-			f.add(sevWarning, n, "cannot list models, thinking values not checked: "+UsageError(acct.Vendor, r.modelsErr).Error())
+			// A Check error (tool or credential missing) is the cause of the
+			// failed listing; a second warning would repeat it.
+			if !checkErr {
+				f.add(sevWarning, n, "cannot list models, thinking values not checked: "+UsageError(acct.Vendor, r.modelsErr).Error())
+			}
 			continue
 		}
 		models[n] = r.models // present even when empty, so its choices are still checked
 	}
-	return models
+	return models, checked
+}
+
+// checkFindings adds one account's adapter Check findings, marking them
+// fromCheck, and reports whether any is an error.
+func checkFindings(f *findings, account string, fs []adapter.Finding) (hasErr bool) {
+	for _, x := range fs {
+		subject := x.Account
+		if subject == "" {
+			subject = account
+		}
+		sev := string(x.Severity)
+		f.add(sev, subject, x.Message)
+		if f.fromCheck == nil {
+			f.fromCheck = map[findingKey]bool{}
+		}
+		f.fromCheck[findingKey{sev, subject, x.Message}] = true
+		hasErr = hasErr || sev == sevError
+	}
+	return hasErr
+}
+
+// groupCheckFindings replaces Check findings with the same severity and
+// message on two or more accounts by one finding naming them all.
+func groupCheckFindings(f *findings) {
+	type cause struct{ sev, msg string }
+	by := map[cause][]string{}
+	for _, x := range f.list {
+		if f.fromCheck[x.key()] {
+			c := cause{x.Severity, x.Message}
+			by[c] = append(by[c], x.Subject)
+		}
+	}
+	out := f.list[:0:0]
+	done := map[cause]bool{}
+	for _, x := range f.list {
+		c := cause{x.Severity, x.Message}
+		if !f.fromCheck[x.key()] || len(by[c]) < 2 {
+			out = append(out, x)
+			continue
+		}
+		if done[c] {
+			continue
+		}
+		done[c] = true
+		names := append([]string(nil), by[c]...)
+		sort.Strings(names)
+		g := Finding{Severity: x.Severity, Subject: strings.Join(names, ", "), Message: x.Message, Accounts: names}
+		f.fromCheck[g.key()] = true
+		out = append(out, g)
+	}
+	f.list = out
 }
 
 // savedFindings compares each capped choice's cap count with the windows of
-// the account's saved reading; no lock, no network.
-func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string) {
+// the account's saved reading, and reports a last usage call that failed
+// unless the account is rate-limited or its Check finding (checked) is the
+// cause; no lock, no network.
+func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string, checked map[string]bool) {
 	store := NewStore(d, cfg)
 	saved := map[string]*adapter.Reading{}
 	for _, n := range accounts {
@@ -146,6 +207,9 @@ func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string) {
 			continue
 		}
 		saved[n] = s.Reading
+		if LastAttemptFailed(s) && !s.RetryUntil.After(d.Now()) && !checked[n] {
+			f.add(sevWarning, n, "last usage reading failed: "+s.LastError)
+		}
 		if s.Reading != nil {
 			for _, note := range s.Reading.Notes {
 				f.add(sevWarning, n, note)

@@ -197,7 +197,7 @@ func newError(before, after findings) (Finding, bool) {
 func gatedErrors(fs findings) []Finding {
 	var out []Finding
 	for _, f := range fs.list {
-		if f.Severity == sevError && !fs.fromCheck[f] {
+		if f.Severity == sevError && !fs.fromCheck[f.key()] {
 			out = append(out, f)
 		}
 	}

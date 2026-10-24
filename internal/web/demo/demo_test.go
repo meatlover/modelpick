@@ -395,6 +395,72 @@ func TestDoctorAndAddError(t *testing.T) {
 	}
 }
 
+// DoctorAll's failed codex-main call shows on its Usage row and as one
+// doctor warning, however often it runs, until a Refresh of codex-main
+// succeeds and clears both.
+func TestDoctorAllMarksTheRowUntilRefresh(t *testing.T) {
+	d := newDemo()
+	d.delay = 0
+	const want = "codex-main: last usage reading failed: usage endpoint returned HTTP 503"
+	count := func(doc web.Doctor) int {
+		n := 0
+		for _, f := range doc.Findings {
+			if f.Severity == "warning" && f.Subject+": "+f.Message == want {
+				n++
+			}
+		}
+		return n
+	}
+	codex := func() web.UsageRow { return rowNamed(t, d.Usage(), "codex-main") }
+	if n, row := count(d.Doctor()), codex(); n != 0 || row.State != "ok" {
+		t.Fatalf("before Check all: %d warnings, row %q", n, row.State)
+	}
+	d.DoctorAll()
+	if doc := d.DoctorAll(); count(doc) != 1 || doc.Warnings != 2 {
+		t.Errorf("second Check all: %+v", doc)
+	}
+	if row := codex(); row.State != "error: usage endpoint returned HTTP 503" || !row.CanRefresh {
+		t.Errorf("row after Check all: %q can_refresh %v", row.State, row.CanRefresh)
+	}
+	if n := count(d.Doctor()); n != 1 {
+		t.Errorf("plain Doctor after Check all: %d", n)
+	}
+	row, err := d.Refresh("codex-main")
+	if err != nil || row.State != "ok" || codex().State != "ok" {
+		t.Errorf("refresh: %+v %v, then usage says %q", row, err, codex().State)
+	}
+	if n := count(d.Doctor()); n != 0 {
+		t.Errorf("doctor after a good refresh: %d warnings", n)
+	}
+}
+
+func rowNamed(t *testing.T, rows []web.UsageRow, name string) web.UsageRow {
+	t.Helper()
+	for _, r := range rows {
+		if r.Account == name {
+			return r
+		}
+	}
+	t.Fatalf("no row for %s", name)
+	return web.UsageRow{}
+}
+
+// SetToolMissing is one grouped error naming the go accounts, until off.
+func TestSetToolMissing(t *testing.T) {
+	d := newDemo()
+	d.SetToolMissing(true)
+	doc := d.Doctor()
+	want := web.Finding{Severity: "error", Subject: "go-1, go-2, go-3", Message: "opencode not found on PATH",
+		Accounts: []string{"go-1", "go-2", "go-3"}}
+	if doc.Errors != 1 || fmt.Sprintf("%+v", doc.Findings[0]) != fmt.Sprintf("%+v", want) {
+		t.Fatalf("tool missing: %+v", doc)
+	}
+	d.SetToolMissing(false)
+	if doc := d.Doctor(); doc.Errors != 0 {
+		t.Errorf("tool back: %+v", doc)
+	}
+}
+
 func TestNoUnexpectedNulls(t *testing.T) {
 	d := newDemo()
 	d.AddError()

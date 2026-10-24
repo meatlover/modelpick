@@ -155,7 +155,12 @@ export function sendOp(op, args, opts = {}) {
 }
 
 // refresh calls the vendor for one account and replaces its usage row.
-export async function refresh(account) {
+// Then it reloads, which re-reads the doctor: the call, failed or not
+// (a refusal may still have recorded the attempt), changes the status.
+// opts.reload === false skips that, for a caller that refreshes several
+// accounts and reloads once after them (each doctor read re-runs every
+// account's Check). A server that is gone reloads nothing.
+export async function refresh(account, opts = {}) {
   let r;
   try {
     r = await postJSON(`/api/usage/${encodeURIComponent(account)}/refresh`);
@@ -163,11 +168,37 @@ export async function refresh(account) {
     stopped(true);
     return { ok: false, reason: "modelpick ui has stopped" };
   }
+  let out;
   if (r.status !== 200) {
-    const reason = r.data.reason || `HTTP ${r.status}`;
-    toast(reason, "Not refreshed."); // the reason names the account
+    out = { ok: false, reason: r.data.reason || `HTTP ${r.status}` };
+    toast(out.reason, "Not refreshed."); // the reason names the account
+  } else {
+    store.set({ usage: store.usage.map((row) => (row.account === account ? r.data : row)) });
+    out = { ok: true, row: r.data };
+  }
+  if (opts.reload !== false) await reload();
+  return out;
+}
+
+// doctorAll runs `doctor all` on the server. The page reloads (the calls
+// changed usage rows), then the POST's own result replaces the doctor:
+// it holds findings plain doctor does not make (cannot update stored usage,
+// cannot read stored usage for a file the call repaired). The next focus or
+// 60 s reload shows plain doctor again.
+export async function doctorAll() {
+  let r;
+  try {
+    r = await postJSON("/api/doctor/all");
+  } catch {
+    stopped(true);
+    return { ok: false, reason: "modelpick ui has stopped" };
+  }
+  if (r.status !== 200) {
+    const reason = r.data.reason || "Check all failed";
+    toast(reason, "Not checked.");
     return { ok: false, reason };
   }
-  store.set({ usage: store.usage.map((row) => (row.account === account ? r.data : row)) });
-  return { ok: true, row: r.data };
+  await reload();
+  store.set({ doctor: r.data });
+  return { ok: true };
 }
