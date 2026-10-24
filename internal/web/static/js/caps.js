@@ -122,13 +122,12 @@ export function writeCap(cap, pos, value) {
 }
 
 // trashAction is what trash does on position pos: "default" (a set one
-// becomes the default), "uncap" (the first box when none is set),
-// "discard" (a default box holding a value typed but not yet saved: trash
-// puts the default back) or null (disabled). drafted says the box holds
-// such a value (typed, or sent and not yet answered).
+// becomes the default), "discard" (a default box holding a value typed but
+// not yet saved: trash puts the default back) or null (nothing to do: the
+// editor shows no trash). drafted says the box holds such a value (typed,
+// or sent and not yet answered). No caps, not trash, uncaps.
 export function trashAction(cap, pos, drafted = false) {
   if (isSet(cap[pos])) return "default";
-  if (pos === 0 && !cap.some(isSet)) return "uncap";
   return drafted ? "discard" : null;
 }
 
@@ -255,11 +254,13 @@ function frameText(ctx, p) {
   return edit.text !== null ? edit.text : String(baseOf(ctx, p).n);
 }
 
-// setDraft records the frame's mode and text; the stored value itself
-// leaves nothing to apply.
+// setDraft records the frame's mode and text. On a set box, its stored
+// value leaves nothing to apply. A default box keeps any draft, even the
+// default's own value: once touched it is a customized cap (owner,
+// 2026-10-24).
 function setDraft(ctx, p, kind, text) {
   const b = baseOf(ctx, p);
-  const same = kind === b.kind && text === String(b.n);
+  const same = isSet(ctx.choice.cap[p]) && kind === b.kind && text === String(b.n);
   edit.kind = same ? null : kind;
   edit.text = same ? null : text;
 }
@@ -304,7 +305,7 @@ function apply(key, p, kind, text) {
   const n = ctx ? boundNumber(text, kind) : null;
   if (n === null) return;
   const b = baseOf(ctx, p);
-  if (kind !== b.kind || n !== b.n) commit(key, p, { kind, n });
+  if (!isSet(ctx.choice.cap[p]) || kind !== b.kind || n !== b.n) commit(key, p, { kind, n });
 }
 
 // commit sends value ({kind, n}) for position p; the box shows it until
@@ -341,7 +342,7 @@ function trashNow(key, p) {
     rerender(key);
     return null;
   }
-  return send(key, p, act === "uncap" ? null : writeCap(cap, p, null), undefined);
+  return send(key, p, writeCap(cap, p, null), undefined);
 }
 
 // focusCard puts focus on the card when the control that had it is gone.
@@ -448,14 +449,19 @@ function draft(ctx, p, els, text) {
   fit(els.input);
   place(els, previewOf(kind, text, baseOf(ctx, p)));
   trashState(ctx, p, els);
+  els.isDefault.textContent = defaultNote(ctx, p);
 }
 
-// trashState enables the frame's trash by the box as it shows now, so
-// typing a value into the first default box enables it at once.
+// defaultNote ends the frame's line with " (default)" while box p stands
+// for the default cap: not set, and nothing typed, switched or sent for it.
+function defaultNote(ctx, p) {
+  return !isSet(ctx.choice.cap[p]) && !drafted(cardKey(ctx), p) ? " (default)" : "";
+}
+
+// trashState shows the frame's trash by the box as it shows now, so
+// typing a value into a default box shows it at once.
 function trashState(ctx, p, els) {
-  const act = trashAction(ctx.choice.cap, p, drafted(cardKey(ctx), p));
-  els.trash.disabled = act === null;
-  els.trash.setAttribute("aria-label", act === "uncap" ? "Remove caps" : `Use default cap for ${els.label}`);
+  els.trash.hidden = trashAction(ctx.choice.cap, p, drafted(cardKey(ctx), p)) === null;
 }
 
 // keep stops a press on a frame button from taking focus from the value.
@@ -476,6 +482,7 @@ function switchRow(ctx, p, els) {
     "data-key": `${boxKey(ctx, p)}-pace`, onMouseDown: keep, onClick: () => to("pace") },
   clock(12), h("span", { class: "cap-raquo" }, "»"));
   els.trash = h("button", { type: "button", class: "btn btn-trash cap-trash",
+    "aria-label": `Use default cap for ${els.label}`,
     "data-key": `${boxKey(ctx, p)}-trash`, onMouseDown: keep, onClick: () => trash(key, p) }, trashIcon());
   trashState(ctx, p, els);
   return h("div", { class: "cap-row" },
@@ -488,12 +495,16 @@ function bar(ctx, p, els) {
   els.line = h("div", { class: "cap-line" });
   els.knob = h("div", { class: "cap-knob" });
   els.clock = h("span", { class: "cap-clock", "aria-hidden": "true" }, clock(11), h("span", {}, "»"));
+  // Release applies. change alone misses a drag that ends where it began
+  // (no change event), which on a default box must still save it.
+  const release = () => {
+    if (!isOpen(key, p) || edit.text === null) return;
+    settle();
+    rerender(key);
+  };
   els.range = h("input", { type: "range", class: "cap-range", step: "1", "data-key": `${boxKey(ctx, p)}-range`,
     onInput: () => draft(ctx, p, els, els.range.value),
-    onChange: () => {
-      settle();
-      rerender(key);
-    } });
+    onChange: release, onPointerUp: release });
   els.bar = h("div", { class: "cap-bar" }, els.fill, els.line, els.knob,
     els.clock, els.range);
   return els.bar;
@@ -518,7 +529,8 @@ function valueLine(ctx, p, pos, els) {
       if (e.key === "Enter" || e.key === "Escape") rerender(key);
     } });
   fit(els.input);
-  return h("div", { class: "cap-edit-line" }, pre, els.input, post);
+  els.isDefault = h("span", { class: "cap-edit-default" }, defaultNote(ctx, p));
+  return h("div", { class: "cap-edit-line" }, pre, els.input, post, els.isDefault);
 }
 
 function frame(ctx, p, pos) {
@@ -558,6 +570,20 @@ function addCaps(ctx) {
     }) }, "+ caps");
 }
 
+// noCaps makes the choice uncapped (cap: null), whatever its boxes hold.
+function noCaps(ctx) {
+  const key = cardKey(ctx);
+  return h("button", { type: "button", class: "btn btn-quiet cap-nocaps", "data-key": `c${ctx.index}-nocaps`,
+    onClick: () => enqueue(key, async () => {
+      const now = liveCtx(key);
+      if (!now) return;
+      edit = null;
+      await sendOp("choice.set", { profile: now.profile, index: now.index, expect: now.choice,
+        field: "cap", value: null });
+      focusCard(mounts.get(key).container);
+    }) }, "No caps");
+}
+
 function fill(container, ctx) {
   clear(container);
   const c = ctx.choice;
@@ -571,6 +597,7 @@ function fill(container, ctx) {
   const labels = byModel ? byModel[c.model] : null;
   const list = positions(c.cap, labels);
   list.forEach((pos, p) => container.append(isOpen(key, p) ? frame(ctx, p, pos) : box(ctx, p, pos)));
+  container.append(noCaps(ctx));
 }
 
 // rerender redraws one card's caps in place. Focus goes to the element

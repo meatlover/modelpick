@@ -1036,6 +1036,17 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   min-width: 0;
 }
 
+/* Nothing to choose (a model without thinking levels): a ghost box that
+   keeps the row lined up but does not read as a control. */
+.p-field select.p-none {
+  appearance: none;
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-3);
+  opacity: 1;
+}
+
 /* Filled by caps.js and chips.js; an empty area takes no gap. */
 .p-caps {
   display: flex;
@@ -1407,6 +1418,20 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text-2);
   font: 500 12px var(--font);
   cursor: pointer;
+}
+
+/* caps.js's "No caps", after a card's boxes: a quiet button like Remove,
+   level with a closed box (52 px: 8 px above a 36 px button) even while an
+   editor is open beside it, which is taller. */
+.cap-nocaps {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* "(default)" after "Cap at 95%" on a box that uses the default cap. */
+.cap-edit-default {
+  font-weight: 500;
+  color: var(--text-3);
 }
 
 .sched-add:disabled {

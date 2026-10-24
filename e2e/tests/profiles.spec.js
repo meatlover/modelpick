@@ -59,6 +59,39 @@ test("change account, model and thinking", async ({ page }) => {
   await expect(c4.getByLabel("Account")).toHaveValue("claude-spare");
 });
 
+// A model with no thinking levels shows a ghost box: dashed, unfilled, no
+// arrow, still labelled Thinking. A model with levels keeps the select.
+test("no thinking levels shows a ghost box", async ({ page }) => {
+  const look = (sel) => sel.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { dashed: s.borderTopStyle === "dashed", unfilled: s.backgroundColor === "rgba(0, 0, 0, 0)",
+      arrow: s.appearance !== "none", disabled: el.disabled };
+  });
+  const none = card(page, 3).getByLabel("Thinking");
+  await expect(none).toHaveValue("");
+  expect(await look(none)).toEqual({ dashed: true, unfilled: true, arrow: false, disabled: true });
+  expect(await look(card(page, 4).getByLabel("Thinking")))
+    .toEqual({ dashed: false, unfilled: false, arrow: true, disabled: false });
+});
+
+// The card is redrawn only when the reload after an edit returns. Held
+// back here, so a second edit is made on the card as drawn before the first:
+// it must still apply, on the choice as the first edit left it.
+test("a second edit before the redraw still applies", async ({ page }) => {
+  const c4 = card(page, 4);
+  let hold = true;
+  await page.route("**/api/state", async (route) => {
+    while (hold) await new Promise((ok) => setTimeout(ok, 50));
+    await route.continue();
+  });
+  await c4.getByLabel("Model").selectOption("claude-fable-5-1");
+  await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "model");
+  await c4.getByLabel("Thinking").selectOption("low");
+  hold = false;
+  await expectConfig(server.configPath, (c) => coder(c)[3].thinking, "low", "thinking, sent on the stale card");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
 // capBox is the closed box (or, once focused, the open frame's number box)
 // of a card's first window.
 const capBox = (card_) => card_.getByRole("textbox", { name: /cap$/ }).first();
@@ -123,6 +156,71 @@ test('trash on a box writes "default"', async ({ page }) => {
   await c1.getByRole("button", { name: /^Use default cap for / }).click();
   await expectConfig(server.configPath, (c) => coder(c)[0].cap, ["default", 98], "the first box is default");
   await expect(capBox(c1)).toHaveValue("95%");
+});
+
+// An untouched default box has nothing for trash to do, so its editor shows
+// none, and its line says (default). No caps, at the right of the boxes,
+// makes the choice uncapped.
+test("an untouched default box has no trash; No caps uncaps", async ({ page }) => {
+  const c4 = card(page, 4);
+  await c4.getByRole("button", { name: "Add caps" }).click();
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
+  await capBox(c4).click();
+  await expect(capBox(c4)).toBeFocused();
+  await expect(c4.locator(".cap-edit-line")).toContainText("(default)");
+  await expect(c4.locator(".cap-trash")).toBeHidden();
+  await capBox(c4).press("Escape");
+  await c4.getByRole("button", { name: "No caps" }).click();
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap ?? null, null, "uncapped");
+  await expect(c4.getByText("No cap", { exact: true })).toBeVisible();
+  await expect(c4.getByRole("button", { name: "No caps" })).toHaveCount(0);
+});
+
+// Any change to a default box makes it a customized cap, even when the
+// value or the mode ends where the default was; trash makes it default again.
+test("a touched default box is saved as set, even at the default value", async ({ page }) => {
+  const c4 = card(page, 4);
+  await c4.getByRole("button", { name: "Add caps" }).click();
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
+  await capBox(c4).click();
+  await capBox(c4).fill("80");
+  await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
+  await expect(c4.locator(".cap-trash")).toBeVisible();
+  await capBox(c4).fill("95");
+  await expect(c4.locator(".cap-trash")).toBeVisible();
+  await capBox(c4).press("Enter");
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, [95], "95 typed is saved as 95");
+  const second = c4.getByRole("textbox", { name: /cap$/ }).nth(1);
+  await second.click();
+  await c4.getByRole("button", { name: "Time elapsed + N" }).click();
+  await c4.getByRole("button", { name: "%", exact: true }).click();
+  await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
+  await second.press("Enter");
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, [95, 95], "a mode switched there and back is saved");
+  await capBox(c4).click();
+  await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
+  await c4.locator(".cap-trash").click();
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, ["default", 95], "trash makes it default again");
+});
+
+// A drag on a default box makes it a customized cap too, even one that ends
+// where it started: the handle is pressed at 95, moved away and brought back.
+test("a drag on a default box saves it as set", async ({ page }) => {
+  const c4 = card(page, 4);
+  await c4.getByRole("button", { name: "Add caps" }).click();
+  await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
+  await capBox(c4).click();
+  const r = await c4.getByRole("slider").boundingBox();
+  // The thumb's centre at 95: the range overhangs the 240 px bar by half
+  // a 14 px thumb on each side.
+  const at95 = r.x + 7 + (240 * 95) / 100;
+  const y = r.y + r.height / 2;
+  await page.mouse.move(at95, y);
+  await page.mouse.down();
+  await page.mouse.move(r.x + r.width * 0.3, y, { steps: 5 });
+  await page.mouse.move(at95, y, { steps: 5 });
+  await page.mouse.up();
+  await expectConfig(server.configPath, (c) => typeof coder(c)[3].cap[0], "number", "the dragged box is set");
 });
 
 // dragCard presses card from's handle and drops it on the lower part of card

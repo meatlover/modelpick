@@ -106,7 +106,7 @@ async function attempt(op, args, retry, opts) {
   const base = store.state ? store.state.sha256 : "";
   let r;
   try {
-    r = await postJSON("/api/op", { base, op, args });
+    r = await postJSON("/api/op", { base, op, args: typeof args === "function" ? args() : args });
   } catch {
     stopped(true);
     return { ok: false, reason: "modelpick ui has stopped" };
@@ -147,9 +147,17 @@ let queue = Promise.resolve();
 // instead (schedule.remove's uses) and calls notApplied for the rest. A 409
 // shows the conflict dialog: "load" reloads, "apply" resends once on the
 // new base.
+// args may be a function: it is called when the op's turn comes (and again
+// for a resend), so an edit made on a tab drawn before an earlier op was
+// answered is built from what that op left. opts.done(result) runs before
+// the next op starts, to record what this op left.
 export function sendOp(op, args, opts = {}) {
   const run = queue.then(() => attempt(op, args, true, opts))
-    .catch((e) => ({ ok: false, reason: String(e && e.message ? e.message : e) }));
+    .catch((e) => ({ ok: false, reason: String(e && e.message ? e.message : e) }))
+    .then((r) => {
+      if (opts.done) opts.done(r);
+      return r;
+    });
   queue = run;
   return run;
 }

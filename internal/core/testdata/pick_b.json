@@ -12,7 +12,5 @@
     {"account": "claude-main", "model": "claude-fable-5-1", "why": "5h window 92% >= cap 90"}
   ],
   "errors": [],
-  "warnings": [
-    "codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95"
-  ]
+  "warnings": []
 }

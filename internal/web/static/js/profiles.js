@@ -226,9 +226,22 @@ async function deleteProfile(name) {
 
 // ---------- cards ----------
 
-async function setField(profile, index, expect, field, value) {
-  const r = await sendOp("choice.set", { profile, index, expect, field, value });
+// ctx.choice is the choice as this card's own edits left it. A second edit
+// made before the first one's redraw is built when its turn comes, from
+// what the first left, not from the choice the card was drawn with.
+async function setField(ctx, field, value) {
+  const r = await sendOp("choice.set",
+    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.choice, field, value }),
+    { done: (res) => advance(ctx, res) });
   if (!r.ok) paint();
+}
+
+// advance moves ctx.choice to what the op left: choice.set keeps the index,
+// and no other op runs between the op and done.
+function advance(ctx, res) {
+  if (!res.ok || !store.state) return;
+  const prof = store.state.profiles.find((p) => p.name === ctx.profile);
+  if (prof && prof.choices[ctx.index]) ctx.choice = prof.choices[ctx.index];
 }
 
 // options lists values, with the current value first when the list lacks
@@ -242,14 +255,15 @@ function select(key, cls, onChange, opts) {
   return h("select", { class: cls, "data-key": key, onChange: (e) => onChange(e.target.value) }, opts);
 }
 
-function thinkingSelect(st, profile, c, i) {
+function thinkingSelect(st, ctx) {
+  const c = ctx.choice;
   const model = (st.models[c.account] || []).find((m) => m.id === c.model);
   const levels = model ? model.thinking || [] : [];
-  const key = `c${i}-thinking`;
+  const key = `c${ctx.index}-thinking`;
   if (!levels.length && c.thinking === null) {
-    return h("select", { "data-key": key, disabled: true }, h("option", { value: "" }, "—"));
+    return h("select", { class: "p-none", "data-key": key, disabled: true }, h("option", { value: "" }, "—"));
   }
-  return select(key, null, (v) => setField(profile, i, c, "thinking", v === "" ? null : v),
+  return select(key, null, (v) => setField(ctx, "thinking", v === "" ? null : v),
     options(levels, c.thinking, (v) => (v === null ? "—" : v)));
 }
 
@@ -257,15 +271,17 @@ function field(label, control) {
   return h("label", { class: "p-field" }, label, control);
 }
 
-function selects(st, profile, c, i) {
+function selects(st, ctx) {
+  const c = ctx.choice;
+  const i = ctx.index;
   const accounts = st.accounts.map((a) => a.name);
   const models = (st.models[c.account] || []).map((m) => m.id);
   return h("div", { class: "p-selects" },
-    field("Account", select(`c${i}-account`, null, (v) => setField(profile, i, c, "account", v),
+    field("Account", select(`c${i}-account`, null, (v) => setField(ctx, "account", v),
       options(accounts, c.account))),
-    field("Model", select(`c${i}-model`, "mono", (v) => setField(profile, i, c, "model", v),
+    field("Model", select(`c${i}-model`, "mono", (v) => setField(ctx, "model", v),
       options(models, c.model))),
-    field("Thinking", thinkingSelect(st, profile, c, i)));
+    field("Thinking", thinkingSelect(st, ctx)));
 }
 
 function dots() {
@@ -297,12 +313,12 @@ function card(st, profile, c, i, red) {
   const el = h("div", { class: ["p-card", red.has(choiceSubject(profile, i)) && "is-error"],
     tabindex: "0", role: "group", "aria-label": `Choice ${i + 1}`, "data-key": `card-${i}`, "data-index": String(i) },
   h("div", { class: "p-pos" }, handle, h("span", { class: "mono p-n" }, String(i + 1))),
-  h("div", { class: "p-card-main" }, selects(st, profile, c, i),
+  h("div", { class: "p-card-main" }, selects(st, ctx),
     mount("p-caps", renderCaps, ctx), mount("p-chips", renderChips, ctx)),
   h("div", { class: "p-card-side" },
     h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${i + 1}`,
       "data-key": `c${i}-remove`,
-      onClick: () => sendOp("choice.remove", { profile, index: i, expect: c }) }, "Remove")));
+      onClick: () => sendOp("choice.remove", () => ({ profile, index: i, expect: ctx.choice })) }, "Remove")));
   dragHandle(el, handle);
   return el;
 }
