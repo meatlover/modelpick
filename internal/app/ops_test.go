@@ -525,6 +525,18 @@ var accountCases = []opCase{
 	{name: "remove referenced first by profile", doc: base, op: "account.remove", args: `{"name":"codex-main"}`,
 		refused: "Account codex-main is used by profile coder, choice 2"},
 	{name: "remove unknown", doc: base, op: "account.remove", args: `{"name":"nope"}`, refused: "Unknown account nope"},
+	{name: "remove with_choices across two profiles", doc: base.prof("other", c0, c2),
+		op: "account.remove", args: `{"name":"claude-main","with_choices":true}`,
+		want: base.prof("other", c2).prof("coder", c1, c2).acct("claude-main", "")},
+	{name: "remove with_choices drops a profile left empty", doc: base, op: "account.remove",
+		args: `{"name":"codex-main","with_choices":true}`,
+		want: base.prof("solo").prof("coder", c0, c2).acct("codex-main", "")},
+	{name: "remove with_choices on an unused account", doc: base, op: "account.remove",
+		args: `{"name":"go-9","with_choices":true}`, want: base.acct("go-9", "")},
+	{name: "remove with_choices false still refuses", doc: base, op: "account.remove",
+		args: `{"name":"claude-main","with_choices":false}`, refused: "Account claude-main is used by profile coder, choice 1"},
+	{name: "remove with_choices unknown", doc: base, op: "account.remove",
+		args: `{"name":"nope","with_choices":true}`, refused: "Unknown account nope"},
 }
 
 func TestOpAccount(t *testing.T) { runOps(t, accountCases) }

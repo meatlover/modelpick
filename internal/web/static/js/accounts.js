@@ -5,6 +5,8 @@ import { h, clear } from "./dom.js";
 import { store, sendOp } from "./api.js";
 import { currentTab } from "./header.js";
 import { accountErrorSet } from "./subjects.js";
+import { confirmDialog } from "./notice.js";
+import { removalPlan } from "./removal.js";
 
 export const uses = ["state", "doctor"];
 
@@ -156,7 +158,14 @@ function addForm(accounts) {
 
 async function remove(accounts, i) {
   const next = accounts[i + 1];
-  const r = await sendOp("account.remove", { name: accounts[i].name });
+  const name = accounts[i].name;
+  const plan = removalPlan(store.state.profiles, name);
+  const args = { name };
+  if (plan.count > 0) {
+    if (!(await confirmDialog(plan.title, plan.label, plan.lines))) return;
+    args.with_choices = true;
+  }
+  const r = await sendOp("account.remove", args);
   if (!r.ok) return;
   focusKey = next ? `rm-${next.name}` : "name";
   paint();

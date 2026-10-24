@@ -496,6 +496,12 @@ select:not(:disabled):hover {
   line-height: 1.45;
 }
 
+.dlg-list {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  line-height: 1.45;
+}
+
 .dlg-actions {
   display: flex;
   justify-content: flex-end;
