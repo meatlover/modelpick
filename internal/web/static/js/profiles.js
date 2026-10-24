@@ -267,8 +267,20 @@ function thinkingSelect(st, ctx) {
     options(levels, c.thinking, (v) => (v === null ? "—" : v)));
 }
 
+// field labels a card's dropdown. The name is read by assistive technology
+// only: the names show once, above the cards (cols).
 function field(label, control) {
-  return h("label", { class: "p-field" }, label, control);
+  return h("label", { class: "p-field" }, h("span", { class: "vh" }, label), control);
+}
+
+// cols names the card's dropdowns once, over their columns (owner,
+// 2026-10-24). The empty position column and a hidden Remove keep the
+// names over the dropdowns whatever Remove's width.
+function cols() {
+  return h("div", { class: "p-cols", "aria-hidden": "true" },
+    h("span", { class: "p-pos" }),
+    h("div", { class: "p-cols-names" }, h("span", {}, "Account"), h("span", {}, "Model"), h("span", {}, "Thinking")),
+    h("span", { class: "btn btn-quiet p-cols-side" }, "Remove"));
 }
 
 function selects(st, ctx) {
@@ -343,6 +355,7 @@ function cards(st, prof, red) {
 function profileMain(st, prof, red) {
   return h("div", { class: "p-main" },
     capRow(st, true),
+    cols(),
     cards(st, prof, red),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice",
       onClick: () => sendOp("choice.add", { profile: prof.name }) }, "+ Add Model"));

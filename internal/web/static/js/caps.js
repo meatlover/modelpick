@@ -7,7 +7,10 @@
 import { h, clear, svg, trashIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
 
-const BAR = 240; // drawn bar width, px
+// Drawn bar width, px: the editor is as wide as "Cap at time elapsed + 50%"
+// and no more (owner, 2026-10-24), and the bar fills it. app.css's .cap-bar
+// and .cap-edit widths follow it.
+const BAR = 196;
 // The bar's fill is an illustration with fixed values, not the account's
 // readings (owner, 2026-10-23): token usage in fixed mode, time elapsed in
 // pace mode. ELAPSED also sets the pace geometry.
@@ -388,6 +391,10 @@ function openBox(ctx, p) {
   if (edit) leave();
   edit = { key, pos: p, kind: null, text: null };
   rerender(key, boxKey(ctx, p));
+  // The editor floats below the box's top, past the card: show all of it.
+  const m = mounts.get(key);
+  const f = m && m.container.querySelector(".cap-edit");
+  if (f) f.scrollIntoView({ block: "nearest" });
 }
 
 // afterLeave runs once focus has settled outside a frame: it closes the
@@ -547,6 +554,16 @@ function frame(ctx, p, pos) {
   return el;
 }
 
+// ghost holds an open box's place in the row, so the editor floating over
+// the card (owner, 2026-10-24) moves nothing and the card keeps its height.
+// It is a picture of the box: not focusable, no data-key, hidden.
+function ghost(ctx, p, pos) {
+  const v = pos.explicit ? elementOf(ctx.choice.cap[p]) : null;
+  return h("span", { class: ["cap-box", "cap-ghost", !pos.explicit && "is-default", v && v.kind === "pace" && "is-wide"],
+    "aria-hidden": "true" },
+  h("span", { class: "mono cap-win" }, pos.label), h("span", { class: "cap-val" }, boxText(ctx, p)));
+}
+
 // box draws a closed position: solid when set, dashed when it uses the
 // default.
 function box(ctx, p, pos) {
@@ -596,7 +613,9 @@ function fill(container, ctx) {
   const byModel = store.state && store.state.windows ? store.state.windows[c.account] : null;
   const labels = byModel ? byModel[c.model] : null;
   const list = positions(c.cap, labels);
-  list.forEach((pos, p) => container.append(isOpen(key, p) ? frame(ctx, p, pos) : box(ctx, p, pos)));
+  list.forEach((pos, p) => container.append(isOpen(key, p)
+    ? h("div", { class: "cap-anchor" }, ghost(ctx, p, pos), frame(ctx, p, pos))
+    : box(ctx, p, pos)));
   container.append(noCaps(ctx));
 }
 
