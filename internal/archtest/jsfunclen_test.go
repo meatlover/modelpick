@@ -67,26 +67,41 @@ func TestLongJSBlocksIgnoresObjectLiterals(t *testing.T) {
 	}
 }
 
-// TestUIJavaScriptFunctionLength walks the page's scripts; zero files is fine.
+// TestUIJavaScriptFunctionLength walks the page's scripts and the browser
+// tests' (e2e/tests; e2e/node_modules is not ours). Each root must hold a
+// script, so a moved directory fails here instead of passing unmeasured.
 func TestUIJavaScriptFunctionLength(t *testing.T) {
-	root := "../web/static"
 	var over []string
+	for _, rel := range []string{"internal/web/static", "e2e/tests"} {
+		over = append(over, longJSBlocksUnder(t, rel)...)
+	}
+	sort.Strings(over)
+	if len(over) > 0 {
+		t.Fatalf("%d JS block(s) over the line limit; split them:\n%s", len(over), strings.Join(over, "\n"))
+	}
+}
+
+// longJSBlocksUnder is longJSBlocks over every .js file under rel (relative
+// to the module root), named by its module-relative path.
+func longJSBlocksUnder(t *testing.T, rel string) []string {
+	t.Helper()
+	root := filepath.Join("../..", rel)
+	var over []string
+	files := 0
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) && p == root {
-				return fs.SkipAll
-			}
 			return err
 		}
 		if d.IsDir() || !strings.HasSuffix(p, ".js") {
 			return nil
 		}
+		files++
 		src, err := os.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		rel := filepath.ToSlash(filepath.Join("internal/web/static", strings.TrimPrefix(p, root)))
-		v, err := longJSBlocks(rel, src)
+		name := filepath.ToSlash(filepath.Join(rel, strings.TrimPrefix(p, root)))
+		v, err := longJSBlocks(name, src)
 		if err != nil {
 			return err
 		}
@@ -96,10 +111,10 @@ func TestUIJavaScriptFunctionLength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sort.Strings(over)
-	if len(over) > 0 {
-		t.Fatalf("%d JS block(s) over the line limit; split them:\n%s", len(over), strings.Join(over, "\n"))
+	if files == 0 {
+		t.Fatalf("%s holds no .js file: the length rule measured nothing there", rel)
 	}
+	return over
 }
 
 const maxJSBlockLines = 60

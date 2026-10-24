@@ -1,0 +1,11 @@
+{
+  "name": "modelpick-e2e",
+  "private": true,
+  "description": "Browser tests for the modelpick UI; run through scripts/e2e.sh, which builds the servers they start.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
+  }
+}

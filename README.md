@@ -122,7 +122,21 @@ vendor is your decision. You decide whether to use it.
 
 Run `git config core.hooksPath .githooks` once after cloning; the pre-commit
 hook then runs `bash scripts/check.sh` (gofmt, vet, including the `live`-tagged
-smoke test, tests, four-target cross-build) and refuses a commit that fails.
+smoke test, tests, the browser tests, four-target cross-build) and refuses a
+commit that fails.
+
+The browser tests (`e2e/`, Playwright driving Chromium, development only)
+need Node.js 18 or later. Install the locked packages and the browser once:
+
+```sh
+cd e2e && npm ci && npx playwright install chromium
+```
+
+`bash scripts/e2e.sh` runs them alone. It builds the test server
+`cmd/modelpick-e2e-server` (the live back end over fake vendors, in a temp
+directory) and the demo, and opens every JS unit test page
+(`internal/web/static/test/*.test.html`). Without Node, the packages or
+Chromium, it and `check.sh` fail and print the command above.
 
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):
