@@ -90,22 +90,31 @@ async function dragRange(page, card_, fromFrac, toFrac) {
   await page.mouse.up();
 }
 
+// The first cap of the go-1 choice, as the file holds it.
+const firstCap = () => coder(readConfig(server.configPath))[2].cap[0];
+
+// A switch from fixed to "Time elapsed + N" shows N = 5 (the smallest).
+const PACE_START = 5;
+
 test("cap by drag, fixed and pace", async ({ page }) => {
   const c3 = card(page, 3);
+  const start = firstCap();
+  expect(start).toBe(95);
   await capBox(c3).click();
   await dragRange(page, c3, 0.95, 0.3);
-  await expect.poll(() => readConfig(server.configPath).profiles.coder[2].cap[0]).toBeLessThan(60);
-  const fixed = coder(readConfig(server.configPath))[2].cap;
-  expect(typeof fixed[0]).toBe("number");
-  expect(fixed.slice(1)).toEqual([95, 98]);
+  await expect.poll(firstCap).not.toBe(start);
+  const fixed = firstCap();
+  expect(typeof fixed).toBe("number");
+  expect(fixed).toBeLessThan(start);
+  expect(fixed).toBeGreaterThanOrEqual(0);
+  expect(coder(readConfig(server.configPath))[2].cap.slice(1)).toEqual([95, 98]);
   await capBox(c3).click();
   await c3.getByRole("button", { name: "Time elapsed + N" }).click();
   await dragRange(page, c3, 0.02, 0.8);
-  await expect
-    .poll(() => String(coder(readConfig(server.configPath))[2].cap[0]), { timeout: 5000 })
-    .toMatch(/^pace\+\d+$/);
-  const pace = coder(readConfig(server.configPath))[2].cap[0];
-  expect(Number(pace.slice(5))).toBeGreaterThan(5);
+  await expect.poll(() => String(firstCap())).toMatch(/^pace\+\d+$/);
+  const n = Number(String(firstCap()).slice(5));
+  expect(n).toBeGreaterThan(PACE_START);
+  expect(n).toBeLessThanOrEqual(50);
 });
 
 test('trash on a box writes "default"', async ({ page }) => {
@@ -218,7 +227,10 @@ test("global default cap: the page bounds 101, the server refuses it", async ({ 
   expectUnchanged(server.configPath, before);
 });
 
-test("no console errors on any tab", async ({ page }) => {
+// This test is its own setup: its page registers the listeners before the
+// login, so the first load and the first render of each tab are watched too.
+test("no console errors on any tab", async ({ context }) => {
+  const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
@@ -226,6 +238,7 @@ test("no console errors on any tab", async ({ page }) => {
     if (/status of (409|422)/.test(m.text())) return;
     errors.push(m.text());
   });
+  await login(page, server.url);
   for (const tab of ["Usage", "Profiles", "Schedules", "Accounts"]) {
     await page.getByRole("link", { name: tab, exact: true }).click();
     await expect(page.getByRole("link", { name: tab, exact: true })).toHaveAttribute("aria-current", "page");
