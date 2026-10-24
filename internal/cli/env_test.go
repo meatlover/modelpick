@@ -117,6 +117,7 @@ func TestEnvUsageErrors(t *testing.T) {
 		reason string
 	}{
 		{[]string{"env"}, "env: missing <profile>"},
+		{[]string{"env", ""}, "env: missing <profile>"},
 		{[]string{"env", "a", "b"}, `env: unexpected argument "b"`},
 		{[]string{"env", "x", "--refrsh"}, `env: unknown flag "--refrsh"`},
 	} {

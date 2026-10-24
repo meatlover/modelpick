@@ -18,7 +18,7 @@ var modelpickVars = []string{"STATUS", "PROFILE", "VENDOR", "ACCOUNT", "MODEL", 
 // runEnv is `modelpick env <profile> [--refresh]`: the pick as POSIX sh for
 // eval, its exit code returned.
 func runEnv(args []string, stdout, stderr io.Writer, d app.Deps) int {
-	profile, refresh, err := parseProfileArgs("env", args)
+	profile, _, refresh, err := parseProfileArgs("env", args)
 	if err == nil && profile == "" {
 		err = errors.New("env: missing <profile>")
 	}

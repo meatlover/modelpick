@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,10 +12,15 @@ import (
 )
 
 // runPick is `modelpick pick [<profile>] [--refresh]`: with a profile, the
-// result JSON on stdout; without, the table of every profile (runPickAll).
+// result JSON on stdout; with no positional at all, the table of every
+// profile (runPickAll).
 // The exit code is returned.
 func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
-	profile, refresh, err := parseProfileArgs("pick", args)
+	profile, given, refresh, err := parseProfileArgs("pick", args)
+	if err == nil && given && profile == "" {
+		// v1's answer to `pick "$PROFILE"` with an empty variable.
+		err = errors.New("pick: missing <profile>")
+	}
 	if err != nil {
 		// A launcher reads stdout: it gets a failed result, the user the usage.
 		res := core.Failed(profile, err.Error())
@@ -22,7 +28,7 @@ func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		badUsage(stderr, err.Error())
 		return res.ExitCode()
 	}
-	if profile == "" {
+	if !given {
 		return runPickAll(refresh, stdout, stderr, d)
 	}
 	res := pick(profile, refresh, d)
@@ -31,22 +37,24 @@ func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 }
 
 // parseProfileArgs parses `<cmd> <profile> [--refresh]`. It returns the
-// profile seen so far even on error, so a failed result can name it. A
-// missing profile is not an error here: pick prints the table, env reports it.
-func parseProfileArgs(cmd string, args []string) (profile string, refresh bool, err error) {
+// profile seen so far even on error, so a failed result can name it. given
+// reports whether any positional argument was seen, an empty one included:
+// a missing profile is not an error here, since pick without a positional
+// prints the table while an empty one (`pick ""`) fails as in v1.
+func parseProfileArgs(cmd string, args []string) (profile string, given, refresh bool, err error) {
 	for _, a := range args {
 		switch {
 		case a == "--refresh":
 			refresh = true
 		case strings.HasPrefix(a, "-"):
-			return profile, false, fmt.Errorf("%s: unknown flag %q", cmd, a)
+			return profile, given, false, fmt.Errorf("%s: unknown flag %q", cmd, a)
 		case profile != "":
-			return profile, false, fmt.Errorf("%s: unexpected argument %q", cmd, a)
+			return profile, given, false, fmt.Errorf("%s: unexpected argument %q", cmd, a)
 		default:
-			profile = a
+			profile, given = a, true
 		}
 	}
-	return profile, refresh, nil
+	return profile, given, refresh, nil
 }
 
 func pick(profile string, refresh bool, d app.Deps) core.Result {
