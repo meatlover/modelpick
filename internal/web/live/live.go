@@ -306,7 +306,8 @@ func (l *Live) row(cfg *core.Config, env *app.Env, name string) web.UsageRow {
 	acct := cfg.Accounts[name]
 	now := l.d.Now()
 	saved, err := app.NewStore(l.d, cfg).Saved(acct)
-	st := core.AccountState{Reading: saved.Reading, TokenExpired: env.Credential(name).Expired}
+	st := core.AccountState{Reading: saved.Reading, TokenExpired: env.Credential(name).Expired,
+		Renewable: env.Renewable(name)}
 	if saved.RetryUntil.After(now) {
 		st.RetryUntil = saved.RetryUntil
 	}

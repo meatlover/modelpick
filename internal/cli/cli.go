@@ -3,8 +3,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/meatlover/modelpick/internal/app"
 )
@@ -25,6 +29,25 @@ func Main(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) == 0 {
 		return badUsage(stderr, "missing command")
 	}
+	switch args[0] {
+	case "pick", "env", "ls", "doctor":
+		// Ctrl-C or SIGTERM cancels a login renewal or usage call under way.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		d.Ctx = ctx
+		code := dispatch(args, stdout, stderr, d)
+		if ctx.Err() != nil {
+			return exitInterrupted
+		}
+		return code
+	}
+	return dispatch(args, stdout, stderr, d)
+}
+
+// exitInterrupted is the shell's code for a process ended by SIGINT.
+const exitInterrupted = 130
+
+func dispatch(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	switch args[0] {
 	case "pick":
 		return runPick(args[1:], stdout, stderr, d)

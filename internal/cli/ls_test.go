@@ -390,3 +390,25 @@ func TestLsRefreshOnlyNamed(t *testing.T) {
 		t.Errorf("calls main %d->%d, rec %d->%d", main0, claude.Calls["claude-main"], rec0, claude.Calls["claude-rec"])
 	}
 }
+
+func TestLsRenewsExpired(t *testing.T) {
+	claude := apptest.NewFake("claude")
+	claude.Renewable["claude-main"] = true
+	claude.Expired["claude-main"] = true
+	claude.Readings["claude-main"] = apptest.ClaudeReading(40, 10)
+	d := apptest.NewDeps(t, testConfig, claude)
+	stdout, stderr, code := run(d, "ls", "--json", "claude-main")
+	if code != 0 {
+		t.Fatalf("exit %d; stderr %q", code, stderr)
+	}
+	var rows []struct{ Account, State string }
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("output %q: %v", stdout, err)
+	}
+	if rows[0].State != "ok" {
+		t.Errorf("state = %q, want ok", rows[0].State)
+	}
+	if claude.RenewCalls["claude-main"] != 1 || claude.Calls["claude-main"] != 1 {
+		t.Errorf("renew calls %d, usage calls %d, want 1 and 1", claude.RenewCalls["claude-main"], claude.Calls["claude-main"])
+	}
+}

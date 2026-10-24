@@ -9,7 +9,8 @@
 //     <RFC 3339>", "rate-limited (no retry time given)", "error: <text>"
 //     (the v1 ls states) or "no reading yet" (nothing saved, nothing
 //     blocking a first reading).
-//  2. CanRefresh is false only while rate-limited or the token is expired;
+//  2. CanRefresh is false only while rate-limited or the token is expired
+//     and cannot be renewed;
 //     true with no reading.
 //  3. ReadingAgeSeconds null means no reading (and no windows).
 //  4. State.Windows[account][model] is absent without a saved reading (the

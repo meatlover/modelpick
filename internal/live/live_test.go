@@ -9,6 +9,7 @@ package live
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -23,7 +24,9 @@ import (
 
 // TestLiveUsage reads every configured account through the real store with
 // refresh=false, so the call floor still applies. It prints only the account
-// name, window lengths and percents.
+// name, window lengths and percents. It never renews an expired login unless
+// MODELPICK_LIVE_RENEW=1: a renewal rotates the real refresh token and spends
+// Claude tokens.
 func TestLiveUsage(t *testing.T) {
 	d := app.DefaultDeps(cli.Version)
 	if d.Home == "" {
@@ -39,6 +42,7 @@ func TestLiveUsage(t *testing.T) {
 		Floor:       cfg.Settings.MinCallInterval,
 		Now:         time.Now,
 		CallTimeout: usage.DefaultCallTimeout,
+		NoRenew:     os.Getenv("MODELPICK_LIVE_RENEW") != "1",
 	}
 	for _, name := range sortedAccounts(cfg) {
 		acct := cfg.Accounts[name]

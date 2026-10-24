@@ -1,9 +1,11 @@
 package app_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
@@ -91,5 +93,54 @@ func TestDefaultDepsAdaptersKeyedByVendor(t *testing.T) {
 	}
 	if d.Getenv == nil || d.Now == nil {
 		t.Fatal("DefaultDeps left Getenv or Now nil")
+	}
+}
+
+func TestUsageErrorRenewFailed(t *testing.T) {
+	err := &adapter.RenewError{Reason: "x"}
+	got := app.UsageError("claude", err)
+	want := "token expired and Claude Code could not renew it (x); log in again in Claude Code with this account"
+	if got.Error() != want {
+		t.Errorf("got %q, want %q", got.Error(), want)
+	}
+	if !errors.Is(got, adapter.ErrTokenExpired) {
+		t.Errorf("rewritten error no longer matches ErrTokenExpired")
+	}
+	if got := app.UsageError("claude", adapter.ErrTokenExpired).Error(); got != "token expired; open Claude Code with this account to refresh it" {
+		t.Errorf("plain ErrTokenExpired advice changed: %q", got)
+	}
+}
+
+// A caller whose context is already done gets an error from an expired
+// renewable account, and the attempt is not recorded.
+func TestCtxCancelledEnv(t *testing.T) {
+	claude := apptest.NewFake("claude")
+	claude.Renewable["claude-main"] = true
+	claude.Expired["claude-main"] = true
+	claude.Readings["claude-main"] = apptest.ClaudeReading(10, 10)
+	d := apptest.NewDeps(t, apptest.Config, claude)
+	old := apptest.Now.Add(-48 * time.Hour)
+	apptest.WriteStored(t, d, "claude-main", `{"last_attempt":"`+old.Format(time.RFC3339)+`"}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d.Ctx = ctx
+	cfg, err := app.LoadConfig(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st := app.NewEnv(d, cfg, false).Usage("claude-main")
+	if st.Err == nil || st.Reading != nil {
+		t.Fatalf("state = %+v, want an error and no reading", st)
+	}
+	saved, err := app.NewStore(d, cfg).Saved(cfg.Accounts["claude-main"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.LastAttempt.Equal(old) {
+		t.Errorf("LastAttempt = %v, want it unchanged at %v", saved.LastAttempt, old)
+	}
+	if !st.Renewable {
+		t.Errorf("Renewable = false, want true for an adapter that renews")
 	}
 }

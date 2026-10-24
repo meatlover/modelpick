@@ -5,6 +5,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -21,6 +22,7 @@ import (
 
 // Deps is everything a command needs from the outside world.
 type Deps struct {
+	Ctx      context.Context // nil = context.Background(); ends a renewal or call early
 	Getenv   func(string) string
 	Home     string // "" = unknown; commands refuse to run
 	Now      func() time.Time

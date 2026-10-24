@@ -347,3 +347,23 @@ func TestDisplayLabelsOnTheWire(t *testing.T) {
 		t.Errorf("usage rows: %s", g)
 	}
 }
+
+func TestUsageRowCanRefreshRenewable(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		st   core.AccountState
+		want bool
+	}{
+		{"expired, renewable", core.AccountState{TokenExpired: true, Renewable: true}, true},
+		{"expired, not renewable", core.AccountState{TokenExpired: true}, false},
+		{"valid", core.AccountState{}, true},
+		{"renewable but rate-limited", core.AccountState{TokenExpired: true, Renewable: true, RetryUntil: now.Add(time.Hour)}, false},
+		{"not renewable, rate-limited", core.AccountState{RetryUntil: now.Add(time.Hour)}, false},
+	}
+	for _, c := range cases {
+		if got := usageRow("a", "claude", c.st, now).CanRefresh; got != c.want {
+			t.Errorf("%s: can_refresh = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

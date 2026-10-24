@@ -126,10 +126,10 @@ func windowLabels(ws []adapter.Window, model string) []string {
 // usageRow is the ls --json row (contract 1–3, ruling 2): the v1 state
 // text, or "no reading yet" for an account with nothing saved and nothing
 // blocking a first reading; can_refresh false only while rate-limited or
-// the token is expired; windows after their resets.
+// the token is expired and cannot be renewed; windows after their resets.
 func usageRow(name, vendor string, st core.AccountState, now time.Time) web.UsageRow {
 	row := web.UsageRow{Account: name, Vendor: vendor, State: app.StateText(st), Windows: []web.UsageWindow{}}
-	row.CanRefresh = !st.TokenExpired && st.RetryUntil.IsZero()
+	row.CanRefresh = (!st.TokenExpired || st.Renewable) && st.RetryUntil.IsZero()
 	if st.Reading == nil {
 		if row.CanRefresh && st.Err == nil {
 			row.State = "no reading yet"

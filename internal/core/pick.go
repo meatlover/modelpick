@@ -20,6 +20,9 @@ type AccountState struct {
 	// callers that report it (ls); Pick judges Reading and Err only.
 	TokenExpired bool
 	RetryUntil   time.Time // zero = not rate-limited
+	// Renewable: the account's adapter can renew an expired login, so the
+	// expiry does not stop a refresh.
+	Renewable bool
 }
 
 // Env supplies credentials and usage to Pick.
