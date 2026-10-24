@@ -41,7 +41,9 @@ starts it with an empty state; the old file stays until you delete it.
 | Command | Usage calls | Other outside contact |
 |---|---|---|
 | `pick <profile>` | Only for accounts whose capped choice is reached, at most one per account per floor. Uncapped choices and skipped choices never trigger one. | `claude --version` once, for the User-Agent, when a Claude call is made. |
-| `ls` | Every configured account, subject to the floor. | Same. |
+| `env <profile>` | Same as `pick <profile>`. | Same. |
+| `pick` (no profile) | Each account any profile reaches, read at most once for the whole table, subject to the floor. | Same. |
+| `ls [<account>…]` | The named accounts, or every configured account when none are named, subject to the floor. | Same. |
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
 | `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After`, an expired token, or a tool or credential error. | Runs `opencode models opencode-go`; reads the Keychain. |
@@ -181,13 +183,20 @@ Or let the shell do the parsing: `modelpick env` prints the same decision as
 `sh` export lines (and `false` when there is no choice), so a launcher can be
 
 ```bash
-eval "$(modelpick env coder-difficult)" || exit 1
+out=$(modelpick env coder-difficult)
+[ -n "$out" ] || exit 1
+eval "$out" || exit 1
 case "$MODELPICK_VENDOR" in
   claude) exec claude --model "$MODELPICK_MODEL" ;;   # CLAUDE_CONFIG_DIR is set or unset for you
   codex)  exec codex -m "$MODELPICK_MODEL" ;;         # CODEX_HOME is set
   opencode-go) exec opencode -m "$MODELPICK_MODEL" ;; # MODELPICK_KEY_FILE / _LINE name the key
+  *) echo "modelpick: no vendor" >&2; exit 1 ;;
 esac
 ```
+
+The empty check is there because a modelpick that is missing from `PATH` or
+crashed prints nothing, and `eval ""` succeeds, which would launch with
+whatever `MODELPICK_*` values an earlier eval left in the environment.
 
 The flags each tool takes for model and thinking level are the tool's own;
 check them against your installed versions. modelpick does not switch the
