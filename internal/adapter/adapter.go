@@ -77,6 +77,13 @@ type Adapter interface {
 	Check(ctx context.Context, acct Account) []Finding // doctor: binary on PATH, credential, expiry
 }
 
+// Renewer is an optional capability of an Adapter: renew an expired login
+// through the vendor's own tool. It never writes a vendor file itself, and
+// the error text never holds a secret.
+type Renewer interface {
+	Renew(ctx context.Context, acct Account) error
+}
+
 // Sentinel errors returned (possibly wrapped) by adapters.
 var (
 	ErrTokenExpired = errors.New("token expired")
@@ -112,3 +119,12 @@ func ParseRetryAfter(h string) time.Duration {
 	}
 	return time.Duration(n) * time.Second
 }
+
+// RenewError reports an expired login that could not be renewed. Reason holds
+// no secret.
+type RenewError struct{ Reason string }
+
+func (e *RenewError) Error() string { return "token expired; renewal failed: " + e.Reason }
+
+// Unwrap lets errors.Is(err, ErrTokenExpired) hold.
+func (e *RenewError) Unwrap() error { return ErrTokenExpired }
