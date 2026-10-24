@@ -102,6 +102,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	// Call. The attempt is recorded first: success and failure both count.
 	// Without the lock or a persisted attempt the floor cannot hold, so it
 	// fails closed: no call (Ruling 27).
+	prevAttempt := st.LastAttempt
 	if cacheErr == nil {
 		st.LastAttempt = now
 		cacheErr = s.write(name, st)
@@ -109,7 +110,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	if cacheErr != nil {
 		return cacheUnavailable(name, st.LastGood, cacheErr, now)
 	}
-	r, writeErr := s.callAndRecord(ctx, a, acct, st, now)
+	r, writeErr := s.callAndRecord(ctx, a, acct, st, prevAttempt, now)
 	return withCacheWarning(r, name, writeErr)
 }
 
@@ -165,10 +166,18 @@ func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, n
 }
 
 // callAndRecord makes the one usage call and stores its outcome. writeErr is
-// the failure to store it, if any; the result is still returned.
-func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapter.Account, st state, now time.Time) (res Result, writeErr error) {
+// the failure to store it, if any; the result is still returned. A call
+// that fails because the caller's ctx ended (Ctrl-C, the server closing)
+// is not an attempt: the state goes back to prevAttempt with no error
+// recorded, so the next run calls again. The store's own CallTimeout is
+// an attempt like any failure.
+func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapter.Account, st state, prevAttempt, now time.Time) (res Result, writeErr error) {
 	name := acct.Name
 	r, callErr := s.call(ctx, a, acct)
+	if callErr != nil && ctx.Err() != nil {
+		st.LastAttempt = prevAttempt
+		return Result{Reading: st.LastGood, Err: callErr}, s.write(name, st)
+	}
 	if callErr == nil {
 		if r.TakenAt.IsZero() {
 			r.TakenAt = now
@@ -264,13 +273,6 @@ func (s *Store) readFile(name string) (state, error) {
 		return state{}, fmt.Errorf("%s: %w", s.statePath(name), err)
 	}
 	return st, nil
-}
-
-// Peek returns the account's last good reading without waiting for the lock
-// and without any network call. No state file is (nil, nil).
-func (s *Store) Peek(acct adapter.Account) (*adapter.Reading, error) {
-	st, err := s.readFile(acct.Name)
-	return st.LastGood, err
 }
 
 func (s *Store) read(name string) state {

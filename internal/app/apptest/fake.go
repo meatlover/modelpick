@@ -202,7 +202,7 @@ func DoctorFakes() (*Fake, *Fake) {
 	return claude, codex
 }
 
-// WriteStored stores a reading where doctor's Peek will find it.
+// WriteStored stores a reading where the store's Saved will find it.
 func WriteStored(t *testing.T, d app.Deps, account, json string) {
 	t.Helper()
 	cfg, err := app.LoadConfig(d)

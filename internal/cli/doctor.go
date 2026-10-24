@@ -8,7 +8,7 @@ import (
 )
 
 // runDoctor is `modelpick doctor`: validates the config and everything it
-// depends on. It never calls Usage and never takes the store lock (Peek only).
+// depends on. It never calls Usage and never takes the store lock (Saved only).
 func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) > 0 {
 		return badUsage(stderr, fmt.Sprintf("doctor: unexpected argument %q", args[0]))
