@@ -63,17 +63,20 @@ function fillStatus(parts, doctor) {
   parts.sync();
 }
 
-// wirePopover: hover and keyboard focus show the panel while there are
-// findings; a click pins it open even with none (it then says so), or
-// unpins: it then stays until the pointer leaves; Escape or a click outside unpins and hides. A pointer press also
-// focuses the button, so that focus is not counted, or unpinning by click
-// would leave them open until blur.
+// wirePopover: hovering the status, or keyboard focus anywhere in it (the
+// button or the panel's Check all), shows the panel while there are
+// findings. A click pins it open even with none (it then says so), or
+// unpins it: it then stays only while hovered. Escape or a click outside
+// unpins and hides it; Escape from inside the panel puts focus back on the
+// button. A pointer press also focuses what it presses, so that focus is
+// not counted, or unpinning by click would leave the panel open until blur.
 function wirePopover(parts) {
   const on = { hover: false, focus: false, pinned: false };
   let pressing = false;
   parts.sync = () => {
     const preview = (on.hover || on.focus) && parts.findings.length > 0;
     parts.pop.hidden = !(on.pinned || preview);
+    parts.btn.setAttribute("aria-expanded", String(!parts.pop.hidden));
   };
   const set = (key, value) => { on[key] = value; parts.sync(); };
   const close = () => {
@@ -81,31 +84,38 @@ function wirePopover(parts) {
     on.focus = false;
     set("pinned", false);
   };
-  parts.btn.addEventListener("pointerdown", () => { pressing = true; });
+  parts.wrap.addEventListener("pointerdown", () => { pressing = true; });
   for (const type of ["pointerup", "pointercancel"]) {
     document.addEventListener(type, () => { pressing = false; }, true);
   }
   parts.btn.addEventListener("click", () => set("pinned", !on.pinned));
   parts.wrap.addEventListener("mouseenter", () => set("hover", true));
   parts.wrap.addEventListener("mouseleave", () => set("hover", false));
-  parts.btn.addEventListener("focus", () => { if (!pressing) set("focus", true); });
-  parts.btn.addEventListener("blur", () => set("focus", false));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  parts.wrap.addEventListener("focusin", () => { if (!pressing) set("focus", true); });
+  parts.wrap.addEventListener("focusout", (e) => { if (!parts.wrap.contains(e.relatedTarget)) set("focus", false); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (parts.pop.contains(document.activeElement)) parts.btn.focus();
+    close();
+  });
   document.addEventListener("click", (e) => { if (!parts.wrap.contains(e.target)) close(); });
 }
 
-// checkAllButton runs `doctor all`; it is disabled while that runs, so a
-// second click does nothing.
+// checkAllButton runs `doctor all`; it is aria-disabled while that runs, so
+// a second click does nothing. Not disabled: that would drop the keyboard
+// focus, and with it the panel the focus holds open.
 function checkAllButton() {
   const btn = h("button", { type: "button", class: "btn btn-md btn-quiet check-all" }, "Check all");
   btn.addEventListener("click", async () => {
-    if (btn.disabled) return;
-    btn.disabled = true;
+    if (btn.getAttribute("aria-disabled") === "true") return;
+    btn.setAttribute("aria-disabled", "true");
+    btn.classList.add("is-busy");
     btn.textContent = "Checking…";
     try {
       await doctorAll();
     } finally {
-      btn.disabled = false;
+      btn.removeAttribute("aria-disabled");
+      btn.classList.remove("is-busy");
       btn.textContent = "Check all";
     }
   });

@@ -77,9 +77,18 @@ test("Check all adds the failed reading", async ({ page }) => {
   const failed = "codex-main: last usage reading failed: usage endpoint returned HTTP 503";
   await page.getByRole("button", { name: "1 warning" }).click();
   await expect(panel(page)).not.toContainText(failed);
+  // The browser holds the request until the running state is seen; it then
+  // reaches the demo, which still waits its 600 ms.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/doctor/all", async (route) => {
+    await gate;
+    await route.continue();
+  });
   const check = panel(page).getByRole("button", { name: /^(Check all|Checking…)$/ });
   await check.click();
   await expect(check).toHaveText("Checking…");
+  release();
   await expect(check).toHaveText("Check all");
   await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toBeVisible();
   await expect(panel(page)).toContainText(failed);
@@ -87,9 +96,8 @@ test("Check all adds the failed reading", async ({ page }) => {
   // A good Refresh of codex-main clears the row and the warning.
   await usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toHaveCount(0);
-  // The status line follows the next page load (a Refresh does not re-read
-  // the doctor findings), so reload before reading the warning.
-  await page.reload();
+  // The Refresh re-reads the doctor, so the status follows without a reload.
+  // (The click on Refresh, outside the panel, closed it.)
   await page.getByRole("button", { name: "1 warning" }).click();
   await expect(panel(page)).toBeVisible();
   await expect(panel(page)).not.toContainText(failed);

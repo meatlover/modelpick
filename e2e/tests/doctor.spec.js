@@ -52,7 +52,7 @@ test("a stored failed reading shows", async ({ page }) => {
   await server.send("fail codex-main boom");
   await usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(usageRow(page, "codex-main").getByText("error: boom")).toBeVisible();
-  await page.reload();
+  // The Refresh re-reads the doctor: no page reload.
   await page.getByRole("button", { name: "1 warning" }).click();
   await expect(panel(page)).toContainText("codex-main: last usage reading failed: boom");
 });
@@ -80,4 +80,36 @@ test("Check all updates the list", async ({ page }) => {
   await expect(page.getByRole("button", { name: "1 warning" })).toBeVisible();
   await expect(panel(page).getByText("No problems found")).toBeHidden();
   await expect(check).toBeEnabled();
+});
+
+test("the keyboard reaches Check all, and Escape returns to the status", async ({ page }) => {
+  await server.send("tool opencode-go missing");
+  await login(page, server.url);
+  const status = page.getByRole("button", { name: "1 error" });
+  const check = panel(page).getByRole("button", { name: "Check all" });
+  await expect(status).toHaveAttribute("aria-expanded", "false");
+  await status.focus();
+  await expect(panel(page)).toBeVisible();
+  await expect(status).toHaveAttribute("aria-expanded", "true");
+  // Focus moving into the panel keeps it open.
+  await page.keyboard.press("Tab");
+  await expect(check).toBeFocused();
+  await expect(panel(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toBeHidden();
+  await expect(status).toBeFocused();
+  await expect(status).toHaveAttribute("aria-expanded", "false");
+});
+
+test("Check all run from the keyboard keeps the panel and the focus", async ({ page }) => {
+  await server.send("tool opencode-go missing");
+  await login(page, server.url);
+  await page.getByRole("button", { name: "1 error" }).focus();
+  await page.keyboard.press("Tab");
+  const check = panel(page).getByRole("button", { name: /^(Check all|Checking…)$/ });
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(check).toHaveText("Check all");
+  await expect(panel(page)).toBeVisible();
+  await expect(check).toBeFocused();
 });

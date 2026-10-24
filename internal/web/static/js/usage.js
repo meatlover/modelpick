@@ -1,7 +1,7 @@
 // Usage tab: one row per account, saved readings only; only the Refresh
 // buttons call a vendor.
 import { h, clear } from "./dom.js";
-import { store, refresh } from "./api.js";
+import { store, refresh, reload } from "./api.js";
 import { fmtReset, tick } from "./time.js";
 import { currentTab } from "./header.js";
 import { accountErrorSet } from "./subjects.js";
@@ -76,13 +76,15 @@ function ageCell(row) {
   return h("span", { class: "u-age", "data-age-at": at });
 }
 
+// refreshOne refreshes one account; own is false inside Refresh all, which
+// reloads once after the batch instead of once per account.
 async function refreshOne(account, own = true) {
   if (busy.has(account)) return;
   if (own) wanted = account;
   busy.add(account);
   paint();
   try {
-    await refresh(account);
+    await refresh(account, { reload: own });
   } finally {
     busy.delete(account);
     paint();
@@ -97,6 +99,7 @@ async function refreshAll() {
   try {
     const todo = store.usage.filter((r) => r.can_refresh && !busy.has(r.account));
     await Promise.allSettled(todo.map((r) => refreshOne(r.account, false)));
+    await reload();
   } finally {
     busyAll = false;
     paint();

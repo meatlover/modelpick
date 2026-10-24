@@ -33,3 +33,19 @@ test("a failed refresh shows in the row", async ({ page }) => {
   await expect(row(page, "codex-main").getByText("error: boom")).toBeVisible();
   await expect(row(page, "go-1").getByText("error: boom")).toHaveCount(0);
 });
+
+test("Refresh all re-reads the doctor once, after the batch", async ({ page }) => {
+  await server.send("fail codex-main boom");
+  let doctorReads = 0;
+  page.on("request", (r) => {
+    if (r.method() === "GET" && new URL(r.url()).pathname === "/api/doctor") doctorReads++;
+  });
+  const all = page.locator(".u-head").getByRole("button");
+  await expect(all).toHaveText("Refresh all");
+  await all.click();
+  await expect(row(page, "codex-main").getByText("error: boom")).toBeVisible();
+  // The failed reading reaches the status without a page reload.
+  await expect(page.getByRole("button", { name: "1 warning" })).toBeVisible();
+  await expect(all).toHaveText("Refresh all");
+  expect(doctorReads, "GET /api/doctor during Refresh all").toBe(1);
+});
