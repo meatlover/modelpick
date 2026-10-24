@@ -28,7 +28,7 @@ func TestLsTableHasEveryAccount(t *testing.T) {
 		t.Fatalf("exit %d, want 0; stderr %q", code, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "ACCOUNT VENDOR WINDOW USED RESETS AGE STATE" {
+	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "ACCOUNT STATE WINDOW USED RESETS AGE" {
 		t.Fatalf("header = %q", lines[0])
 	}
 	for _, name := range []string{"claude-main", "claude-rec", "codex-main"} {
@@ -40,17 +40,70 @@ func TestLsTableHasEveryAccount(t *testing.T) {
 	for _, l := range lines {
 		if strings.HasPrefix(l, "claude-rec") {
 			recRow = l
+			break
 		}
 	}
-	if !strings.Contains(recRow, "error: usage endpoint returned HTTP 401; log in to Claude Code") {
-		t.Errorf("claude-rec row = %q", recRow)
+	if strings.Fields(recRow)[1] != "error" {
+		t.Errorf("claude-rec row = %q, want STATE error", recRow)
 	}
-	// two windows for claude-main → two rows, the ok state on both.
-	if n := strings.Count(stdout, "claude-main"); n != 2 {
-		t.Errorf("claude-main rows = %d, want 2:\n%s", n, stdout)
+	if last := lines[len(lines)-1]; !strings.HasPrefix(last, "claude-rec: usage endpoint returned HTTP 401; log in to Claude Code") {
+		t.Errorf("last line = %q, want the claude-rec error line", last)
 	}
-	if !strings.Contains(stdout, "40%") || !strings.Contains(stdout, "session (5h)") {
+	// the account name opens its first line only.
+	if n := strings.Count(stdout, "claude-main"); n != 1 {
+		t.Errorf("claude-main lines = %d, want 1:\n%s", n, stdout)
+	}
+	if !strings.Contains(stdout, "40%") || !strings.Contains(stdout, "5h") {
 		t.Errorf("window columns missing:\n%s", stdout)
+	}
+}
+
+const lsGolden = `ACCOUNT      STATE  WINDOW    USED  RESETS                    AGE
+claude-main  ok     5h         31%  in 1h 50m     Thu 13:50Z  4m
+                    7d         58%  in 2d 12h     Sun 00:00Z
+                    7d Fable   12%  in 2d 12h     Sun 00:00Z
+claude-rec   error  -            -  -                         -
+codex-main   ok     7d         41%  in 8d      Oct 30 12:00Z  12m
+
+claude-rec: usage endpoint returned HTTP 401; log in to Claude Code with this account
+`
+
+func TestLsTableGolden(t *testing.T) {
+	now, wk := apptest.Now, 7*24*time.Hour
+	claude := apptest.NewFake("claude")
+	claude.Readings["claude-main"] = adapter.Reading{TakenAt: now.Add(-4 * time.Minute), Windows: []adapter.Window{
+		{Label: "session", Length: 5 * time.Hour, UsedPct: 31, ResetsAt: now.Add(110 * time.Minute)},
+		{Label: "weekly", Length: wk, UsedPct: 58, ResetsAt: now.Add(60 * time.Hour)},
+		{Label: "weekly", Length: wk, UsedPct: 12, ResetsAt: now.Add(60 * time.Hour), ScopeModelName: "Fable"},
+	}}
+	claude.Errs["claude-rec"] = adapter.ErrUnauthorized
+	codex := apptest.NewFake("codex")
+	codex.Readings["codex-main"] = adapter.Reading{TakenAt: now.Add(-12 * time.Minute), Windows: []adapter.Window{
+		{Label: "primary_window", Length: wk, UsedPct: 41, ResetsAt: now.Add(8 * 24 * time.Hour)},
+	}}
+	d := apptest.NewDeps(t, testConfig, claude, codex)
+	stdout, stderr, code := run(d, "ls")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if stdout != lsGolden {
+		t.Errorf("got:\n%s\nwant:\n%s", stdout, lsGolden)
+	}
+}
+
+func TestLsTablePassedReset(t *testing.T) {
+	claude := apptest.NewFake("claude")
+	claude.Readings["claude-main"] = adapter.Reading{TakenAt: apptest.Now, Windows: []adapter.Window{
+		{Label: "session", Length: 5 * time.Hour, UsedPct: 70, ResetsAt: apptest.Now.Add(-10 * time.Minute)},
+	}}
+	d := apptest.NewDeps(t, testConfig, claude, apptest.NewFake("codex"))
+	stdout, _, code := run(d, "ls", "claude-main")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	row := strings.Fields(strings.Split(stdout, "\n")[1])
+	if got := strings.Join(row[2:], " "); got != "5h 0% in 0m Thu 11:50Z <1m" {
+		t.Errorf("row = %q\n%s", got, stdout)
 	}
 }
 

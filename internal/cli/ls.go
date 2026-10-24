@@ -21,6 +21,8 @@ type lsWindow struct {
 	UsedPct  float64 `json:"used_pct"`
 	ResetsAt *string `json:"resets_at"`
 	Scope    *string `json:"scope"`
+
+	resetsAt time.Time `json:"-"` // for the table; zero when unknown
 }
 
 type lsAccount struct {
@@ -64,7 +66,7 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if asJSON {
 		return writeJSON(stdout, stderr, rows)
 	}
-	writeLsTable(stdout, rows)
+	writeLsTable(stdout, rows, d.Now())
 	return 0
 }
 
@@ -104,7 +106,7 @@ func lsRows(cfg *core.Config, e *app.Env, names []string, now time.Time) []lsAcc
 			age := int64(usage.Age(st.Reading.TakenAt, now) / time.Second)
 			row.AgeSeconds = &age
 			for _, w := range core.ApplyResets(*st.Reading, now).Windows {
-				lw := lsWindow{Label: w.Label, Length: core.FormatLength(w.Length), UsedPct: w.UsedPct}
+				lw := lsWindow{Label: w.Label, Length: core.FormatLength(w.Length), UsedPct: w.UsedPct, resetsAt: w.ResetsAt}
 				if !w.ResetsAt.IsZero() {
 					s := w.ResetsAt.UTC().Format(time.RFC3339)
 					lw.ResetsAt = &s
@@ -127,30 +129,81 @@ func cmpOr(a, b string) string {
 	return b
 }
 
-func writeLsTable(w io.Writer, rows []lsAccount) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ACCOUNT\tVENDOR\tWINDOW\tUSED\tRESETS\tAGE\tSTATE")
+// writeLsTable prints the v2 table: STATE second, one line per window with
+// the account, state and age on the account's first line only, RESETS as time
+// left and time. An errored account shows "error" in STATE and its message
+// goes after the table, one "<account>: <message>" line each.
+func writeLsTable(w io.Writer, rows []lsAccount, now time.Time) {
+	leftW, resetW := resetWidths(rows, now)
+	table := [][]string{{"ACCOUNT", "STATE", "WINDOW", "USED", "RESETS", "AGE"}}
+	var errLines []string
 	for _, r := range rows {
+		state := r.State
+		if m, ok := strings.CutPrefix(r.State, "error: "); ok {
+			state = "error"
+			errLines = append(errLines, r.Account+": "+m)
+		}
 		age := "-"
 		if r.AgeSeconds != nil {
 			age = formatAge(time.Duration(*r.AgeSeconds) * time.Second)
 		}
 		if len(r.Windows) == 0 {
-			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t%s\t%s\n", r.Account, r.Vendor, age, r.State)
+			table = append(table, []string{r.Account, state, "-", "-", "-", age})
+			continue
 		}
-		for _, win := range r.Windows {
-			label := fmt.Sprintf("%s (%s)", win.Label, win.Length)
-			if win.Scope != nil {
-				label += " " + *win.Scope
+		for i, win := range r.Windows {
+			first := []string{r.Account, state}
+			tail := []string{age}
+			if i > 0 {
+				first, tail = []string{"", ""}, nil
 			}
-			resets := "-"
-			if win.ResetsAt != nil {
-				resets = *win.ResetsAt
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%g%%\t%s\t%s\t%s\n", r.Account, r.Vendor, label, win.UsedPct, resets, age, r.State)
+			cells := append(first, windowCell(win), fmt.Sprintf("%g%%", win.UsedPct), resetsCell(win, now, leftW, resetW))
+			table = append(table, append(cells, tail...))
 		}
 	}
-	_ = tw.Flush()
+	writeColumns(w, table, map[int]bool{3: true})
+	if len(errLines) > 0 {
+		fmt.Fprintln(w)
+		for _, l := range errLines {
+			fmt.Fprintln(w, l)
+		}
+	}
+}
+
+// windowCell is the length (5h, 7d), then the scope when the window is
+// model-scoped; the vendor's label when the length is unknown.
+func windowCell(win lsWindow) string {
+	c := win.Length
+	if c == "?" {
+		c = win.Label
+	}
+	if win.Scope != nil {
+		c += " " + *win.Scope
+	}
+	return c
+}
+
+// resetWidths is the widest fmtLeft and fmtReset over every window.
+func resetWidths(rows []lsAccount, now time.Time) (left, reset int) {
+	for _, r := range rows {
+		for _, win := range r.Windows {
+			if win.resetsAt.IsZero() {
+				continue
+			}
+			left = max(left, len(fmtLeft(win.resetsAt, now)))
+			reset = max(reset, len(fmtReset(win.resetsAt, now)))
+		}
+	}
+	return left, reset
+}
+
+// resetsCell is time left padded to leftW, two spaces, then the time right-
+// aligned to resetW; "-" for a window with no reset time.
+func resetsCell(win lsWindow, now time.Time, leftW, resetW int) string {
+	if win.resetsAt.IsZero() {
+		return "-"
+	}
+	return fmt.Sprintf("%-*s  %*s", leftW, fmtLeft(win.resetsAt, now), resetW, fmtReset(win.resetsAt, now))
 }
 
 func formatAge(d time.Duration) string {

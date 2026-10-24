@@ -207,8 +207,10 @@ its own login. Until then the account uses its last good reading, if any.
 
 ## Troubleshooting
 
-Start with `modelpick doctor`, then `modelpick ls`, whose `STATE` column shows
-each account's current state.
+Start with `modelpick doctor`, then `modelpick ls`, whose `STATE` column (the
+second) shows each account's current state. An account whose usage call failed
+shows `error` there, and its message is on a line below the table
+(`<account>: <message>`); `ls --json` carries the full text in `state`.
 
 | Message | Meaning | Fix |
 |---|---|---|
