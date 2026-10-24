@@ -10,8 +10,13 @@ import (
 
 // allowed lists, per restricted package (path relative to the module root),
 // the module packages it may import. A restricted package with an empty list
-// imports no module package. cmd/..., internal/cli and internal/app/apptest
-// (the test fakes, which import app) are unrestricted.
+// imports no module package. cmd/... and internal/cli (the composition
+// roots) are unrestricted, and so is internal/app/apptest, the test fakes.
+// That exemption is removable by an entry for apptest naming what it
+// imports today (internal/app, internal/adapter), so a fake could not reach
+// web or cli; deferred because only _test.go files import apptest, so it
+// never ships in a binary, and its imports follow whatever the app, cli and
+// web/live suites need next.
 var allowed = map[string][]string{
 	"internal/pathx":    {},
 	"internal/platform": {"internal/pathx"},
