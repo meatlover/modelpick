@@ -59,6 +59,21 @@ test("change account, model and thinking", async ({ page }) => {
   await expect(c4.getByLabel("Account")).toHaveValue("claude-spare");
 });
 
+// A model with no thinking levels shows a ghost box: dashed, unfilled, no
+// arrow, still labelled Thinking. A model with levels keeps the select.
+test("no thinking levels shows a ghost box", async ({ page }) => {
+  const look = (sel) => sel.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { dashed: s.borderTopStyle === "dashed", unfilled: s.backgroundColor === "rgba(0, 0, 0, 0)",
+      arrow: s.appearance !== "none", disabled: el.disabled };
+  });
+  const none = card(page, 3).getByLabel("Thinking");
+  await expect(none).toHaveValue("");
+  expect(await look(none)).toEqual({ dashed: true, unfilled: true, arrow: false, disabled: true });
+  expect(await look(card(page, 4).getByLabel("Thinking")))
+    .toEqual({ dashed: false, unfilled: false, arrow: true, disabled: false });
+});
+
 // The card is redrawn only when the reload after an edit returns. Held
 // back here, so a second edit is made on the card as drawn before the first:
 // it must still apply, on the choice as the first edit left it.

@@ -261,7 +261,7 @@ function thinkingSelect(st, ctx) {
   const levels = model ? model.thinking || [] : [];
   const key = `c${ctx.index}-thinking`;
   if (!levels.length && c.thinking === null) {
-    return h("select", { "data-key": key, disabled: true }, h("option", { value: "" }, "—"));
+    return h("select", { class: "p-none", "data-key": key, disabled: true }, h("option", { value: "" }, "—"));
   }
   return select(key, null, (v) => setField(ctx, "thinking", v === "" ? null : v),
     options(levels, c.thinking, (v) => (v === null ? "—" : v)));

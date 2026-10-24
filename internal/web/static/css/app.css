@@ -1036,6 +1036,17 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   min-width: 0;
 }
 
+/* Nothing to choose (a model without thinking levels): a ghost box that
+   keeps the row lined up but does not read as a control. */
+.p-field select.p-none {
+  appearance: none;
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-3);
+  opacity: 1;
+}
+
 /* Filled by caps.js and chips.js; an empty area takes no gap. */
 .p-caps {
   display: flex;
