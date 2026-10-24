@@ -14,7 +14,7 @@ const usageText = `usage:
   modelpick env <profile> [--refresh]
   modelpick ls [<account>…] [--refresh] [--json]
   modelpick ls models [--json]
-  modelpick config
+  modelpick config   (alias: conf)
   modelpick doctor [all]
   modelpick ui [--port N] [--no-open]
 `
@@ -32,7 +32,7 @@ func Main(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runEnv(args[1:], stdout, stderr, d)
 	case "ls":
 		return runLs(args[1:], stdout, stderr, d)
-	case "config":
+	case "config", "conf":
 		return runConfig(args[1:], stdout, stderr, d)
 	case "ui":
 		return runUI(args[1:], stdout, stderr, d)

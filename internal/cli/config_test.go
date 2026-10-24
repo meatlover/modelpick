@@ -137,3 +137,23 @@ func TestConfigOutputGoldenAllowDuring(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q; got\n%s\nwant\n%s", code, stderr, stdout, want)
 	}
 }
+
+func TestConfIsConfigAlias(t *testing.T) {
+	d := apptest.NewDeps(t, testConfig)
+	wantOut, wantErr, wantCode := run(d, "config")
+	if wantCode != 0 || wantOut == "" {
+		t.Fatalf("config baseline: exit %d, stdout %q", wantCode, wantOut)
+	}
+	gotOut, gotErr, gotCode := run(d, "conf")
+	if gotOut != wantOut || gotErr != wantErr || gotCode != wantCode {
+		t.Errorf("conf = (%q, %q, %d), want config's (%q, %q, %d)", gotOut, gotErr, gotCode, wantOut, wantErr, wantCode)
+	}
+	_, confErr, confCode := run(d, "conf", "x")
+	_, cfgErr, _ := run(d, "config", "x")
+	if confCode != 1 || confErr != cfgErr || !strings.Contains(confErr, "config: unexpected argument") {
+		t.Errorf("conf x: exit %d stderr %q, want exit 1 and config's %q", confCode, confErr, cfgErr)
+	}
+	if !strings.Contains(usageText, "(alias: conf)") {
+		t.Errorf("usage lacks the alias note:\n%s", usageText)
+	}
+}

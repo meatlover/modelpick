@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Opt-in local install after a merge or pull to main. Enable per clone:
+#   git config modelpick.autodeploy true
+# Runs scripts/deploy-local.sh, which only installs; see README Development.
+[ "$(git symbolic-ref --short -q HEAD || true)" = main ] || exit 0
+[ "$(git config --bool modelpick.autodeploy || true)" = true ] || exit 0
+if ! bash scripts/deploy-local.sh; then
+  echo "modelpick: auto-deploy failed; the merge itself is done. Re-run: bash scripts/deploy-local.sh" >&2
+  exit 1
+fi

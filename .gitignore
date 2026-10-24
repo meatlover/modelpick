@@ -2,3 +2,7 @@
 .superpowers/
 /modelpick
 /dist/
+/cmd/modelpick/modelpick
+/cmd/modelpick-ui-demo/modelpick-ui-demo
+/cmd/modelpick-e2e-server/modelpick-e2e-server
+/cmd/*/.*.tmp.*

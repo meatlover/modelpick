@@ -37,7 +37,7 @@ modelpick pick [<profile>] [--refresh]           JSON for one profile; with none
 modelpick env <profile> [--refresh]              the pick as sh export lines, for eval
 modelpick ls [<account>…] [--refresh] [--json]   usage of the named accounts (default: every account): windows, % used, resets, reading age
 modelpick ls models [--json]                     models each configured account's subscription offers
-modelpick config                                 the effective configuration. No network.
+modelpick config                                 the effective configuration. No network; alias: modelpick conf.
 modelpick doctor [all]                           validates the config and everything it depends on. No usage calls, unless `all`.
 modelpick ui [--port N] [--no-open]              a local page to read usage and edit the config
 ```
@@ -129,6 +129,14 @@ Run `git config core.hooksPath .githooks` once after cloning; the pre-commit
 hook then runs `bash scripts/check.sh` (gofmt, vet, including the `live`-tagged
 smoke test, tests, the browser tests, four-target cross-build) and refuses a
 commit that fails.
+
+`git config modelpick.autodeploy true` turns on an auto-deploy in that clone:
+after a merge or pull (including `git pull --rebase`) on `main`, the
+post-merge and post-rewrite hooks run `bash scripts/deploy-local.sh`, which
+builds the three commands to `cmd/<name>/<name>` and installs `modelpick` to
+`~/.local/bin/modelpick` (or `$MODELPICK_INSTALL_DIR`). It only installs: it
+never restarts a running `modelpick ui`. Run `bash scripts/deploy-local.sh` to
+do it by hand.
 
 The browser tests (`e2e/`, Playwright driving Chromium, development only)
 need Node.js 18 or later. Install the locked packages and the browser once:
