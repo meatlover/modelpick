@@ -299,7 +299,7 @@ func (l *Live) row(cfg *core.Config, env *app.Env, name string) web.UsageRow {
 	switch {
 	case err != nil:
 		st.Err = err
-	case saved.LastError != "" && (saved.Reading == nil || saved.LastAttempt.After(saved.Reading.TakenAt)):
+	case app.LastAttemptFailed(saved):
 		st.Err = errors.New(saved.LastError)
 	}
 	return usageRow(name, acct.Vendor, st, now)

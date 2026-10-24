@@ -6,6 +6,7 @@ import (
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/core"
+	"github.com/meatlover/modelpick/internal/usage"
 )
 
 // StateText derives the STATE column from the store's outcome: an expired
@@ -23,4 +24,10 @@ func StateText(st core.AccountState) string {
 		return "rate-limited (no retry time given)"
 	}
 	return "error: " + st.Err.Error()
+}
+
+// LastAttemptFailed reports whether the stored state still holds a failed
+// usage call: an error that no reading taken since has replaced.
+func LastAttemptFailed(s usage.Saved) bool {
+	return s.LastError != "" && (s.Reading == nil || s.LastAttempt.After(s.Reading.TakenAt))
 }

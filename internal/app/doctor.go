@@ -76,8 +76,8 @@ func doctor(cfg *core.Config, d Deps, cache *CheckCache) findings {
 	}
 	sort.Strings(accounts)
 
-	models := accountFindings(&f, cfg, d, cache, accounts)
-	savedFindings(&f, cfg, d, accounts)
+	models, checked := accountFindings(&f, cfg, d, cache, accounts)
+	savedFindings(&f, cfg, d, accounts, checked)
 	scheduleFindings(cfg, f.add)
 	for _, p := range sortedProfiles(cfg) {
 		for i, c := range cfg.Profiles[p] {
@@ -113,10 +113,12 @@ func sortFindings(fs []Finding) {
 }
 
 // accountFindings reports each account's adapter Check findings and returns
-// the model list of every account whose models could be listed.
-func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, accounts []string) map[string][]adapter.Model {
+// the model list of every account whose models could be listed, and the set
+// of accounts with a Check finding of any severity.
+func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, accounts []string) (map[string][]adapter.Model, map[string]bool) {
 	e := NewEnv(d, cfg, false)
 	models := map[string][]adapter.Model{}
+	checked := map[string]bool{}
 	cache.warmChecks(e, accounts)
 	for _, n := range accounts {
 		acct, a, err := e.AdapterFor(n)
@@ -126,6 +128,7 @@ func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, a
 		}
 		r := cache.check(n, acct, a)
 		checkErr := checkFindings(f, n, r.findings)
+		checked[n] = len(r.findings) > 0
 		if r.modelsErr != nil {
 			// A Check error (tool or credential missing) is the cause of the
 			// failed listing; a second warning would repeat it.
@@ -136,7 +139,7 @@ func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, a
 		}
 		models[n] = r.models // present even when empty, so its choices are still checked
 	}
-	return models
+	return models, checked
 }
 
 // checkFindings adds one account's adapter Check findings, marking them
@@ -191,8 +194,10 @@ func groupCheckFindings(f *findings) {
 }
 
 // savedFindings compares each capped choice's cap count with the windows of
-// the account's saved reading; no lock, no network.
-func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string) {
+// the account's saved reading, and reports a last usage call that failed
+// unless the account is rate-limited or its Check finding (checked) is the
+// cause; no lock, no network.
+func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string, checked map[string]bool) {
 	store := NewStore(d, cfg)
 	saved := map[string]*adapter.Reading{}
 	for _, n := range accounts {
@@ -202,6 +207,9 @@ func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string) {
 			continue
 		}
 		saved[n] = s.Reading
+		if LastAttemptFailed(s) && !s.RetryUntil.After(d.Now()) && !checked[n] {
+			f.add(sevWarning, n, "last usage reading failed: "+s.LastError)
+		}
 		if s.Reading != nil {
 			for _, note := range s.Reading.Notes {
 				f.add(sevWarning, n, note)

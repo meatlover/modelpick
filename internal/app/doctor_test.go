@@ -291,3 +291,58 @@ func TestDoctorSingleAccountNotGrouped(t *testing.T) {
 		t.Fatalf("findings = %+v, want %+v", got, want)
 	}
 }
+
+// storedDoctor runs Doctor on the healthy docConfig with codex-main's state
+// file set to stored (the fake clock is 2026-10-22T12:00:00Z).
+func storedDoctor(t *testing.T, stored string, claude, codex *apptest.Fake) []app.Finding {
+	t.Helper()
+	d := apptest.NewDeps(t, docConfig("", codexA+`}`), claude, codex)
+	apptest.WriteStored(t, d, "codex-main", stored)
+	cfg, err := app.LoadConfig(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app.Doctor(cfg, d, nil)
+}
+
+const (
+	reading1100 = `"last_good":{"taken_at":"2026-10-22T11:00:00Z","windows":[]}`
+	reading1155 = `"last_good":{"taken_at":"2026-10-22T11:55:00Z","windows":[]}`
+	failed503   = `"last_attempt":"2026-10-22T11:50:00Z","last_error":"usage endpoint returned HTTP 503"`
+	failedWarn  = "last usage reading failed: usage endpoint returned HTTP 503"
+)
+
+func TestDoctorReportsLastFailedReading(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	got := storedDoctor(t, `{`+reading1100+`,`+failed503+`}`, claude, codex)
+	want := []app.Finding{{Severity: "warning", Subject: "codex-main", Message: failedWarn}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings = %+v, want %+v", got, want)
+	}
+}
+
+func TestDoctorFailedReadingClearsAfterSuccess(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	got := storedDoctor(t, `{`+reading1155+`,`+failed503+`}`, claude, codex)
+	if len(got) != 0 {
+		t.Fatalf("findings = %+v, want none", got)
+	}
+}
+
+func TestDoctorRateLimitedNotReported(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	got := storedDoctor(t, `{`+reading1100+`,`+failed503+`,"retry_until":"2026-10-22T12:30:00Z"}`, claude, codex)
+	if len(got) != 0 {
+		t.Fatalf("findings = %+v, want none", got)
+	}
+}
+
+func TestDoctorFailedReadingSkippedWhenCheckReportsCause(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	codex.Checks["codex-main"] = []adapter.Finding{{Severity: adapter.SeverityError, Message: "no credential: /x"}}
+	got := storedDoctor(t, `{`+reading1100+`,`+failed503+`}`, claude, codex)
+	want := []app.Finding{{Severity: "error", Subject: "codex-main", Message: "no credential: /x"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings = %+v, want %+v", got, want)
+	}
+}
