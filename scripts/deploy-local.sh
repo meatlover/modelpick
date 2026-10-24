@@ -16,15 +16,19 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# Every temp file this run creates is removed on any exit; after the final mv
+# the removal is a no-op. The empty first element keeps "${tmps[@]}" valid
+# under set -u in bash 3.2.
+tmps=("")
+trap 'rm -f "${tmps[@]}"' EXIT
+
 # build_to <package dir name>: builds to a temp file next to the target, then
 # renames it into place, so a failed build never leaves a half-written binary.
 build_to() {
   local name=$1 tmp
   tmp=$(mktemp "cmd/$name/.$name.tmp.XXXXXX")
-  if ! go build -o "$tmp" "./cmd/$name"; then
-    rm -f "$tmp"
-    return 1
-  fi
+  tmps+=("$tmp")
+  go build -o "$tmp" "./cmd/$name"
   mv -f "$tmp" "cmd/$name/$name"
 }
 
@@ -35,9 +39,11 @@ done
 dir=${MODELPICK_INSTALL_DIR:-$HOME/.local/bin}
 mkdir -p "$dir"
 tmp=$(mktemp "$dir/.modelpick.tmp.XXXXXX")
+tmps+=("$tmp")
 cp cmd/modelpick/modelpick "$tmp"
 chmod 755 "$tmp"
 mv -f "$tmp" "$dir/modelpick"
 
 version=$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/cli/version.go)
-echo "modelpick: deployed $version ($(git rev-parse --short HEAD)) to $dir/modelpick"
+sha=$(git rev-parse --short HEAD)
+echo "modelpick: deployed $version ($sha) to $dir/modelpick"

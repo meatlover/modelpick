@@ -17,8 +17,23 @@ func TestDeployLocal(t *testing.T) {
 		t.Skip("builds three binaries")
 	}
 	dir, home := t.TempDir(), t.TempDir()
+	// A fresh HOME would give go an empty build cache; pin the HOME-derived
+	// go dirs first, computed once here.
+	goEnv := []string{"HOME=" + home, "MODELPICK_INSTALL_DIR=" + dir}
+	for _, k := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
+		out, err := exec.Command("go", "env", k).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		goEnv = append(goEnv, k+"="+strings.TrimSpace(string(out)))
+	}
+	// Under a git hook GIT_DIR points at the real repo; poison it (and the
+	// XDG git config) so the script's git calls fail unless env is scrubbed.
+	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "poisoned"))
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(t.TempDir(), "poisoned-index"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
 	cmd := exec.Command("bash", "../../scripts/deploy-local.sh")
-	cmd.Env = append(os.Environ(), "MODELPICK_INSTALL_DIR="+dir, "HOME="+home)
+	cmd.Env = append(cleanEnv(), goEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -51,12 +66,12 @@ func TestDeployLocal(t *testing.T) {
 	}
 }
 
-// cleanEnv is the environment without any GIT_* variable, so a git call
+// cleanEnv is the environment without any GIT_* variable or XDG_CONFIG_HOME, so a git call
 // resolves its repository from its working directory alone.
 func cleanEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") {
+		if !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
 			env = append(env, kv)
 		}
 	}
