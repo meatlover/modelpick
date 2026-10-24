@@ -97,7 +97,8 @@ func deref(s *string) string {
 	return *s
 }
 
-// shellQuote wraps s in single quotes, writing each ' inside as '\”.
+// shellQuote wraps s in single quotes and writes each single quote inside as
+// quote, backslash, quote, quote (the sh idiom for a literal quote).
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
