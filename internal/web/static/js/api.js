@@ -171,3 +171,23 @@ export async function refresh(account) {
   store.set({ usage: store.usage.map((row) => (row.account === account ? r.data : row)) });
   return { ok: true, row: r.data };
 }
+
+// doctorAll runs `doctor all` on the server: the usage calls it makes
+// replace the stored doctor, then the page reloads (usage rows changed).
+export async function doctorAll() {
+  let r;
+  try {
+    r = await postJSON("/api/doctor/all");
+  } catch {
+    stopped(true);
+    return { ok: false, reason: "modelpick ui has stopped" };
+  }
+  if (r.status !== 200) {
+    const reason = r.data.reason || `HTTP ${r.status}`;
+    toast(r.data.reason || "Check all failed", "Not checked.");
+    return { ok: false, reason };
+  }
+  store.set({ doctor: r.data });
+  await reload();
+  return { ok: true };
+}

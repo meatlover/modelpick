@@ -214,6 +214,14 @@ a:hover {
   gap: 10px;
 }
 
+.pop-none {
+  margin: 0;
+}
+
+.pop .check-all {
+  margin-top: 12px;
+}
+
 .sev {
   font-weight: 600;
 }

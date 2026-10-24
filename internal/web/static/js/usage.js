@@ -4,6 +4,7 @@ import { h, clear } from "./dom.js";
 import { store, refresh } from "./api.js";
 import { fmtReset, tick } from "./time.js";
 import { currentTab } from "./header.js";
+import { accountErrorSet } from "./subjects.js";
 
 export const uses = ["usage", "doctor", "state"];
 
@@ -44,10 +45,7 @@ function stateText(state, now = new Date()) {
 }
 
 function errorAccounts() {
-  const names = new Set();
-  const found = store.doctor ? store.doctor.findings : [];
-  for (const f of found || []) if (f.severity === "error") names.add(f.subject);
-  return names;
+  return accountErrorSet(store.doctor ? store.doctor.findings : []);
 }
 
 function windowRow(w) {

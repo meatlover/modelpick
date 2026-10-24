@@ -4,6 +4,7 @@
 import { h, clear } from "./dom.js";
 import { store, sendOp } from "./api.js";
 import { currentTab } from "./header.js";
+import { accountErrorSet } from "./subjects.js";
 
 export const uses = ["state", "doctor"];
 
@@ -49,7 +50,7 @@ function restoreFocus() {
 
 function errorSubjects() {
   const found = store.doctor ? store.doctor.findings || [] : [];
-  return new Set(found.filter((f) => f.severity === "error").map((f) => f.subject));
+  return accountErrorSet(found);
 }
 
 // ---------- defaults ----------

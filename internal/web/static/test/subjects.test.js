@@ -3,7 +3,7 @@
 // contract 6; webtest pins the back-end half). In the browser,
 // subjects.test.html writes the verdict into <output id="result">;
 // elsewhere run() resolves it.
-import { choiceSubject, profileHasError } from "../js/subjects.js";
+import { accountErrorSet, choiceSubject, profileHasError } from "../js/subjects.js";
 
 const red = (...subjects) => new Set(subjects);
 
@@ -18,6 +18,16 @@ const cases = [
     () => profileHasError(red("profile coder-two, choice 1", "profile coder-two"), "coder"), false],
   ["link not red for an account of that name", () => profileHasError(red("coder"), "coder"), false],
   ["link not red with no errors", () => profileHasError(red(), "coder"), false],
+  ["grouped error reddens each account",
+    () => [...accountErrorSet([{ severity: "error", subject: "go-1, go-2", accounts: ["go-1", "go-2"] }])].sort().join("|"),
+    "go-1|go-1, go-2|go-2"],
+  ["grouped warning reddens none",
+    () => accountErrorSet([{ severity: "warning", subject: "go-1, go-2", accounts: ["go-1", "go-2"] }]).size, 0],
+  ["plain account error is itself",
+    () => [...accountErrorSet([{ severity: "error", subject: "codex-main" }])].join("|"), "codex-main"],
+  ["profile subject is in the set, matches no account",
+    () => { const s = accountErrorSet([{ severity: "error", subject: "profile coder" }]); return s.has("profile coder") && !s.has("coder"); }, true],
+  ["no doctor, no errors", () => accountErrorSet(null).size, 0],
 ];
 
 function check([name, fn, want]) {

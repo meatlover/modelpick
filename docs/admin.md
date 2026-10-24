@@ -114,6 +114,10 @@ no saved reading gets one first reading in the background per run, when the
 server starts or the account is added. It is an ordinary read, so the floor,
 `Retry-After` and an expired token all apply.
 
+**Doctor status.** The top-right status lists every `doctor` problem, and its
+Check all button runs `doctor all`, which calls the vendor once for each
+account with no fresh reading.
+
 **Editing.** Every change applies to the file at once; there is no Save
 button and no undo. A change is refused, and the file left as it was, when it
 would add a `doctor` error the file did not already have. If the file changes
