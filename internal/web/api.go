@@ -45,9 +45,10 @@
 //     display strings. No response ever holds a credential.
 //  16. A model whose Thinking is [] takes a null choice thinking.
 //  17. Times are RFC 3339 UTC; resets_at is "" when unknown.
-//  18. `POST /api/doctor/all` runs every check, including one usage call per
-//     account without a fresh reading; nothing else on the page causes a
-//     usage call except Refresh.
+//  18. `POST /api/doctor/all` runs every check, including at most one usage
+//     call per account without a fresh reading; nothing else on the page
+//     causes a usage call except Refresh and the background first reading
+//     of an account that has none.
 //
 // Errors other than Conflict and Refused are internal: the server answers
 // 500 "internal error" (422 "<account>: refresh failed" for a refresh) and

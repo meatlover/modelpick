@@ -241,6 +241,35 @@ func TestLiveDoctorAllReadOnlyMakesNoCall(t *testing.T) {
 	}
 }
 
+// Close waits for a Check all still running, as for a first reading. The
+// slow model listing that follows the cancelled calls keeps DoctorAll busy
+// after Close cancels, so an untracked one is caught. Once closed, Check
+// all makes no call.
+func TestCloseWaitsForDoctorAll(t *testing.T) {
+	f := newFixture(t)
+	f.claude.UsageDelay = 5 * time.Second
+	f.claude.ModelDelay = 300 * time.Millisecond
+	l := f.live()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		l.DoctorAll()
+	}()
+	waitFor(t, "a usage call", func() bool { return f.claude.TotalUsage() > 0 })
+	l.Close()
+	select {
+	case <-done:
+	default:
+		t.Error("Close returned while DoctorAll was still running")
+	}
+	<-done
+	before := f.usageCalls()
+	l.DoctorAll()
+	if after := f.usageCalls(); after != before {
+		t.Errorf("Check all after Close: usage calls %d -> %d", before, after)
+	}
+}
+
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)

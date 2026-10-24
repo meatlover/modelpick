@@ -44,7 +44,6 @@ type Demo struct {
 	readOnly   string
 	hasError   bool
 	toolGone   bool // opencode is missing for every go account
-	usageFail  bool // DoctorAll's codex-main usage call failed
 	defaultCap float64
 	accounts   []web.Account
 	models     map[string][]web.Model
@@ -303,7 +302,12 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 			continue
 		}
 		r := d.readings[account]
-		if r == nil {
+		// A blocked account answers its row unchanged: the state carries
+		// why (controller ruling, task 11 review).
+		if r != nil && !r.canRefresh {
+			return d.row(a), nil
+		}
+		if r == nil || !r.hasReading {
 			// A first reading: fixture-like windows, and windows[account]
 			// appears as it does for an account with a stored reading.
 			d.readings[account] = &reading{state: "ok", canRefresh: true, hasReading: true,
@@ -311,12 +315,8 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 			d.addAccountModels(a)
 			return d.row(a), nil
 		}
-		// A blocked account answers its row unchanged: the state carries
-		// why (controller ruling, task 11 review).
-		if !r.canRefresh {
-			return d.row(a), nil
-		}
-		r.readAt = d.now()
+		// A good call clears a failed one's error.
+		r.state, r.readAt = "ok", d.now()
 		return d.row(a), nil
 	}
 	// The account name leads every refresh refusal (contract 5).
@@ -337,9 +337,12 @@ func (d *Demo) findings() []web.Finding {
 	}
 	out = append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
 		Message: "token expired; open Claude Code with this account to refresh its login"})
-	if d.usageFail {
-		out = append(out, web.Finding{Severity: "warning", Subject: "codex-main",
-			Message: "last usage reading failed: usage endpoint returned HTTP 503"})
+	// A row whose last call failed is its doctor warning, as in live.
+	for _, a := range d.accounts {
+		if r := d.readings[a.Name]; r != nil && strings.HasPrefix(r.state, "error: ") {
+			out = append(out, web.Finding{Severity: "warning", Subject: a.Name,
+				Message: "last usage reading failed: " + strings.TrimPrefix(r.state, "error: ")})
+		}
 	}
 	return out
 }
@@ -368,13 +371,24 @@ func (d *Demo) Doctor() web.Doctor {
 }
 
 // DoctorAll pretends to call the vendors (the delay, without the lock, so
-// the page's reads go on), and codex-main's call fails: its warning stays
-// in every later Doctor, added once however often this runs.
+// the page's reads go on), and codex-main's call fails: its row shows the
+// error, and so its warning is in every Doctor until a Refresh succeeds.
+// Running it again changes nothing more.
 func (d *Demo) DoctorAll() web.Doctor {
 	time.Sleep(d.delay)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.usageFail = true
+	const failed = "error: usage endpoint returned HTTP 503"
+	for _, a := range d.accounts {
+		if a.Name != "codex-main" {
+			continue
+		}
+		if r := d.readings[a.Name]; r != nil {
+			r.state = failed
+		} else {
+			d.readings[a.Name] = &reading{state: failed, canRefresh: true}
+		}
+	}
 	return d.doctorLocked()
 }
 

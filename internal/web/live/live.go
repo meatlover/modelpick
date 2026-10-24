@@ -27,7 +27,7 @@ var errorLog = log.New(os.Stderr, "modelpick ui: ", log.LstdFlags)
 
 // Live serves one config file for one run of the server. It holds the one
 // app.Editor of the run (the safety copy is written once per run). Close
-// ends the background first readings.
+// ends the background work and any Check all still running.
 type Live struct {
 	d     app.Deps
 	path  string
@@ -58,12 +58,9 @@ func New(d app.Deps, path string) *Live {
 // cache State and Doctor use, so the first page load finds them. Model
 // listing only: no vendor usage call. Close cancels and awaits it.
 func (l *Live) startPrefetch() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.isClosed {
+	if !l.track() {
 		return
 	}
-	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		defer func() {
@@ -102,12 +99,9 @@ func newLive(d app.Deps, path string, first func(context.Context, string)) *Live
 // start runs one first reading in a goroutine Close waits for; after
 // Close it starts nothing. A panic is logged, not fatal to the server.
 func (l *Live) start(name string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.isClosed {
+	if !l.track() {
 		return
 	}
-	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		defer func() {
@@ -119,8 +113,20 @@ func (l *Live) start(name string) {
 	}()
 }
 
-// Close cancels the first readings still running and waits for them. It
-// may be called more than once.
+// track counts one piece of work Close waits for; the caller ends it with
+// wg.Done. Once closed it counts nothing and answers false.
+func (l *Live) track() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.isClosed {
+		return false
+	}
+	l.wg.Add(1)
+	return true
+}
+
+// Close cancels the work still running (first readings, the model
+// prefetch, a Check all) and waits for it. It may be called more than once.
 func (l *Live) Close() {
 	l.mu.Lock()
 	l.isClosed = true
@@ -346,15 +352,20 @@ func (l *Live) Doctor() web.Doctor {
 	return wireDoctor(app.Doctor(cfg, l.d, l.ed.Checks()))
 }
 
-// DoctorAll is Doctor after one usage call per account without a fresh
-// reading (contract 18). Like Doctor it holds no lock, so the page's reads
-// go on while the calls run; Close cancels them. A file that is missing or
-// does not parse is its one finding, and no call is made.
+// DoctorAll is Doctor after at most one usage call per account without a
+// fresh reading (contract 18). Like Doctor it holds no lock, so the page's
+// reads go on while the calls run; Close cancels them and waits for it. A
+// file that is missing or does not parse is its one finding, and no call is
+// made; after Close it is plain Doctor.
 func (l *Live) DoctorAll() web.Doctor {
 	cfg, bad := l.doctorConfig()
 	if cfg == nil {
 		return bad
 	}
+	if !l.track() {
+		return l.Doctor()
+	}
+	defer l.wg.Done()
 	l.ed.Checks().ForgetChecks()
 	return wireDoctor(app.DoctorAll(l.ctx, cfg, l.d, l.ed.Checks()))
 }
