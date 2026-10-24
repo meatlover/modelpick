@@ -28,6 +28,7 @@ setup and uninstalling.
 - [Configuration guide](docs/configuration.md): every field of the config file.
 - [Admin guide](docs/admin.md): files, network calls, the call floor, the UI, launchers, troubleshooting.
 - [Architecture guide](docs/architecture.md): packages, layering, the pick and store flow, adding a vendor.
+- [Changelog](CHANGELOG.md): what changed in each release.
 
 ## Commands
 

@@ -21,7 +21,7 @@ import (
 
 const (
 	defaultBaseURL   = "https://opencode.ai"
-	defaultUserAgent = "modelpick/0.1.0-dev"
+	defaultUserAgent = "modelpick"
 	usagePath        = "/zen/go/v1/usage"
 	maxBody          = 1 << 20
 )
@@ -33,7 +33,7 @@ type Options struct {
 	Now       func() time.Time
 	Run       platform.Runner
 	LookPath  platform.LookPathFunc
-	UserAgent string // default "modelpick/0.1.0-dev"
+	UserAgent string // default "modelpick"; the real version comes from app.DefaultDeps
 }
 
 // Adapter implements adapter.Adapter for OpenCode Go.
