@@ -36,7 +36,7 @@ modelpick pick <profile> [--refresh]   JSON: the chosen vendor/account/model/thi
 modelpick ls [--refresh] [--json]      usage of every configured account: windows, % used, resets, reading age
 modelpick ls models [--json]           models each configured account's subscription offers
 modelpick config                       the effective configuration. No network.
-modelpick doctor                       validates the config and everything it depends on. No usage calls.
+modelpick doctor [all]                 validates the config and everything it depends on. No usage calls, unless `all`.
 modelpick ui [--port N] [--no-open]    a local page to read usage and edit the config
 ```
 
@@ -51,6 +51,12 @@ See the [admin guide](docs/admin.md#the-ui-modelpick-ui).
 
 `--refresh` forces a usage call even when the last reading is younger than the
 floor. It still honours a server `Retry-After` that has not elapsed.
+
+`modelpick doctor all` does what `doctor` does and also checks that each
+account's usage can be read. An account whose saved reading is younger than
+`min_call_interval_minutes` is used as is; for any other account it calls the
+vendor once, like Refresh, ignoring the floor but not a server `Retry-After`
+or an expired token. A reading that fails shows as a warning.
 
 `doctor` and `ls models` make no usage calls, but they do list each account's
 models locally: Claude from a list built into modelpick, Codex from

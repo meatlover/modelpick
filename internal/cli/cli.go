@@ -14,7 +14,7 @@ const usageText = `usage:
   modelpick ls [--refresh] [--json]
   modelpick ls models [--json]
   modelpick config
-  modelpick doctor
+  modelpick doctor [all]
   modelpick ui [--port N] [--no-open]
 `
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -129,8 +130,8 @@ func TestDoctorConfigError(t *testing.T) {
 }
 
 func TestDoctorRejectsArguments(t *testing.T) {
-	_, stderr, code := run(apptest.NewDeps(t, doctorConfig), "doctor", "x")
-	if code != 1 || !strings.Contains(stderr, "doctor: unexpected argument") {
+	_, stderr, code := run(apptest.NewDeps(t, doctorConfig), "doctor", "bogus")
+	if code != 1 || !strings.Contains(stderr, `doctor: unexpected argument "bogus"`) {
 		t.Fatalf("exit %d stderr %q", code, stderr)
 	}
 }
@@ -174,5 +175,30 @@ func TestDoctorCannotReadStoredUsageWarns(t *testing.T) {
 	stdout, _, code := run(d, "doctor")
 	if code != 0 || !strings.Contains(stdout, "WARN   codex-main: cannot read stored usage: ") {
 		t.Fatalf("exit %d:\n%s", code, stdout)
+	}
+}
+
+func TestDoctorAllArgument(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	codex.Errs["codex-main"] = errors.New("dial tcp: connection refused")
+	d := apptest.NewDeps(t, doctorConfig, claude, codex)
+	for _, n := range []string{"claude-main", "codex-two"} {
+		apptest.WriteStored(t, d, n, `{"last_good":{"taken_at":"2026-10-22T11:55:00Z","windows":[]}}`)
+	}
+	apptest.WriteStored(t, d, "codex-main", `{"last_good":{"taken_at":"2026-10-22T11:00:00Z","windows":[]}}`)
+	stdout, stderr, code := run(d, "doctor", "all")
+	if got := claude.TotalUsage() + codex.TotalUsage(); got != 1 || codex.Calls["codex-main"] != 1 {
+		t.Errorf("usage calls = %d (codex-main %d), want 1 for codex-main", got, codex.Calls["codex-main"])
+	}
+	want := "WARN   codex-main: last usage reading failed: dial tcp: connection refused\n"
+	if code != 0 || !strings.Contains(stdout, want) || !strings.HasSuffix(stdout, "0 error(s), 2 warning(s)\n") || stderr != "" {
+		t.Fatalf("exit %d stdout %q stderr %q, want a line %q", code, stdout, stderr, want)
+	}
+}
+
+func TestUsageTextListsDoctorAll(t *testing.T) {
+	_, stderr, code := run(apptest.NewDeps(t, doctorConfig))
+	if code != 1 || !strings.Contains(stderr, "\n  modelpick doctor [all]\n") {
+		t.Fatalf("exit %d stderr %q", code, stderr)
 	}
 }

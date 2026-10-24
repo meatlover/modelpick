@@ -40,6 +40,7 @@ type Fake struct {
 	ModelPanic map[string]bool              // Models panics for these accounts
 	ModelDone  map[string]int               // Models calls that ran to the end (not cancelled)
 	ModelEnded map[string]int               // Models calls that returned, cancelled or not
+	UsageDelay time.Duration                // each Usage call takes this long, or until its ctx ends
 
 	mu sync.Mutex // guards the call counters: Models and Check run concurrently
 }
@@ -77,10 +78,17 @@ func (f *Fake) Credential(acct adapter.Account) adapter.CredStatus {
 	return adapter.CredStatus{Present: true, Expired: f.Expired[acct.Name], Source: "fake: " + acct.Name}
 }
 
-func (f *Fake) Usage(_ context.Context, acct adapter.Account) (adapter.Reading, error) {
+func (f *Fake) Usage(ctx context.Context, acct adapter.Account) (adapter.Reading, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.Calls[acct.Name]++
+	f.mu.Unlock()
+	if f.UsageDelay > 0 {
+		select {
+		case <-time.After(f.UsageDelay):
+		case <-ctx.Done():
+			return adapter.Reading{}, ctx.Err()
+		}
+	}
 	if err, ok := f.Errs[acct.Name]; ok {
 		return adapter.Reading{}, err
 	}
@@ -124,7 +132,10 @@ func (f *Fake) Check(_ context.Context, acct adapter.Account) []adapter.Finding 
 	return f.Checks[acct.Name]
 }
 
+// TotalUsage is the Usage calls over all accounts, safe beside running calls.
 func (f *Fake) TotalUsage() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	n := 0
 	for _, c := range f.Calls {
 		n += c

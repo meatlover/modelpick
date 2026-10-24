@@ -44,7 +44,7 @@ starts it with an empty state; the old file stays until you delete it.
 | `ls` | Every configured account, subject to the floor. | Same. |
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
-| `doctor` | None. | Runs `opencode models opencode-go`; reads the Keychain. |
+| `doctor` | None; `doctor all` makes one usage call per account without a fresh reading. | Runs `opencode models opencode-go`; reads the Keychain. |
 | `ui` | Only the page's Refresh buttons, and one first reading per run for an account with no saved reading. Both go through the floor. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
 
 The endpoints are undocumented and may change:
@@ -222,7 +222,17 @@ each account's current state.
 | `thinking "x" not supported by <model> (supported: ...)` | The thinking value is not one the model takes. | Use one of the listed values, or `null`. |
 | `model <m> not offered by <account>` | The model is not in the account's model list. | Check `modelpick ls models`. A warning only: the list may be out of date. |
 
-`doctor` exits 1 if it found any error, else 0.
+`modelpick doctor all` does what `doctor` does and also checks that each
+account's usage can be read. It uses a saved reading younger than
+`min_call_interval_minutes` as is. Otherwise it calls the vendor once for that
+account, like Refresh: the call ignores the floor but not a server
+`Retry-After` or an expired token, and an account whose tool or credential
+`doctor` already reports as an error is not called. The accounts are called at
+the same time. A failed call shows as a warning, `last usage reading failed:
+<error>`, and a cache that cannot be written as `cannot update stored usage:
+<error>`.
+
+`doctor` exits 1 if it found any error, else 0; so does `doctor all`.
 
 ## Live smoke test
 

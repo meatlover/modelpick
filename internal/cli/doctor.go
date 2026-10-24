@@ -1,21 +1,28 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 
 	"github.com/meatlover/modelpick/internal/app"
 )
 
-// runDoctor is `modelpick doctor`: validates the config and everything it
-// depends on. It never calls Usage and never takes the store lock (Saved only).
+// runDoctor is `modelpick doctor [all]`: validates the config and everything
+// it depends on. Plain doctor never calls Usage and never takes the store
+// lock (Saved only); `doctor all` also makes one usage call per account that
+// has no fresh reading.
 func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
-	if len(args) > 0 {
+	all := len(args) == 1 && args[0] == "all"
+	if len(args) > 0 && !all {
 		return badUsage(stderr, fmt.Sprintf("doctor: unexpected argument %q", args[0]))
 	}
 	cfg, err := app.LoadConfig(d)
 	if err != nil {
 		return writeReport(stdout, []app.Finding{app.ConfigFinding(err)})
+	}
+	if all {
+		return writeReport(stdout, app.DoctorAll(context.Background(), cfg, d, &app.CheckCache{}))
 	}
 	return writeReport(stdout, app.Doctor(cfg, d, &app.CheckCache{}))
 }
