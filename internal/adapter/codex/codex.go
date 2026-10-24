@@ -1,6 +1,8 @@
 // Package codex reads Codex (ChatGPT subscription) usage through the
 // undocumented wham usage endpoint, using the login the codex CLI already
-// keeps. It never refreshes the token and never writes a vendor file.
+// keeps. It never refreshes the token itself and never writes a vendor file:
+// an expired login is renewed by asking `codex app-server` to do it, and Codex
+// rewrites its own auth.json.
 package codex
 
 import (
@@ -9,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
 
@@ -21,7 +24,7 @@ const (
 	defaultUserAgent = "modelpick"
 	usagePath        = "/backend-api/wham/usage"
 	maxBody          = 1 << 20
-	expiredMessage   = "token expired — open Codex with this account to refresh it"
+	expiredMessage   = "token expired — the next usage call asks Codex to renew it; if that fails, run codex login"
 )
 
 // Options configures an Adapter. Zero fields take the real implementation.
@@ -31,6 +34,10 @@ type Options struct {
 	Now       func() time.Time
 	LookPath  platform.LookPathFunc
 	UserAgent string // default "modelpick"; the real version comes from app.DefaultDeps
+
+	AppServer []string        // argv of the app server; default ["codex", "app-server"]
+	Environ   func() []string // default os.Environ
+	Version   string          // clientInfo.version for the app server; default "dev"
 }
 
 // Adapter implements adapter.Adapter for Codex.
@@ -52,6 +59,15 @@ func New(o Options) *Adapter {
 	}
 	if o.UserAgent == "" {
 		o.UserAgent = defaultUserAgent
+	}
+	if len(o.AppServer) == 0 {
+		o.AppServer = []string{"codex", "app-server"}
+	}
+	if o.Environ == nil {
+		o.Environ = os.Environ
+	}
+	if o.Version == "" {
+		o.Version = "dev"
 	}
 	return &Adapter{o: o}
 }
