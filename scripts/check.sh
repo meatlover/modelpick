@@ -11,6 +11,9 @@ if [ -n "$unformatted" ]; then
 fi
 
 go vet ./...
+# The live smoke test (internal/live, build tag live) calls real vendors, so
+# it never runs here; vetting it with the tag keeps it compiling.
+go vet -tags live ./...
 go test ./...
 
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
