@@ -1,6 +1,8 @@
 // Package claude reads Claude Code subscription usage through the
 // undocumented OAuth usage endpoint, using the login Claude Code already
-// keeps. It never refreshes the token and never writes a vendor file.
+// keeps. When the login has expired it asks the official claude CLI to renew
+// it; it never handles a refresh token itself and never writes a vendor file
+// or Keychain item.
 package claude
 
 import (
@@ -27,7 +29,7 @@ const (
 	fallbackVersion = "2.1.0"
 	versionTimeout  = 5 * time.Second
 	maxBody         = 1 << 20
-	expiredMessage  = "token expired — open Claude Code with this account to refresh it"
+	expiredMessage  = "token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login"
 )
 
 // Options configures an Adapter. Zero fields take the real implementation.
@@ -39,6 +41,8 @@ type Options struct {
 	Keychain func(ctx context.Context, service string) (string, bool, error)
 	Run      platform.Runner
 	LookPath platform.LookPathFunc
+	RunCmd   platform.CmdRunner // runs `claude` to renew; default platform.RunCmd
+	Environ  func() []string    // the environment renewal inherits; default os.Environ
 }
 
 // Adapter implements adapter.Adapter for Claude.
@@ -71,6 +75,12 @@ func New(o Options) *Adapter {
 	}
 	if o.LookPath == nil {
 		o.LookPath = exec.LookPath
+	}
+	if o.RunCmd == nil {
+		o.RunCmd = platform.RunCmd
+	}
+	if o.Environ == nil {
+		o.Environ = os.Environ
 	}
 	return &Adapter{o: o}
 }
