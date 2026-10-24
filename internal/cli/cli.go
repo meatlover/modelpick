@@ -32,8 +32,11 @@ func Main(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	switch args[0] {
 	case "pick", "env", "ls", "doctor":
 		// Ctrl-C or SIGTERM cancels a login renewal or usage call under way.
+		// The first signal only cancels: stop then restores the default
+		// action, so a second one kills a run stuck in a wait ctx cannot end.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		context.AfterFunc(ctx, stop)
 		d.Ctx = ctx
 		code := dispatch(args, stdout, stderr, d)
 		if ctx.Err() != nil {

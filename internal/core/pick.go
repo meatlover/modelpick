@@ -78,7 +78,8 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 		}
 		return "outside " + noun + strings.Join(c.AllowDuring, ", "), false
 	}
-	// An expired credential is still usable: the TUI refreshes it on launch.
+	// An expired credential is still usable: the usage path renews it, and
+	// the TUI refreshes it on launch.
 	if cred := p.env.Credential(c.Account); cred.Err != nil || !cred.Present {
 		msg := cred.Source + ": not found"
 		if cred.Err != nil {

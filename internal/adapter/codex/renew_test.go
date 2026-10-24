@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +28,7 @@ func TestFakeAppServer(t *testing.T) {
 		os.Exit(2)
 	}
 	defer logf.Close()
-	rec := map[string]any{"codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY"), "pid": os.Getpid()}
+	rec := map[string]any{"codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY"), "pid": os.Getpid(), "pgid": syscall.Getpgrp()}
 	var methods []string
 	save := func() {
 		rec["methods"] = methods
@@ -70,6 +71,7 @@ func TestFakeAppServer(t *testing.T) {
 		case mode == "chatty":
 			reply(`{"method":"account/updated","params":{}}`)
 			reply(`{"id":7,"result":{}}`)
+			reply(`{"id":1,"method":"item/tool/requestUserInput","params":{}}`)
 			reply(`{"id":1,"result":{"account":{}}}`)
 		default:
 			reply(`{"id":1,"result":{"account":{}}}`)
@@ -85,6 +87,7 @@ type fakeLog struct {
 	CodexHome   string          `json:"codex_home"`
 	APIKey      string          `json:"openai_api_key"`
 	PID         int             `json:"pid"`
+	PGID        int             `json:"pgid"`
 	Initialize  json.RawMessage `json:"initialize"`
 	AccountRead json.RawMessage `json:"account_read"`
 }
@@ -131,6 +134,18 @@ func TestRenewProtocol(t *testing.T) {
 	}
 }
 
+// A terminal's Ctrl-C goes to the foreground process group; the server is in
+// its own, so only ctx cancellation stops it.
+func TestRenewServerInOwnProcessGroup(t *testing.T) {
+	err, l, _ := fakeRenew(t, "ok", context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.PGID == 0 || l.PGID == syscall.Getpgrp() {
+		t.Errorf("server pgid = %d, parent's = %d; want a group of its own", l.PGID, syscall.Getpgrp())
+	}
+}
+
 func TestRenewServerLingers(t *testing.T) {
 	start := time.Now()
 	err, l, _ := fakeRenew(t, "lingers", context.Background())
@@ -158,6 +173,31 @@ func TestRenewRPCError(t *testing.T) {
 func TestRenewSkipsOtherMessages(t *testing.T) {
 	if err, _, _ := fakeRenew(t, "chatty", context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A server-initiated request may reuse the id of ours; only a message that
+// carries a result or an error answers it.
+func TestAwaitIgnoresServerRequestWithSameID(t *testing.T) {
+	in := `{"id":1,"method":"item/tool/requestUserInput","params":{}}` + "\n" +
+		`{"id":1,"result":{"account":{"n":1}}}` + "\n"
+	got, err := (&Adapter{}).await(context.Background(), bufio.NewScanner(strings.NewReader(in)), 1)
+	if err != nil || string(got) != `{"account":{"n":1}}` {
+		t.Fatalf("got %s, %v; want the real result", got, err)
+	}
+}
+
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("write |1: broken pipe") }
+
+// A write that fails because the context ended reports the context.
+func TestConverseWriteErrorPrefersCtx(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := (&Adapter{}).converse(ctx, failWriter{}, bufio.NewScanner(strings.NewReader("")))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
 

@@ -51,9 +51,12 @@ func (a *Adapter) Renew(ctx context.Context, acct adapter.Account) error {
 		env = append(env, "CLAUDE_CONFIG_DIR="+abs)
 	}
 
-	_, stderr, err := a.o.RunCmd(ctx, platform.Cmd{Name: "claude", Args: renewArgs, Env: env, Dir: dir})
+	_, stderr, err := a.o.RunCmd(ctx, platform.Cmd{Name: "claude", Args: renewArgs, Env: env, Dir: dir, NewGroup: true})
 	if err == nil {
 		return nil
+	}
+	if cerr := ctx.Err(); cerr != nil {
+		return fmt.Errorf("claude: %w", cerr)
 	}
 	if errors.Is(err, exec.ErrNotFound) {
 		return errors.New("claude: claude not found on PATH")

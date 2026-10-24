@@ -6,6 +6,7 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -29,6 +30,9 @@ type Cmd struct {
 	Env   []string
 	Dir   string
 	Stdin io.Reader
+	// NewGroup starts the program in its own process group, so a terminal's
+	// Ctrl-C does not reach it: only cancelling ctx stops it.
+	NewGroup bool
 }
 
 // CmdRunner runs a Cmd and returns its stdout and stderr. Adapters take one
@@ -45,10 +49,19 @@ func RunCmd(ctx context.Context, c Cmd) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
 	cmd.Env, cmd.Dir, cmd.Stdin = c.Env, c.Dir, c.Stdin
 	cmd.WaitDelay = cmdWaitDelay
+	if c.NewGroup {
+		NewProcessGroup(cmd)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+// NewProcessGroup makes cmd start in its own process group, so a signal sent
+// to the terminal's foreground group does not reach it.
+func NewProcessGroup(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
 // EnvWithout returns env without the entries for the named variables. Only an

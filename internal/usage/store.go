@@ -209,7 +209,7 @@ func (s *Store) renew(ctx context.Context, r adapter.Renewer, a adapter.Adapter,
 	err := r.Renew(rctx, acct)
 	if err != nil && ctx.Err() != nil {
 		st.LastAttempt = prevAttempt
-		return Result{Reading: st.LastGood, Err: err, TokenExpired: true}, true, s.write(name, st)
+		return Result{Reading: st.LastGood, Err: fmt.Errorf("renewal: %w", ctx.Err()), TokenExpired: true}, true, s.write(name, st)
 	}
 	var reason string
 	switch {

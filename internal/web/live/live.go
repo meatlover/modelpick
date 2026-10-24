@@ -175,9 +175,9 @@ func (l *Live) maybeFirst(name string) {
 	}
 }
 
-// readFirst is the store's normal read, without refresh: the floor,
-// Retry-After and an expired token all hold. The store keeps the outcome,
-// error included; nothing is returned.
+// readFirst is the store's normal read, without refresh: the floor and
+// Retry-After hold, and an expired login is renewed first. The store keeps
+// the outcome, error included; nothing is returned.
 func (l *Live) readFirst(ctx context.Context, name string) {
 	snap, err := l.ed.Load()
 	if err != nil || snap.Config == nil {

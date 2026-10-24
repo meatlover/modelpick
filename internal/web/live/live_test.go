@@ -90,7 +90,11 @@ type fixture struct {
 	firstCh chan string
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureRenewing(t, false) }
+
+// newFixtureRenewing is newFixture whose Claude adapter can renew logins
+// (claude-rec's), which NewDeps decides when it wraps the fake.
+func newFixtureRenewing(t *testing.T, renewing bool) *fixture {
 	t.Helper()
 	keyFile := filepath.Join(t.TempDir(), "go-keys")
 	if err := os.WriteFile(keyFile, []byte("# keys\n"+secretKey+"\n"), 0o600); err != nil {
@@ -103,6 +107,9 @@ func newFixture(t *testing.T) *fixture {
 	sonnet := adapter.Model{ID: "claude-sonnet-5-5", Thinking: []string{"medium"}}
 	f.claude.ModelList["claude-main"] = []adapter.Model{opus, fable}
 	f.claude.ModelList["claude-rec"] = []adapter.Model{sonnet}
+	if renewing {
+		f.claude.Renewable["claude-rec"] = true
+	}
 	f.claude.Readings["claude-main"] = apptest.ClaudeReading(30, 50)
 	f.codex.ModelList["codex-main"] = []adapter.Model{{ID: "gpt-6.1-sol", Thinking: []string{"low", "high"}}}
 	f.d = apptest.NewDeps(t, fmt.Sprintf(configTmpl, keyFile), f.claude, f.codex)
@@ -142,7 +149,12 @@ func TestConformance(t *testing.T) {
 	}
 	webtest.Run(t, webtest.Harness{
 		New: func(t *testing.T) web.Backend {
-			f = newFixture(t)
+			f = newFixtureRenewing(t, true)
+			// claude-rec: an expired login Claude Code can renew, with a
+			// saved reading; its row is refreshable though the state is
+			// "expired token".
+			f.claude.Expired["claude-rec"] = true
+			apptest.WriteStored(t, f.d, "claude-rec", claudeStored)
 			var err error
 			if orig, err = os.ReadFile(f.path); err != nil {
 				t.Fatal(err)

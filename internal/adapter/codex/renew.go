@@ -37,6 +37,7 @@ var renewDropped = []string{"CODEX_HOME", "OPENAI_API_KEY", "CODEX_API_KEY", "OP
 
 type rpcMessage struct {
 	ID     *int            `json:"id"`
+	Method string          `json:"method"`
 	Result json.RawMessage `json:"result"`
 	Error  *struct {
 		Message string `json:"message"`
@@ -57,6 +58,7 @@ func (a *Adapter) Renew(ctx context.Context, acct adapter.Account) error {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(platform.EnvWithout(a.o.Environ(), renewDropped...), "CODEX_HOME="+home)
 	cmd.WaitDelay = renewWaitDelay
+	platform.NewProcessGroup(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("codex: app-server: %w", err)
@@ -99,6 +101,9 @@ func (a *Adapter) converse(ctx context.Context, w interface{ Write([]byte) (int,
 			return err
 		}
 		if _, err := w.Write(append(b, '\n')); err != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				return fmt.Errorf("codex app-server: %w", cerr)
+			}
 			return fmt.Errorf("codex app-server: write: %w", err)
 		}
 		return nil
@@ -121,11 +126,14 @@ func (a *Adapter) converse(ctx context.Context, w interface{ Write([]byte) (int,
 }
 
 // await reads lines until the response with the given id. Notifications and
-// responses to other ids are skipped; a line's raw text never reaches an error.
+// server requests and responses to other ids are skipped; a line's raw text never reaches an error.
 func (a *Adapter) await(ctx context.Context, sc *bufio.Scanner, id int) (json.RawMessage, error) {
 	for sc.Scan() {
 		var m rpcMessage
-		if json.Unmarshal(sc.Bytes(), &m) != nil || m.ID == nil || *m.ID != id {
+		if json.Unmarshal(sc.Bytes(), &m) != nil || m.ID == nil || *m.ID != id || m.Method != "" {
+			continue
+		}
+		if m.Error == nil && m.Result == nil {
 			continue
 		}
 		if m.Error != nil {

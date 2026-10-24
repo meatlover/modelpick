@@ -139,3 +139,25 @@ func TestRenewToolMissing(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// The child must not receive a terminal's Ctrl-C directly.
+func TestRenewRunsInOwnProcessGroup(t *testing.T) {
+	f := newRenewFixture(t, "", nil, nil)
+	if err := f.a.Renew(context.Background(), f.acct(".claude")); err != nil {
+		t.Fatal(err)
+	}
+	if !f.got.NewGroup {
+		t.Error("Cmd.NewGroup = false, want the child in its own process group")
+	}
+}
+
+// A child killed because ctx ended reports the context, not "signal: killed".
+func TestRenewCtxDoneReportsCtx(t *testing.T) {
+	f := newRenewFixture(t, "", errors.New("signal: killed"), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	err := f.a.Renew(ctx, f.acct(".claude"))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+}

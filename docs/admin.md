@@ -42,14 +42,14 @@ starts it with an empty state; the old file stays until you delete it.
 
 | Command | Usage calls | Other outside contact |
 |---|---|---|
-| `pick <profile>` | Only for accounts whose capped choice is reached, at most one per account per floor. Uncapped choices and skipped choices never trigger one. | `claude --version` once, for the User-Agent, when a Claude call is made. |
+| `pick <profile>` | Only for accounts whose capped choice is reached, at most one per account per floor. Uncapped choices and skipped choices never trigger one. | `claude --version` once, for the User-Agent, when a Claude call is made. An expired login is first renewed: `claude -p` (a few tokens) for Claude, `codex app-server` (no quota) for Codex. |
 | `env <profile>` | Same as `pick <profile>`. | Same. |
 | `pick` (no profile) | Each account any profile reaches, read at most once for the whole table, subject to the floor. | Same. |
 | `ls [<account>…]` | The named accounts, or every configured account when none are named, subject to the floor. | Same. |
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
 | `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After` or a tool or credential error. An expired login is renewed first. | Runs `opencode models opencode-go`; reads the Keychain; may run `claude -p` or `codex app-server` to renew a login. |
-| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After`. An expired login is renewed first. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
+| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After`. An expired login is renewed first. | Runs `opencode models opencode-go` once per run per account; reads the Keychain; may run `claude -p` (a few tokens) or `codex app-server` (no quota) to renew an expired login. |
 
 The endpoints are undocumented and may change:
 

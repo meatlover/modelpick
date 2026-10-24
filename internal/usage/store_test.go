@@ -971,6 +971,20 @@ func TestRenewCallerCancel(t *testing.T) {
 	}
 }
 
+// A renewal that dies with its own error because the caller's ctx ended
+// reports the ctx, not the child's "signal: killed".
+func TestRenewCallerCancelReportsCtx(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New("signal: killed") })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := s.Get(ctx, f, acct, false)
+	if !errors.Is(r.Err, context.Canceled) {
+		t.Fatalf("result %+v; want context.Canceled", r)
+	}
+}
+
 func TestRenewTimeout(t *testing.T) {
 	s := newStore(t, newClock())
 	s.RenewTimeout = 50 * time.Millisecond
