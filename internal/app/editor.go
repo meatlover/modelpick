@@ -36,7 +36,7 @@ func (c *Conflict) Error() string { return "config.json changed since it was loa
 const (
 	backupName       = "config.before-ui.json"
 	reasonReadOnly   = "config.json does not parse; fix it by hand"
-	reasonBackupFail = "Could not save the safety copy; config.json is unchanged"
+	reasonBackupFail = "Could not save the safety copy" // the page appends "config.json is unchanged."
 )
 
 // Editor applies page operations to config.json (spec §8.4): every

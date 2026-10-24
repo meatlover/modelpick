@@ -139,17 +139,24 @@ func TestApplyStaleBase(t *testing.T) {
 	}
 }
 
+// A file that does not parse is read-only: broken JSON, or JSON that
+// decodes but fails validation (a pace below 5).
 func TestApplyReadOnly(t *testing.T) {
-	broken := `{"version":1,"profiles":`
-	f := newEditorFx(t, broken)
-	s := f.load(t)
-	if s.ReadOnly == "" {
-		t.Fatal("ReadOnly is empty for a file that does not parse")
-	}
-	_, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
-	wantRefused(t, err, "config.json does not parse; fix it by hand")
-	if string(f.bytes(t)) != broken {
-		t.Fatal("file changed")
+	for _, c := range []struct{ name, file, readOnly string }{
+		{"broken JSON", `{"version":1,"profiles":`, ""},
+		{"pace+2", editorConfig(strings.Replace(goodFirst, `[90]`, `["pace+2"]`, 1)),
+			`profiles.p[0].cap[0]: "pace+2": N must be 5–50`},
+	} {
+		f := newEditorFx(t, c.file)
+		s := f.load(t)
+		if s.ReadOnly == "" || !strings.HasSuffix(s.ReadOnly, c.readOnly) {
+			t.Fatalf("%s: ReadOnly = %q, want a parse error ending %q", c.name, s.ReadOnly, c.readOnly)
+		}
+		_, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
+		wantRefused(t, err, "config.json does not parse; fix it by hand")
+		if string(f.bytes(t)) != c.file {
+			t.Fatalf("%s: file changed", c.name)
+		}
 	}
 }
 
@@ -365,7 +372,7 @@ func TestApplyBackupFails(t *testing.T) {
 	}
 	s := f.load(t)
 	_, _, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
-	wantRefused(t, err, "Could not save the safety copy; config.json is unchanged")
+	wantRefused(t, err, "Could not save the safety copy") // the page appends "config.json is unchanged."
 	if string(f.bytes(t)) != editorConfig(goodFirst) {
 		t.Fatal("file changed")
 	}
