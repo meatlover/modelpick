@@ -152,13 +152,14 @@ func writeLsTable(w io.Writer, rows []lsAccount, now time.Time) {
 			continue
 		}
 		for i, win := range r.Windows {
-			first := []string{r.Account, state}
-			tail := []string{age}
+			// A continuation line keeps an empty AGE cell, so its RESETS cell is
+			// never the line's last and always counts toward the column width.
+			first, last := []string{r.Account, state}, age
 			if i > 0 {
-				first, tail = []string{"", ""}, nil
+				first, last = []string{"", ""}, ""
 			}
 			cells := append(first, windowCell(win), fmt.Sprintf("%g%%", win.UsedPct), resetsCell(win, now, leftW, resetW))
-			table = append(table, append(cells, tail...))
+			table = append(table, append(cells, last))
 		}
 	}
 	writeColumns(w, table, map[int]bool{3: true})

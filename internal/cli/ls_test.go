@@ -91,6 +91,28 @@ func TestLsTableGolden(t *testing.T) {
 	}
 }
 
+// lsUnknownGolden: a window of unknown length shows the vendor's label and
+// one with no reset time shows "-" (Ruling 2). That window comes first, so
+// only the continuation line has a reset; RESETS must still be wide enough
+// for it, keeping AGE in its column.
+const lsUnknownGolden = `ACCOUNT      STATE  WINDOW   USED  RESETS                 AGE
+claude-main  ok     monthly   20%  -                      4m
+                    7d        58%  in 2d 12h  Sun 00:00Z
+`
+
+func TestLsTableUnknownLengthAndReset(t *testing.T) {
+	now := apptest.Now
+	claude := apptest.NewFake("claude")
+	claude.Readings["claude-main"] = adapter.Reading{TakenAt: now.Add(-4 * time.Minute), Windows: []adapter.Window{
+		{Label: "monthly", UsedPct: 20},
+		{Label: "weekly", Length: 7 * 24 * time.Hour, UsedPct: 58, ResetsAt: now.Add(60 * time.Hour)},
+	}}
+	stdout, stderr, code := run(apptest.NewDeps(t, testConfig, claude, apptest.NewFake("codex")), "ls", "claude-main")
+	if code != 0 || stderr != "" || stdout != lsUnknownGolden {
+		t.Errorf("exit %d stderr %q; got:\n%s\nwant:\n%s", code, stderr, stdout, lsUnknownGolden)
+	}
+}
+
 func TestLsTablePassedReset(t *testing.T) {
 	claude := apptest.NewFake("claude")
 	claude.Readings["claude-main"] = adapter.Reading{TakenAt: apptest.Now, Windows: []adapter.Window{
