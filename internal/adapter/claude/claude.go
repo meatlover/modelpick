@@ -45,8 +45,8 @@ type Options struct {
 type Adapter struct {
 	o Options
 
-	uaOnce sync.Once
-	ua     string
+	uaMu sync.Mutex
+	ua   string // set only by a successful probe
 }
 
 // New returns a Claude adapter, filling unset Options with real defaults.
@@ -79,21 +79,27 @@ func New(o Options) *Adapter {
 func (a *Adapter) Vendor() string { return "claude" }
 
 // userAgent is "claude-cli/<v> (external, cli)", where <v> is the first field
-// of `claude --version`, read once per adapter.
-func (a *Adapter) userAgent(ctx context.Context) string {
-	a.uaOnce.Do(func() {
-		v := fallbackVersion
-		vctx, cancel := context.WithTimeout(ctx, versionTimeout)
-		defer cancel()
-		if out, err := a.o.Run(vctx, "claude", "--version"); err == nil {
-			if f := strings.Fields(string(out)); len(f) > 0 {
-				v = f[0]
-			}
+// of `claude --version`. The probe runs under its own timeout, not the
+// request's, and only a successful probe is cached: after a failure this call
+// gets the fallback version and the next call probes again.
+func (a *Adapter) userAgent() string {
+	a.uaMu.Lock()
+	defer a.uaMu.Unlock()
+	if a.ua != "" {
+		return a.ua
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), versionTimeout)
+	defer cancel()
+	if out, err := a.o.Run(ctx, "claude", "--version"); err == nil {
+		if f := strings.Fields(string(out)); len(f) > 0 {
+			a.ua = uaFor(f[0])
+			return a.ua
 		}
-		a.ua = "claude-cli/" + v + " (external, cli)"
-	})
-	return a.ua
+	}
+	return uaFor(fallbackVersion)
 }
+
+func uaFor(version string) string { return "claude-cli/" + version + " (external, cli)" }
 
 // Usage makes exactly one GET to the usage endpoint, unless the credential is
 // missing, unreadable or expired, in which case it makes none.
@@ -115,7 +121,7 @@ func (a *Adapter) Usage(ctx context.Context, acct adapter.Account) (adapter.Read
 	req.Header.Set("Authorization", "Bearer "+cred.token)
 	req.Header.Set("anthropic-beta", betaHeader)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", a.userAgent(ctx))
+	req.Header.Set("User-Agent", a.userAgent())
 
 	resp, err := a.o.HTTP.Do(req)
 	if err != nil {

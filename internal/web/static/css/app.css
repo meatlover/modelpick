@@ -1,0 +1,1902 @@
+/* Shared shell and controls. Colours only via tokens.css. Sizes, radii and
+   weights follow docs/superpowers/mockups/2026-10-23-v2. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent-strong);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ---------- header ---------- */
+
+.hdr {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 28px;
+  padding: 12px 32px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.hdr-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.hdr-name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.hdr-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tabs a {
+  padding: 10px 14px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tabs a:hover {
+  color: var(--text);
+  background: var(--track);
+}
+
+.tabs a[aria-current="page"] {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.hdr-right {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Segmented switch: the UTC/Local zone switch, reused by later tabs. */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px var(--font);
+  cursor: pointer;
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+/* Doctor status button and its popover. */
+.status-wrap {
+  position: relative;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 600 13px var(--font);
+  cursor: pointer;
+}
+
+.status .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* "config ok" is green (spec 8.3); the ok chips elsewhere stay blue. */
+.status-ok {
+  border-color: var(--good-border);
+  background: var(--good-bg);
+  color: var(--good-text);
+}
+
+.status-ok .dot {
+  background: var(--good-dot);
+}
+
+.status-warn {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.status-warn .dot {
+  background: var(--warn-dot);
+}
+
+.status-error {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.status-error .dot {
+  background: var(--danger);
+}
+
+.pop {
+  position: absolute;
+  right: 0;
+  top: 52px;
+  z-index: 2;
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The status popover sits below the button; this bridges the gap so the
+   pointer can move into it without a mouseleave. */
+.pop::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+}
+
+.pop-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sev {
+  font-weight: 600;
+}
+
+.sev-error {
+  color: var(--danger);
+}
+
+.sev-warn {
+  color: var(--warn-note);
+}
+
+/* ---------- banners (stopped, read-only, conflict) ---------- */
+
+.banner {
+  background: var(--danger-bg);
+  border-bottom: 1px solid var(--danger-border);
+  padding: 12px 32px;
+}
+
+.banner-in {
+  max-width: 1216px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  font-size: 14px;
+  color: var(--danger-text);
+}
+
+.banner-in strong {
+  font-weight: 600;
+}
+
+.banner-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+/* ---------- page ---------- */
+
+main {
+  max-width: 1216px;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* An item a doctor error is about: account row, choice card, schedule,
+   profile in the list. */
+.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px var(--font);
+  cursor: pointer;
+}
+
+.btn-md {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+}
+
+.btn-lg {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+}
+
+.btn-quiet {
+  border-color: var(--border);
+  color: var(--text-2);
+}
+
+.btn-primary {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+}
+
+.btn-outline {
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.btn-dashed {
+  border: 1px dashed var(--dashed);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.btn-danger {
+  border-color: var(--danger-text);
+  background: var(--danger-text);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.btn-danger-ghost {
+  border-color: var(--danger-edge);
+  background: transparent;
+  color: var(--danger-text);
+}
+
+.btn-trash {
+  width: 36px;
+  padding: 0;
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
+.btn:disabled {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Hover cue (owner, round 3): what the mouse can use takes --hover-bg
+   under the pointer; filled buttons shift to a neighbouring shade
+   instead. The dashed pills on a card ("+ schedule", "+ caps") too. */
+.btn:not(:disabled):hover,
+.sched-add:not(:disabled):hover,
+.cap-addcaps:hover {
+  background: var(--hover-bg);
+}
+
+.btn-primary:not(:disabled):hover {
+  border-color: var(--text-2);
+  background: var(--text-2);
+}
+
+.btn-danger:not(:disabled):hover {
+  border-color: var(--danger-edge);
+  background: var(--danger-edge);
+}
+
+/* ---------- inputs ---------- */
+
+.input,
+select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 400 14px var(--font);
+}
+
+.input.mono,
+select.mono {
+  font-family: var(--font-mono);
+}
+
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+select:not(:disabled):hover {
+  background: var(--hover-bg);
+}
+
+/* ---------- chips ---------- */
+
+.chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  background: var(--track);
+  color: var(--text-2);
+}
+
+.chip-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.chip-warn {
+  background: var(--warn-bg);
+  color: var(--warn-note);
+}
+
+/* ---------- toast ---------- */
+
+#toasts {
+  position: fixed;
+  right: 32px;
+  bottom: 28px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 6px 18px var(--shadow-toast);
+}
+
+.toast strong {
+  font-weight: 600;
+}
+
+/* ---------- confirm dialog ---------- */
+
+.dlg {
+  max-width: 460px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+  font-size: 14px;
+}
+
+.dlg::backdrop {
+  background: var(--backdrop);
+}
+
+.dlg-text {
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+
+.dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ---------- read-only (state.read_only non-empty) ----------
+   Every control in main is inert (main.js sets the attribute) and dimmed;
+   .ro-ok (Usage refresh, which changes no file) stays usable. Only leaves
+   are dimmed: a focusable container (a card, the caps frame) holding
+   controls keeps full opacity, or its controls would be dimmed twice. */
+body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"], [draggable="true"], [tabindex], .p-handle):not(.ro-ok) {
+  pointer-events: none;
+}
+
+body[data-readonly="1"] main :is(button, input, select, textarea, [role="button"], .p-handle):not(.ro-ok),
+body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button, input, select, textarea, [role="button"], [tabindex], .p-handle)):not(.ro-ok) {
+  opacity: 0.5;
+}
+
+@media (max-width: 720px) {
+  .hdr,
+  .banner {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  main {
+    padding: 20px 16px 32px;
+  }
+}
+
+/* ---------- usage ---------- */
+
+.u-box {
+  overflow-x: auto;
+}
+
+.u-grid {
+  min-width: 1146px;
+  display: grid;
+  grid-template-columns: 150px 170px 320px 186px 100px minmax(100px, 1fr);
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  align-items: start;
+}
+
+.u-head {
+  padding: 10px 20px;
+  border-bottom-color: var(--border);
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.u-head .btn {
+  padding: 0 12px;
+  white-space: nowrap;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.u-name {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.u-wins {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.u-win {
+  display: grid;
+  grid-template-columns: 84px 56px 196px 102px 84px;
+  align-items: center;
+  min-height: 20px;
+}
+
+.u-win .mono {
+  font-size: 13px;
+}
+
+.u-label {
+  width: 72px;
+  white-space: nowrap;
+}
+
+.u-pct {
+  padding-right: 12px;
+  text-align: right;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.u-left {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.u-reset {
+  color: var(--text-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bar {
+  position: relative;
+  width: 180px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--track);
+}
+
+.bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: var(--fill);
+}
+
+.u-age {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-2);
+}
+
+.u-act {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.u-row.is-error,
+.u-row.is-error .u-left,
+.u-row.is-error .u-reset,
+.u-row.is-error .u-age {
+  color: var(--danger-text);
+}
+
+.u-row.is-error {
+  border-bottom-color: var(--danger-border);
+}
+
+.btn.is-busy {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* ---------- profiles ---------- */
+
+/* Visually hidden, still read by assistive technology. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.p-cap-input {
+  width: 72px;
+  min-height: 36px;
+  font-weight: 600;
+}
+
+.p-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+.p-list {
+  flex: 1 1 200px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p-list-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.p-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.p-link:hover {
+  color: var(--text);
+  border-color: var(--input-border);
+}
+
+/* A list row (Profiles here, Schedules' .s-row too) takes the hover cue
+   on the whole row, so it stays while the pointer is on its trash button. */
+.p-link:not(.is-error):hover,
+.p-row:hover .p-link:not(.is-error),
+.s-row:hover .p-link:not(.is-error) {
+  background: var(--hover-bg);
+}
+
+.p-link[aria-current="true"] {
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.p-link.is-error,
+.p-link.is-error:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.p-link.is-error[aria-current="true"] {
+  border-color: var(--danger-edge);
+}
+
+.p-new,
+.p-add {
+  justify-content: flex-start;
+}
+
+/* + Add choice keeps the cards' edges; its text starts where a card's
+   Account label does: card border 1 + padding 18 + handle column 26 +
+   gap 16 = the button's border 1 + 60. */
+.p-add {
+  padding-left: 60px;
+}
+
+.p-new-input {
+  min-height: 44px;
+  border-radius: 8px;
+}
+
+.p-main {
+  flex: 999 1 640px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.p-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.p-title h1 {
+  overflow-wrap: anywhere;
+}
+
+.p-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p-card {
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* The row above the cards: Global default cap, then the Example. It has
+   the card's columns without the card's frame (the frame's 1 px goes into
+   the padding), so it starts at a card's Account label. */
+.p-defcap {
+  display: flex;
+  gap: 16px;
+  padding: 0 19px;
+}
+
+.p-defcap-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 32px;
+}
+
+/* A label and its value stay on one line while they fit. */
+.p-defcap-group {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.p-defcap-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.p-defcap-label.is-quiet {
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.p-defcap-example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* An illustration, not an editable box. Its width is a card box's
+   (content-box 104 px), so a longer text cannot widen it. Both boxes
+   take the default box's background, so the solid one does not look
+   clickable (owner, round 5); only the border tells them apart. */
+.p-defcap .cap-box {
+  width: 104px;
+  cursor: default;
+  background: var(--default-bg);
+}
+
+/* .cap-val keeps its 15 px line, so the box is as tall as a card's; the
+   text inside is smaller so "customized cap" fits 104 px. */
+.p-defcap .cap-val {
+  width: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.p-defcap-val {
+  font-size: 13px;
+}
+
+/* On a phone the Example (label and two boxes) does not fit beside a
+   card's handle column: the row gives up that indent so it stays two
+   lines. */
+@media (max-width: 480px) {
+  .p-defcap {
+    padding: 0;
+  }
+
+  .p-defcap .p-pos {
+    display: none;
+  }
+}
+
+/* A list row is the link with its Delete button laid over the link's
+   right end (a link cannot hold a button), as Schedules' .s-row. The glyph
+   shows on hover or focus in the row; it hides on the svg, not the button,
+   so the read-only dimming (opacity on the button) still composes. */
+.p-row {
+  position: relative;
+  display: flex;
+}
+
+.p-row .p-link {
+  flex: 1 1 auto;
+  padding-right: 44px;
+}
+
+.p-row:hover .p-link:not(.is-error) {
+  border-color: var(--input-border);
+}
+
+.p-del {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.p-del:hover {
+  color: var(--danger);
+}
+
+.p-link.is-error + .p-del {
+  color: var(--danger-text);
+}
+
+.p-del svg {
+  opacity: 0;
+}
+
+.p-row:hover .p-del svg,
+.p-row:focus-within .p-del svg {
+  opacity: 1;
+}
+
+.p-del:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
+.p-card:focus {
+  outline: none;
+  border-color: var(--accent-mid);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.p-card.is-dragging {
+  border-color: var(--accent-mid);
+  box-shadow: 0 10px 28px var(--shadow-drag);
+  transform: rotate(-0.4deg);
+}
+
+.p-card.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.p-card.is-error:focus {
+  border-color: var(--danger-edge);
+}
+
+.p-slot {
+  height: 56px;
+  border: 2px dashed var(--accent-mid);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-strong);
+}
+
+.p-pos {
+  /* The handle's width (14 px dots + 2 × 6 px padding), fixed so the
+     Global default cap row's empty column matches it. */
+  flex: 0 0 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.p-handle {
+  display: inline-flex;
+  padding: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.p-handle svg {
+  fill: var(--muted);
+}
+
+.p-n {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.p-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.p-selects {
+  display: grid;
+  /* Account / Model / Thinking: the model ids are the longest values. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 0.8fr);
+  gap: 12px;
+}
+
+.p-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.p-card.is-error .p-field {
+  color: var(--danger-text);
+}
+
+.p-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Filled by caps.js and chips.js; an empty area takes no gap. */
+.p-caps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.p-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.p-caps:empty,
+.p-chips:empty {
+  display: none;
+}
+
+.p-card-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* An empty line as tall as a field label (same font, same gap), so Remove
+   is centred on the row of selects; 2 px centres the 36 px button on the
+   40 px select. */
+.p-card-side::before {
+  content: "\200b";
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.p-card-side .btn {
+  margin-block: 2px;
+}
+
+/* ---------- caps on a card (caps.js, CapsEditor.dc.html) ---------- */
+
+.p-caps.is-uncapped {
+  align-items: center;
+  gap: 12px;
+}
+
+.cap-none {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* content-box as in the mockup: 104 px inside the padding. A configured
+   box (fixed or pace) has a solid neutral frame, a default one a dashed
+   frame; blue is only the open editing frame (owner, 2026-10-23). */
+.cap-box {
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 104px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--surface);
+  cursor: default;
+}
+
+/* A card's box opens the frame: a pointing hand and the hover background,
+   no I-beam (owner, round 3). Every card box is editable (round 5); the
+   Example boxes keep the default cursor and no hover change. */
+.p-caps .cap-box {
+  cursor: pointer;
+}
+
+.p-caps .cap-box:hover {
+  background: var(--hover-bg);
+}
+
+.cap-box.is-default {
+  border: 1px dashed var(--dashed);
+  background: var(--default-bg);
+}
+
+.cap-win {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.cap-val,
+.cap-edit-val {
+  width: 80px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: 600 15px var(--font);
+  color: var(--text);
+}
+
+.cap-val {
+  cursor: inherit;
+}
+
+/* "pace+10%" is wider than "90%". */
+.cap-box.is-wide .cap-val {
+  width: 88px;
+}
+
+.cap-box.is-default .cap-val {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* The open box: the frame itself shows focus. */
+.cap-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 272px;
+  padding: 8px 12px 10px;
+  border-radius: 8px;
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.cap-edit-win {
+  font-size: 12px;
+  color: var(--accent-strong);
+}
+
+/* Line 2, "Cap at 90%" / "Cap at time elapsed + 10%", in the value's
+   font; only the number is an input, sized to its text by caps.js (ch,
+   with tabular digits so each digit is 1ch). */
+.cap-edit-line {
+  font: 600 15px var(--font);
+  color: var(--text);
+}
+
+.cap-edit-val {
+  min-width: 1ch;
+  border-bottom: 1px solid var(--accent-line);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.cap-edit:focus,
+.cap-edit-val:focus,
+.cap-val:focus {
+  outline: none;
+}
+
+.cap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cap-switch {
+  display: inline-flex;
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* 34 px inside the group's 1 px border: as tall as the trash button. */
+.cap-sw {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 12px var(--font);
+  cursor: pointer;
+}
+
+.cap-sw-pace {
+  padding: 0 10px;
+}
+
+.cap-raquo {
+  font: 700 11px var(--font);
+}
+
+.cap-sw[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+/* Inside the clipped group: an inset ring in the button's own colour. */
+.cap-sw:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}
+
+.cap-bar {
+  position: relative;
+  width: 240px;
+  height: 10px;
+  margin: 10px 0 6px;
+  border-radius: 5px;
+  background: var(--track);
+}
+
+/* Pace: the track and fill are yellow, standing for time. */
+.cap-bar.is-pace {
+  margin-top: 22px;
+  background: var(--time-soft);
+}
+
+/* An illustration with fixed values, not the account's readings: token
+   usage 33% (fixed), time elapsed 50% (pace). caps.js sets the width. */
+.cap-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: var(--fill);
+}
+
+.cap-bar.is-pace .cap-fill {
+  background: var(--time);
+}
+
+.cap-line,
+.cap-knob,
+.cap-clock {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cap-line {
+  top: -5px;
+  width: 2px;
+  height: 20px;
+  background: var(--text);
+}
+
+.cap-knob {
+  top: -2px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.cap-bar.is-pace .cap-line {
+  background: var(--accent);
+}
+
+.cap-bar.is-pace .cap-knob {
+  border-color: var(--accent);
+}
+
+.cap-clock {
+  top: -21px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--accent);
+  font: 700 10px/11px var(--font);
+}
+
+/* The real control, invisible over the drawn bar; its thumb is as wide as
+   the drawn ring so a press lands on the value under the pointer. */
+.cap-range {
+  position: absolute;
+  top: -8px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.cap-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 26px;
+}
+
+.cap-range::-moz-range-thumb {
+  width: 14px;
+  height: 26px;
+  border: 0;
+}
+
+.cap-bar:has(.cap-range:focus-visible) .cap-knob {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Under the bar: what its fill stands for. */
+.cap-scale {
+  margin-top: -6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+@media (max-width: 720px) {
+  .p-selects {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .p-list {
+    max-width: none;
+  }
+}
+
+/* ---------- schedule chips and picker (chips.js, Profiles.dc.html) ---------- */
+
+/* A chip is a label, not text to edit or copy: the default arrow over it
+   (its x keeps the pointing hand) and no drag selection (owner, round 4). */
+.sched-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  cursor: default;
+  user-select: none;
+}
+
+.sched-chip.is-allow {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.sched-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sched-wrap {
+  position: relative;
+}
+
+/* caps.js's "+ caps" on an uncapped card is the same dashed pill. */
+.sched-add,
+.cap-addcaps {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px dashed var(--dashed);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px var(--font);
+  cursor: pointer;
+}
+
+.sched-add:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sched-pop {
+  position: absolute;
+  left: 0;
+  top: 40px;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 220px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+}
+
+.sched-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sched-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 12px var(--font);
+  cursor: pointer;
+}
+
+.sched-mode[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.sched-mode[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sched-pop-head {
+  font: 600 12px var(--font);
+  color: var(--text-2);
+}
+
+.sched-pick {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  font: 500 13px var(--font);
+  cursor: pointer;
+}
+
+.sched-pick.sched-new {
+  border: 1px dashed var(--dashed);
+  background: transparent;
+  color: var(--text-2);
+}
+
+/* Hover cue on an option (owner, round 4), as on the other controls. */
+/* The options rest on --bg, which --hover-bg barely differs from in
+   light; the week cells' hover shade reads clearly on both schemes. */
+.sched-pick:hover {
+  background: var(--cell-hover);
+}
+
+/* The hover preview (weekpeek.js): one schedule's week beside the picker,
+   24 hour columns, 7 day rows, as on the Schedules tab. Twice the earlier
+   preview's size each way (it was 69 × 144, upright; now 286 × 140, on its
+   side). chips.js picks the side (is-right, is-left, is-below) and sets top
+   level with the hovered option, or left inside the viewport (CSSOM). */
+.sched-peek {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 8px repeat(24, 10px);
+  grid-template-rows: 14px;
+  grid-auto-rows: 15px;
+  gap: 1px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow-pop);
+  pointer-events: none;
+}
+
+.sched-peek.is-right {
+  left: calc(100% + 6px);
+}
+
+.sched-peek.is-left {
+  right: calc(100% + 6px);
+}
+
+.sched-peek.is-below {
+  left: 0;
+  top: calc(100% + 6px);
+}
+
+/* The top row: a tick at each hour's start (in the gap before its
+   column), longer and labelled every 6 h. */
+.sched-peek-hour {
+  position: relative;
+  color: var(--muted);
+  font: 500 8px/9px var(--font-mono);
+  white-space: nowrap;
+}
+
+.sched-peek-hour::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  bottom: 0;
+  width: 1px;
+  height: 2px;
+  background: var(--border);
+}
+
+.sched-peek-hour.is-major::after {
+  height: 4px;
+  background: var(--muted);
+}
+
+/* The initials column, 8px wide; each day row is 15px tall. */
+.sched-peek-day {
+  color: var(--muted);
+  font: 600 8px/15px var(--font-mono);
+  text-align: center;
+}
+
+.sched-peek-cell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--track);
+}
+
+.sched-peek-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paint);
+}
+
+/* ---------- schedules ----------
+   The list and title row reuse the profiles classes (.p-list, .p-link,
+   .p-title). The week grid follows Schedules.dc.html; painted cells use
+   --paint (the mockup's orange), the drag preview the accent blue; a
+   partial cell's fill height is set from the data (CSSOM). */
+
+/* A list row is the link with its Delete button laid over the link's
+   right end (a link cannot hold a button). The glyph shows on hover or
+   focus in the row; it hides on the svg, not the button, so the
+   read-only dimming (opacity on the button) still composes with it. */
+.s-row {
+  position: relative;
+  display: flex;
+}
+
+.s-row .p-link {
+  flex: 1 1 auto;
+  padding-right: 44px;
+}
+
+.s-row:hover .p-link:not(.is-error) {
+  border-color: var(--input-border);
+}
+
+.s-del {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.s-del:hover {
+  color: var(--danger);
+}
+
+.p-link.is-error + .s-del {
+  color: var(--danger-text);
+}
+
+.s-del svg {
+  opacity: 0;
+}
+
+.s-row:hover .s-del svg,
+.s-row:focus-within .s-del svg {
+  opacity: 1;
+}
+
+.s-del:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Week geometry: hours across, days down; a cell is 34 × 21 px (≈ the
+   golden ratio). The panel's width follows from the cells: day column, 24
+   cells and their gaps, padding, border (920 px, inside the 1280 window's
+   924 px main column). A narrower window scrolls the week inside its
+   panel, never the page. */
+.s-title,
+.s-week {
+  --s-cell-w: 34px;
+  --s-day-w: 30px;
+  --s-col-gap: 2px;
+  --s-pad-x: 12px;
+  --s-week-w: calc(var(--s-day-w) + 24 * (var(--s-cell-w) + var(--s-col-gap)) + 2 * var(--s-pad-x) + 2px);
+}
+
+/* The row above the week (Clear, then the readout) is as wide as the
+   week, so the readout ends at its edge. */
+.s-title {
+  max-width: var(--s-week-w);
+}
+
+/* Fixed size, so the title row never shifts as the text changes, also
+   when the readout wraps onto a line of its own. */
+.s-readout {
+  margin-left: auto;
+  width: 15ch;
+  height: 18px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.s-week {
+  align-self: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--s-week-w);
+  padding: 16px var(--s-pad-x);
+  overflow-x: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* touch-action is on the cells only, so on a touch screen a swipe on the
+   labels still scrolls a narrow week while one on the cells paints. */
+.s-grid {
+  display: grid;
+  grid-template-columns: var(--s-day-w) repeat(24, var(--s-cell-w));
+  column-gap: var(--s-col-gap);
+  row-gap: 2px;
+  width: max-content;
+}
+
+/* The keyboard focus shows on the active cell instead. */
+.s-grid:focus-visible {
+  outline: none;
+}
+
+/* Centred on its row. */
+.s-day {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 14px;
+  color: var(--text-2);
+}
+
+/* Centred over its column. */
+.s-hour {
+  padding-bottom: 6px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 11px;
+  color: var(--text-3);
+}
+
+/* Editable: a pointing hand, and the cell under it a shade darker
+   (--cell-hover, or for a painted cell --paint mixed toward --text). The
+   drag preview below wins over it. */
+.s-cell {
+  position: relative;
+  display: block;
+  aspect-ratio: 34 / 21;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--track);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.s-cell:hover {
+  background: var(--cell-hover);
+}
+
+.s-cell:hover .s-fill {
+  background: color-mix(in srgb, var(--paint) 82%, var(--text));
+}
+
+.s-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paint);
+}
+
+.s-cell.is-preview {
+  background: var(--accent-ring);
+  box-shadow: inset 0 0 0 1px var(--accent-mid);
+}
+
+.s-cell.is-preview .s-fill {
+  display: none;
+}
+
+.s-grid:focus-visible .s-cell.is-active {
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- accounts ---------- */
+
+.a-add {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.a-add h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.a-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.a-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.a-name,
+.a-field select {
+  width: 160px;
+}
+
+.a-path {
+  width: 260px;
+  max-width: 100%;
+}
+
+.a-line {
+  width: 90px;
+}
+
+/* Add ends the row, right-aligned like Remove in the list below (owner,
+   round 4). */
+.a-form > button[type="submit"] {
+  margin-left: auto;
+}
+
+.a-head,
+.a-row {
+  display: grid;
+  grid-template-columns: 160px 130px minmax(0, 1fr) 110px;
+  gap: 16px;
+  padding: 12px 20px;
+  align-items: center;
+}
+
+.a-head {
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.a-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.a-row {
+  padding: 14px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  font-size: 14px;
+}
+
+.a-row.is-error {
+  border-bottom-color: var(--danger-border);
+}
+
+.a-row:last-child {
+  border-bottom: 0;
+  border-radius: 0 0 9px 9px;
+}
+
+.a-name-cell {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.a-vendor,
+.a-loc {
+  font-size: 13px;
+}
+
+.a-where {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.a-loc,
+.a-src {
+  overflow-wrap: anywhere;
+}
+
+.a-src {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.a-row.is-error .a-src {
+  font-weight: 600;
+  color: var(--danger-text);
+}
+
+.a-act {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 719px) {
+  .a-head {
+    display: none;
+  }
+
+  .a-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+  }
+
+  .a-name-cell {
+    grid-column: 1;
+  }
+
+  .a-vendor {
+    grid-column: 2;
+  }
+
+  .a-where {
+    grid-column: 1;
+  }
+
+  .a-act {
+    grid-column: 2;
+  }
+}

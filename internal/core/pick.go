@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -67,6 +68,13 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 			return "in schedule " + name, false
 		}
 	}
+	if len(c.AllowDuring) > 0 && !p.matchesAny(c.AllowDuring) {
+		noun := "schedule "
+		if len(c.AllowDuring) > 1 {
+			noun = "schedules "
+		}
+		return "outside " + noun + strings.Join(c.AllowDuring, ", "), false
+	}
 	// An expired credential is still usable: the TUI refreshes it on launch.
 	if cred := p.env.Credential(c.Account); cred.Err != nil || !cred.Present {
 		msg := cred.Source + ": not found"
@@ -92,12 +100,44 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 	caps, warnings := EffectiveCaps(c.Account, c.Cap, ordered, p.cfg.Settings.DefaultCap)
 	p.addWarnings(warnings)
 	for i, w := range ordered {
-		if w.UsedPct >= caps[i] {
-			return fmt.Sprintf("%s window %s%% >= cap %s",
-				FormatLength(w.Length), formatPct(w.UsedPct), formatPct(caps[i])), false
+		if why, blocked := p.windowBlocks(c.Account, w, caps[i]); blocked {
+			return why, false
 		}
 	}
 	return "", true
+}
+
+func (p *picker) matchesAny(names []string) bool {
+	for _, name := range names {
+		if p.cfg.Schedules[name].Matches(p.now) {
+			return true
+		}
+	}
+	return false
+}
+
+// windowBlocks judges one window against its effective cap element. A pace
+// element whose window lacks a length or reset time falls back to default_cap
+// with a warning.
+func (p *picker) windowBlocks(account string, w adapter.Window, cap CapElem) (string, bool) {
+	label := FormatLength(w.Length)
+	if cap.Kind == CapPace {
+		if allowed, elapsed, ok := PaceAllowed(w, cap.N, p.now); ok {
+			if w.UsedPct < allowed {
+				return "", false
+			}
+			return fmt.Sprintf("%s window %s%% >= pace %s%% (%s, +%s)", label, formatPct(w.UsedPct),
+				formatPct(math.Round(allowed*10)/10), paceWhere(w.Length, elapsed), formatPct(cap.N)), true
+		}
+		d := p.cfg.Settings.DefaultCap
+		p.addWarnings([]string{fmt.Sprintf("%s: %s window has no reset time; pace cap used default_cap %s",
+			account, label, formatPct(d))})
+		cap = CapElem{CapFixed, d}
+	}
+	if w.UsedPct >= cap.N {
+		return fmt.Sprintf("%s window %s%% >= cap %s", label, formatPct(w.UsedPct), formatPct(cap.N)), true
+	}
+	return "", false
 }
 
 // usage reads an account once per pick and records its error and warnings.

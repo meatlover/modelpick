@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/meatlover/modelpick/internal/app/apptest"
 )
 
 func TestConfigOutput(t *testing.T) {
@@ -12,8 +14,8 @@ func TestConfigOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claude, codex, goFake := newFake("claude"), newFake("codex"), newFake("opencode-go")
-	d := testDeps(t, string(data), claude, codex, goFake)
+	claude, codex, goFake := apptest.NewFake("claude"), apptest.NewFake("codex"), apptest.NewFake("opencode-go")
+	d := apptest.NewDeps(t, string(data), claude, codex, goFake)
 
 	stdout, stderr, code := run(d, "config")
 	if code != 0 {
@@ -54,20 +56,84 @@ func TestConfigOutput(t *testing.T) {
 	if strings.Contains(stdout, `"uncapped": false`) {
 		t.Errorf("uncapped must appear only when true:\n%s", stdout)
 	}
-	for _, f := range []*fakeAdapter{claude, codex, goFake} {
-		if f.totalUsage() != 0 || len(f.credCalls) != 0 {
-			t.Errorf("%s adapter was touched: usage %v creds %v", f.vendor, f.usage, f.credCalls)
+	for _, f := range []*apptest.Fake{claude, codex, goFake} {
+		if f.TotalUsage() != 0 || len(f.CredCalls) != 0 {
+			t.Errorf("%s adapter was touched: usage %v creds %v", f.Vendor(), f.Calls, f.CredCalls)
 		}
 	}
 }
 
 func TestConfigRejectsArgsAndBadConfig(t *testing.T) {
-	d := testDeps(t, testConfig)
+	d := apptest.NewDeps(t, testConfig)
 	if _, _, code := run(d, "config", "extra"); code != 1 {
 		t.Errorf("extra arg exit %d, want 1", code)
 	}
-	bad := testDeps(t, `{"version": 2}`)
+	bad := apptest.NewDeps(t, `{"version": 2}`)
 	if _, stderr, code := run(bad, "config"); code != 1 || !strings.Contains(stderr, "version") {
 		t.Errorf("bad config: code %d stderr %q", code, stderr)
+	}
+}
+
+// The whole output for a choice limited to a schedule (allow_during, which
+// the UI's Allow chip writes) and a pace cap: a golden, so a field the
+// output drops shows as a diff.
+func TestConfigOutputGoldenAllowDuring(t *testing.T) {
+	d := apptest.NewDeps(t, `{"version":1,
+ "accounts":{"codex-main":{"vendor":"codex","codex_home":"~/.codex"}},
+ "schedules":{"peak":{"days":["mon"],"utc":["06:00-10:00"]}},
+ "profiles":{"p":[
+  {"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":[90,"pace+10"],"allow_during":["peak"]},
+  {"account":"codex-main","model":"gpt-6.1-sol","thinking":null,"skip_during":["peak"]}]}}`)
+	const want = `{
+  "settings": {
+    "min_call_interval_minutes": 15,
+    "default_cap": 95
+  },
+  "accounts": {
+    "codex-main": {
+      "vendor": "codex",
+      "codex_home": "/home/u/.codex"
+    }
+  },
+  "schedules": {
+    "peak": {
+      "days": [
+        "mon"
+      ],
+      "utc": [
+        "06:00-10:00"
+      ]
+    }
+  },
+  "profiles": {
+    "p": [
+      {
+        "account": "codex-main",
+        "model": "gpt-6.1-sol",
+        "thinking": "high",
+        "cap": [
+          90,
+          "pace+10"
+        ],
+        "allow_during": [
+          "peak"
+        ]
+      },
+      {
+        "account": "codex-main",
+        "model": "gpt-6.1-sol",
+        "thinking": null,
+        "uncapped": true,
+        "skip_during": [
+          "peak"
+        ]
+      }
+    ]
+  }
+}
+`
+	stdout, stderr, code := run(d, "config")
+	if code != 0 || stdout != want {
+		t.Fatalf("exit %d, stderr %q; got\n%s\nwant\n%s", code, stderr, stdout, want)
 	}
 }

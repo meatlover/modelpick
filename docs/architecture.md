@@ -36,6 +36,8 @@ graph: it runs `go list` over the module and fails on any edge not listed in
 | `internal/adapter/<vendor>` | that vendor's HTTP API and credential format | One `Adapter` each. |
 | `internal/platform` | the OS | Config and cache paths, `flock`, the macOS Keychain (`/usr/bin/security`), running a child process. |
 | `internal/pathx` | nothing | `ExpandHome` (`~` and `~/…`). |
+| `internal/web` | HTTP | The local web UI's HTTP surface: auth, routes, the embedded page. Imports no module package yet. |
+| `internal/web/demo` | nothing | In-memory demo back end for the UI, development only; reached through `cmd/modelpick-ui-demo` (unrestricted like every `cmd/...`). May import `internal/web`. |
 | `internal/live` | everything | Opt-in smoke test against real accounts, build tag `live`. |
 
 ## A pick, end to end
@@ -161,6 +163,7 @@ redacted, that its parser test reads.
 | Import layering, no third-party modules | `internal/archtest/arch_test.go` | `go test ./...` |
 | No import cycles: the layer map is a DAG, and so is the real package graph (the compiler refuses one too; the gate names it) | `internal/archtest/cycle_test.go` | `go test ./...` |
 | Function length: at most 60 lines per function, method or function literal, 80 in tests; no exceptions list | `internal/archtest/funclen_test.go` | `go test ./...` |
+| JavaScript length: at most 60 lines per function or arrow body in `internal/web/static/**/*.js`; unbalanced braces fail (no regex literals: use `new RegExp("…")`) | `internal/archtest/jsfunclen_test.go` | `go test ./...` |
 | CI workflow keeps `permissions: contents: read` | `internal/archtest/ci_test.go` | `go test ./...` |
 | Live endpoints | `internal/live`, tag `live` | by hand only |
 

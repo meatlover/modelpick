@@ -1,0 +1,448 @@
+package app
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strconv"
+
+	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/core"
+)
+
+// listModels is the account's model list, or why there is none as a
+// lower-case fragment for the caller to place.
+func listModels(env OpEnv, account string) ([]adapter.Model, string) {
+	if env.Models == nil {
+		return nil, "cannot list the models of " + account
+	}
+	ms, err := env.Models(account)
+	if err != nil {
+		return nil, "cannot list the models of " + account + ": " + err.Error()
+	}
+	if len(ms) == 0 {
+		return nil, "account " + account + " offers no models"
+	}
+	return ms, ""
+}
+
+func modelOf(ms []adapter.Model, id string) *adapter.Model {
+	for i := range ms {
+		if ms[i].ID == id {
+			return &ms[i]
+		}
+	}
+	return nil
+}
+
+// fixThinking keeps c's thinking if its model offers it, else takes the
+// model's first level, else null (spec §8.4).
+func fixThinking(c *core.DocChoice, ms []adapter.Model) {
+	var levels []string
+	if m := modelOf(ms, c.Model); m != nil {
+		levels = m.Thinking
+	}
+	if c.Thinking != nil && contains(levels, *c.Thinking) {
+		return
+	}
+	c.Thinking = nil
+	if len(levels) > 0 {
+		first := levels[0]
+		c.Thinking = &first
+	}
+}
+
+// newChoice is the §8.4 default for account: its first model, a valid
+// thinking and cap [] (every window at the default cap).
+func newChoice(env OpEnv, account string) (core.DocChoice, error) {
+	ms, why := listModels(env, account)
+	if why != "" {
+		return core.DocChoice{}, refuse("%s", capital(why))
+	}
+	c := core.DocChoice{Account: account, Model: ms[0].ID, Capped: true, Cap: []core.CapElem{}}
+	fixThinking(&c, ms)
+	return c, nil
+}
+
+func opProfileAdd(doc *core.Doc, a opArgs, env OpEnv) error {
+	_, taken := doc.Profiles[a.Name]
+	if err := checkNew("profile", a.Name, taken); err != nil {
+		return err
+	}
+	if len(doc.Accounts) == 0 {
+		return refuse("Profile %s needs an account", a.Name)
+	}
+	c, err := newChoice(env, sortedNames(doc.Accounts)[0])
+	if err != nil {
+		return err
+	}
+	if doc.Profiles == nil {
+		doc.Profiles = map[string][]core.DocChoice{}
+	}
+	doc.Profiles[a.Name] = []core.DocChoice{c}
+	return nil
+}
+
+func opProfileRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
+	if _, ok := doc.Profiles[a.Name]; !ok {
+		return refuse("Unknown profile %s", a.Name)
+	}
+	delete(doc.Profiles, a.Name)
+	return nil
+}
+
+// opChoiceAdd copies the last choice's account; nothing after an uncapped
+// choice can be picked, so the new one goes before a trailing uncapped one.
+func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
+	cs, ok := doc.Profiles[a.Profile]
+	if !ok {
+		return refuse("Unknown profile %s", a.Profile)
+	}
+	if len(cs) == 0 {
+		return opProfileFill(doc, a.Profile, env)
+	}
+	last := len(cs) - 1
+	c, err := newChoice(env, cs[last].Account)
+	if err != nil {
+		return err
+	}
+	at := len(cs)
+	if !cs[last].Capped {
+		at = last
+	}
+	out := append(append(append([]core.DocChoice{}, cs[:at]...), c), cs[at:]...)
+	doc.Profiles[a.Profile] = out
+	return nil
+}
+
+// opProfileFill gives a profile with no choices (not a state the file can
+// hold, but a Doc can) its first choice, as profile.add would.
+func opProfileFill(doc *core.Doc, profile string, env OpEnv) error {
+	if len(doc.Accounts) == 0 {
+		return refuse("Profile %s needs an account", profile)
+	}
+	c, err := newChoice(env, sortedNames(doc.Accounts)[0])
+	if err != nil {
+		return err
+	}
+	doc.Profiles[profile] = []core.DocChoice{c}
+	return nil
+}
+
+func opChoiceRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	if err != nil {
+		return err
+	}
+	if len(cs) == 1 {
+		return refuse("Profile %s needs at least one choice", a.Profile)
+	}
+	doc.Profiles[a.Profile] = append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
+	return nil
+}
+
+func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
+	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect)
+	if err != nil {
+		return err
+	}
+	if a.To < 0 || a.To >= len(cs) {
+		return refuse("Profile %s has no position %d", a.Profile, a.To+1)
+	}
+	rest := append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
+	out := append(append(append([]core.DocChoice{}, rest[:a.To]...), cs[i]), rest[a.To:]...)
+	doc.Profiles[a.Profile] = out
+	return nil
+}
+
+func opChoiceSet(doc *core.Doc, a opArgs, env OpEnv) error {
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	if err != nil {
+		return err
+	}
+	where := "Profile " + a.Profile + ", choice " + strconv.Itoa(i+1)
+	c := cs[i]
+	if err := setField(doc, env, &c, where, a); err != nil {
+		return err
+	}
+	if len(c.SkipDuring) > 0 && len(c.AllowDuring) > 0 {
+		return refuse("Use Skip or Allow, not both")
+	}
+	cs[i] = c
+	return nil
+}
+
+func setField(doc *core.Doc, env OpEnv, c *core.DocChoice, where string, a opArgs) error {
+	switch a.Field {
+	case "account", "model":
+		var s string
+		if json.Unmarshal(a.Value, &s) != nil {
+			return refuse("%s: %s must be text", where, a.Field)
+		}
+		if a.Field == "account" {
+			return setAccount(doc, env, c, where, s)
+		}
+		return setModel(env, c, where, s)
+	case "thinking":
+		return setThinking(env, c, where, a.Value)
+	case "cap":
+		var err error
+		c.Cap, c.Capped, err = parseCap(where, windowLabels(env, c.Account, c.Model), a.Value)
+		return err
+	case "skip_during", "allow_during":
+		return setSchedules(doc, c, where, a.Field, a.Value)
+	}
+	return refuse("%s: unknown field %s", where, a.Field)
+}
+
+// setAccount keeps the model if the new account offers it, else takes the
+// account's first model; then fixes the thinking.
+func setAccount(doc *core.Doc, env OpEnv, c *core.DocChoice, where, account string) error {
+	if _, ok := doc.Accounts[account]; !ok {
+		return refuse("%s: unknown account %s", where, account)
+	}
+	ms, why := listModels(env, account)
+	if why != "" {
+		return refuse("%s: %s", where, why)
+	}
+	c.Account = account
+	if modelOf(ms, c.Model) == nil {
+		c.Model = ms[0].ID
+	}
+	fixThinking(c, ms)
+	return nil
+}
+
+func setModel(env OpEnv, c *core.DocChoice, where, model string) error {
+	ms, why := listModels(env, c.Account)
+	if why != "" {
+		return refuse("%s: %s", where, why)
+	}
+	if modelOf(ms, model) == nil {
+		return refuse("%s: %s does not offer %s", where, c.Account, model)
+	}
+	c.Model = model
+	fixThinking(c, ms)
+	return nil
+}
+
+// setThinking takes a level the model offers, or null for a model with none.
+func setThinking(env OpEnv, c *core.DocChoice, where string, raw json.RawMessage) error {
+	ms, why := listModels(env, c.Account)
+	if why != "" {
+		return refuse("%s: %s", where, why)
+	}
+	var levels []string
+	if m := modelOf(ms, c.Model); m != nil {
+		levels = m.Thinking
+	}
+	var s *string
+	if json.Unmarshal(raw, &s) != nil || (s == nil) != (len(levels) == 0) || (s != nil && !contains(levels, *s)) {
+		return refuse("%s: thinking %s is not offered by %s", where, rawText(raw), c.Model)
+	}
+	c.Thinking = s
+	return nil
+}
+
+// setSchedules sets skip_during or allow_during; an empty list is dropped.
+func setSchedules(doc *core.Doc, c *core.DocChoice, where, field string, raw json.RawMessage) error {
+	var list []string
+	if json.Unmarshal(raw, &list) != nil || list == nil {
+		return refuse("%s: schedules must be a list", where)
+	}
+	for _, n := range list {
+		if _, ok := doc.Schedules[n]; !ok {
+			return refuse("%s: unknown schedule %s", where, n)
+		}
+	}
+	if len(list) == 0 {
+		list = nil
+	}
+	if field == "skip_during" {
+		c.SkipDuring = list
+	} else {
+		c.AllowDuring = list
+	}
+	return nil
+}
+
+func windowLabels(env OpEnv, account, model string) []string {
+	if env.Windows == nil {
+		return nil
+	}
+	return env.Windows(account, model)
+}
+
+var paceRE = regexp.MustCompile(`^pace\+(\d+)$`)
+
+// parseCap reads a cap list (null = uncapped); prefix is "Profile p, choice
+// n" and labels name the positions that have a window.
+func parseCap(prefix string, labels []string, raw json.RawMessage) ([]core.CapElem, bool, error) {
+	if rawText(raw) == "null" {
+		return nil, false, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, false, refuse("%s: cap must be a list or null", prefix)
+	}
+	out := []core.CapElem{}
+	for k, it := range items {
+		e, err := capElement(capWhere(prefix, labels, k), it)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, e)
+	}
+	return out, true, nil
+}
+
+// capWhere names cap position k by its window label, else by number
+// (owner, 2026-10-23, N13).
+func capWhere(prefix string, labels []string, k int) string {
+	if k < len(labels) {
+		return prefix + ", " + labels[k] + " cap"
+	}
+	return prefix + ", cap " + strconv.Itoa(k+1)
+}
+
+// capElement reads one element: a number 0–100, "pace+N" with N 5–50, or
+// "default" (owner rulings, rounds 3, 5 and 6).
+func capElement(where string, raw json.RawMessage) (core.CapElem, error) {
+	text := rawText(raw)
+	var n float64
+	if text != "null" && json.Unmarshal(raw, &n) == nil {
+		if n < 0 || n > 100 {
+			return core.CapElem{}, refuse("%s: %s is outside 0–100%%", where, text)
+		}
+		return core.CapElem{Kind: core.CapFixed, N: n}, nil
+	}
+	var s string
+	if text != "null" && json.Unmarshal(raw, &s) == nil {
+		if s == "default" {
+			return core.CapElem{Kind: core.CapDefault}, nil
+		}
+		if m := paceRE.FindStringSubmatch(s); m != nil {
+			v, err := strconv.Atoi(m[1])
+			if err != nil || v < core.MinPaceMargin || v > core.MaxPaceMargin {
+				return core.CapElem{}, refuse("%s: %s is outside pace+%d–pace+%d", where, s, core.MinPaceMargin, core.MaxPaceMargin)
+			}
+			return core.CapElem{Kind: core.CapPace, N: float64(v)}, nil
+		}
+		text = s
+	}
+	return core.CapElem{}, refuse("%s: %s is not a number, pace+N or default", where, text)
+}
+
+// wireChoice is a choice as the page sends it in expect.
+type wireChoice struct {
+	Account     string          `json:"account"`
+	Model       string          `json:"model"`
+	Thinking    *string         `json:"thinking"`
+	Cap         json.RawMessage `json:"cap"`
+	SkipDuring  []string        `json:"skip_during"`
+	AllowDuring []string        `json:"allow_during"`
+}
+
+// expectedChoice decodes expect; false when it is missing or malformed.
+func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
+	var w wireChoice
+	if len(raw) == 0 || json.Unmarshal(raw, &w) != nil {
+		return core.DocChoice{}, false
+	}
+	c := core.DocChoice{Account: w.Account, Model: w.Model, Thinking: w.Thinking,
+		SkipDuring: w.SkipDuring, AllowDuring: w.AllowDuring}
+	if w.Cap == nil || rawText(w.Cap) == "null" {
+		return c, true
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(w.Cap, &items) != nil {
+		return core.DocChoice{}, false
+	}
+	c.Capped = true
+	for _, it := range items {
+		e, err := core.ParseCapElem(it)
+		if err != nil {
+			return core.DocChoice{}, false
+		}
+		c.Cap = append(c.Cap, e)
+	}
+	return c, true
+}
+
+// findChoice resolves a choice the page addressed by index and sent as
+// expect (spec §8.4): the choice at index if identical, else the one
+// identical choice in the profile, else a refusal.
+func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage) ([]core.DocChoice, int, error) {
+	cs, ok := doc.Profiles[profile]
+	if !ok {
+		return nil, 0, refuse("Unknown profile %s", profile)
+	}
+	want, ok := expectedChoice(expect)
+	inRange := index >= 0 && index < len(cs)
+	if ok && inRange && sameChoice(cs[index], want) {
+		return cs, index, nil
+	}
+	found, n := -1, 0
+	for i := range cs {
+		if ok && sameChoice(cs[i], want) {
+			found, n = i, n+1
+		}
+	}
+	if n == 1 {
+		return cs, found, nil
+	}
+	if !inRange {
+		return nil, 0, refuse("Profile %s has no choice %d", profile, index+1)
+	}
+	return nil, 0, refuse("Choice %d of %s was changed outside the UI", index+1, profile)
+}
+
+// sameChoice compares as written: null and [] lists alike, 90 and 90.0
+// alike, trailing "default" positions ignored; uncapped differs from [].
+func sameChoice(a, b core.DocChoice) bool {
+	if a.Account != b.Account || a.Model != b.Model || a.Capped != b.Capped {
+		return false
+	}
+	if (a.Thinking == nil) != (b.Thinking == nil) || (a.Thinking != nil && *a.Thinking != *b.Thinking) {
+		return false
+	}
+	return sameCap(a.Cap, b.Cap) && sameList(a.SkipDuring, b.SkipDuring) && sameList(a.AllowDuring, b.AllowDuring)
+}
+
+func sameCap(a, b []core.CapElem) bool {
+	a, b = trimDefaults(a), trimDefaults(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func trimDefaults(cap []core.CapElem) []core.CapElem {
+	n := len(cap)
+	for n > 0 && cap[n-1].Kind == core.CapDefault {
+		n--
+	}
+	return cap[:n]
+}
+
+func sameList(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// describe is a choice's position for a refusal, 1-based.
+func describe(profile string, i int) string {
+	return fmt.Sprintf("profile %s, choice %d", profile, i+1)
+}

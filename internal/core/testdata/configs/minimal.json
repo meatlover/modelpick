@@ -1,0 +1,2 @@
+{"version":1,"accounts":{"a":{"vendor":"claude","config_dir":"~/.c"}},
+"profiles":{"p":[{"account":"a","model":"m","thinking":null}]}}

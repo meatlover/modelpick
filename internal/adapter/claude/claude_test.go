@@ -613,3 +613,31 @@ func TestModels(t *testing.T) {
 }
 
 var _ adapter.Adapter = (*Adapter)(nil)
+
+func TestUserAgentProbeNotCachedOnFailure(t *testing.T) {
+	calls := 0
+	a := New(Options{Run: func(ctx context.Context, _ string, _ ...string) ([]byte, error) {
+		calls++
+		if err := ctx.Err(); err != nil {
+			return nil, err // the probe has its own context, never a request's
+		}
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("probe has no timeout of its own")
+		}
+		if calls == 1 {
+			return nil, errors.New("not found")
+		}
+		return []byte("2.1.99 (Claude Code)\n"), nil
+	}})
+
+	if got, want := a.userAgent(), "claude-cli/"+fallbackVersion+" (external, cli)"; got != want {
+		t.Fatalf("failed probe: UA = %q, want fallback %q", got, want)
+	}
+	if got, want := a.userAgent(), "claude-cli/2.1.99 (external, cli)"; got != want {
+		t.Fatalf("second probe: UA = %q, want %q", got, want)
+	}
+	a.userAgent()
+	if calls != 2 {
+		t.Errorf("probe ran %d times, want 2 (success is cached)", calls)
+	}
+}

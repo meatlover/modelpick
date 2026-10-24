@@ -478,3 +478,19 @@ func TestPickedThinkingIsACopy(t *testing.T) {
 		t.Errorf("config thinking became %q through the result", got)
 	}
 }
+
+func TestAllowDuringSkipReasons(t *testing.T) {
+	cfg := inlineConfig(t, `{"p": [
+		{"account": "go-1", "model": "m1", "thinking": null, "allow_during": ["deepseek-peak"]},
+		{"account": "go-1", "model": "m2", "thinking": null, "allow_during": ["deepseek-peak", "deepseek-peak"]},
+		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+	r := Pick(cfg, "p", noon, &fakeEnv{}) // Thursday 12:00 is outside every peak range
+	if len(r.Skipped) != 2 || r.Skipped[0].Why != "outside schedule deepseek-peak" ||
+		r.Skipped[1].Why != "outside schedules deepseek-peak, deepseek-peak" {
+		t.Fatalf("Skipped = %v", r.Skipped)
+	}
+	r = Pick(cfg, "p", peak, &fakeEnv{})
+	if r.Model == nil || *r.Model != "m1" {
+		t.Fatalf("inside the schedule must pick m1, got %v", r.Model)
+	}
+}

@@ -5,13 +5,14 @@ import (
 	"io"
 	"strings"
 
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
 )
 
 // runPick is `modelpick pick <profile> [--refresh]`: the result JSON on
 // stdout, its exit code returned.
-func runPick(args []string, stdout, stderr io.Writer, d Deps) int {
+func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	profile, refresh, err := parsePickArgs(args)
 	if err != nil {
 		// A launcher reads stdout: it gets a failed result, the user the usage.
@@ -46,13 +47,13 @@ func parsePickArgs(args []string) (profile string, refresh bool, err error) {
 	return profile, refresh, nil
 }
 
-func pick(profile string, refresh bool, d Deps) core.Result {
+func pick(profile string, refresh bool, d app.Deps) core.Result {
 	if d.Home == "" {
-		return core.Failed(profile, errNoHome.Error())
+		return core.Failed(profile, app.ErrNoHome.Error())
 	}
 	cfg, err := core.Load(platform.ConfigPath(d.Getenv, d.Home), d.Home)
 	if err != nil {
 		return core.Failed(profile, err.Error())
 	}
-	return core.Pick(cfg, profile, d.Now(), newEnv(d, cfg, refresh))
+	return core.Pick(cfg, profile, d.Now(), app.NewEnv(d, cfg, refresh))
 }

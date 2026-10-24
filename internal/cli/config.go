@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
 )
@@ -15,12 +16,13 @@ import (
 // choice without a cap (per-window positions need readings, which `config`
 // never fetches).
 type configChoice struct {
-	Account    string     `json:"account"`
-	Model      string     `json:"model"`
-	Thinking   *string    `json:"thinking"`
-	Cap        *[]float64 `json:"cap,omitempty"`
-	Uncapped   bool       `json:"uncapped,omitempty"`
-	SkipDuring []string   `json:"skip_during,omitempty"`
+	Account     string          `json:"account"`
+	Model       string          `json:"model"`
+	Thinking    *string         `json:"thinking"`
+	Cap         *[]core.CapElem `json:"cap,omitempty"`
+	Uncapped    bool            `json:"uncapped,omitempty"`
+	SkipDuring  []string        `json:"skip_during,omitempty"`
+	AllowDuring []string        `json:"allow_during,omitempty"`
 }
 
 type configSettings struct {
@@ -37,12 +39,12 @@ type configOutput struct {
 
 // runConfig is `modelpick config`: the effective config as JSON. No network
 // and no store access.
-func runConfig(args []string, stdout, stderr io.Writer, d Deps) int {
+func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) > 0 {
 		return badUsage(stderr, fmt.Sprintf("config: unexpected argument %q", args[0]))
 	}
 	if d.Home == "" {
-		fmt.Fprintf(stderr, "modelpick: %v\n", errNoHome)
+		fmt.Fprintf(stderr, "modelpick: %v\n", app.ErrNoHome)
 		return 1
 	}
 	path := platform.ConfigPath(d.Getenv, d.Home)
@@ -77,9 +79,9 @@ func runConfig(args []string, stdout, stderr io.Writer, d Deps) int {
 		cs := make([]configChoice, 0, len(choices))
 		for _, c := range choices {
 			cc := configChoice{Account: c.Account, Model: c.Model, Thinking: c.Thinking,
-				Uncapped: !c.Capped, SkipDuring: c.SkipDuring}
+				Uncapped: !c.Capped, SkipDuring: c.SkipDuring, AllowDuring: c.AllowDuring}
 			if c.Capped {
-				capCopy := append([]float64{}, c.Cap...)
+				capCopy := append([]core.CapElem{}, c.Cap...)
 				cc.Cap = &capCopy
 			}
 			cs = append(cs, cc)

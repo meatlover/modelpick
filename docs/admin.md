@@ -9,8 +9,8 @@ config format is in the [configuration guide](configuration.md).
 
 | Path | modelpick | Holds |
 |---|---|---|
-| The config file (see [location](configuration.md)) | reads | Accounts, schedules, profiles. Never a secret. |
-| `~/.cache/modelpick/` (or `$XDG_CACHE_HOME/modelpick/`) | reads and writes; created `0700` | One `<account>.json` state file (`0600`) and one `<account>.lock` per account. |
+| The config file (see [location](configuration.md)) | reads; `ui` writes it | Accounts, schedules, profiles. Never a secret. |
+| `~/.cache/modelpick/` (or `$XDG_CACHE_HOME/modelpick/`) | reads and writes; created `0700` | One `<account>.json` state file (`0600`) and one `<account>.lock` per account. While `modelpick ui` runs, `ui.json` (`0600`); after its first edit, `config.before-ui.json`. |
 | Claude: Keychain item `Claude Code-credentials[-<8 hex>]`, else `<config_dir>/.credentials.json` | reads only | The Claude Code login. |
 | Codex: `<codex_home>/auth.json`, `<codex_home>/models_cache.json` | reads only | The Codex login; the model list. |
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
@@ -45,6 +45,7 @@ starts it with an empty state; the old file stays until you delete it.
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
 | `doctor` | None. | Runs `opencode models opencode-go`; reads the Keychain. |
+| `ui` | Only the page's Refresh buttons, and one first reading per run for an account with no saved reading. Both go through the floor. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
 
 The endpoints are undocumented and may change:
 
@@ -83,6 +84,62 @@ you know usage changed, for example after a reset. Do not put it in a loop.
 To force the next call without `--refresh`, delete that account's state file:
 `rm ~/.cache/modelpick/<account>.json`. Deleting it also forgets the
 `Retry-After` deadline, so do not do this to get around a rate limit.
+
+## The UI: `modelpick ui`
+
+```
+modelpick ui [--port N] [--no-open]
+```
+
+`modelpick ui` serves a page for reading usage and editing the config file. It
+runs in the foreground on `127.0.0.1` only, prints one line,
+`modelpick ui: http://127.0.0.1:<port>/?t=<token>`, and opens that URL in your
+browser unless you pass `--no-open` (a browser that fails to open is a note,
+not an error). Ctrl-C or SIGTERM stops it. The token is new for each run; the
+page works only in a browser that opened that URL.
+
+- `--port N` listens on port N. Without it, modelpick takes the previous run's
+  port when it is free, else any free port.
+- **One instance per user.** `<cache>/ui.json` holds the running instance's
+  pid, port and token. A second `modelpick ui` that finds that instance alive
+  and answering prints and opens its URL and exits 0, whatever `--port` says.
+  A clean exit removes the file. Two `modelpick ui` started at the same moment
+  can both serve; the one that wrote `ui.json` last is the one later starts
+  reuse.
+
+**Usage.** Opening or reloading the page shows the saved readings only, as the
+last `pick`, `ls` or Refresh stored them; it calls no vendor. Only the Refresh buttons call out, like
+`ls --refresh` (a `Retry-After` still holds). One exception: an account with
+no saved reading gets one first reading in the background per run, when the
+server starts or the account is added. It is an ordinary read, so the floor,
+`Retry-After` and an expired token all apply.
+
+**Editing.** Every change applies to the file at once; there is no Save
+button and no undo. A change is refused, and the file left as it was, when it
+would add a `doctor` error the file did not already have. If the file changes
+on disk while the page is open, the page asks whether to load the file's
+version or apply your change on top of it. While the file does not parse
+(a hand edit gone wrong), every tab is read-only and the page shows
+`Cannot edit — <parse error>`; it reloads once the file parses again.
+
+Each account's model list is read once per run, so an edit does not run
+`opencode models` every time. A listing that failed (a timeout, `opencode`
+not installed yet) is tried again when you reload the page or come back to
+it.
+
+**The first write reformats the file.** The UI writes canonical JSON: 2-space
+indent, top-level keys in the order `version, settings, accounts, schedules,
+profiles`, map keys sorted, trailing `"default"` cap elements dropped.
+A schedule you paint is rewritten from the grid: days with the same hours
+grouped into one object, the list form when days differ. A hand-laid-out file therefore changes layout on the UI's first edit, though
+not meaning.
+
+**The safety copy.** Before its first write in each run, the UI copies the
+config file as it was to `<cache>/config.before-ui.json` (`0600`). It is a
+safety copy, not an undo: the next run's first write replaces it. If the copy
+cannot be saved, the edit is refused (`Could not save the safety copy`). To go
+back to the file as it was before this run (default paths):
+`cp ~/.cache/modelpick/config.before-ui.json ~/.config/modelpick/config.json`.
 
 ## Calling modelpick from a launcher
 
@@ -159,7 +216,8 @@ each account's current state.
 | `unrecognised response shape` | The vendor changed its usage response. | Usage for that account is unknown until modelpick is updated. File an issue with the redacted response. |
 | `cache unavailable: ...` | The cache directory or lock file cannot be used. | Check permissions on `~/.cache/modelpick`. No usage calls are made until this is fixed. |
 | `no usage reading; last call at ... failed: ...; next call allowed at ...` | The last call failed and the floor has not passed. | Wait, or use `--refresh` once. |
-| `profile <p> has no uncapped choice; pick can return failed` | Every choice in the profile is capped. | Add a last choice without `cap` if you always want an answer. |
+| `profile <p>, choice <i>: never picked, choice <j> always wins first` | Choice j comes earlier and is usable whenever choice i is (uncapped, or the same account and model with caps at least as high), so i can never be picked. | Reorder or remove a choice, or narrow choice j's schedule. |
+| `schedule <name>: empty` | The schedule has no days and no hours (as the UI creates it), so it never matches. | Paint its hours in the UI, or fill in `days` and `utc`. |
 | `account reports N windows (...), cap has M values; filled/ignored ...` | The plan reports a different number of windows than your `cap` array has. | Make the array match the windows listed; positions are in [this order](configuration.md#caps). |
 | `thinking "x" not supported by <model> (supported: ...)` | The thinking value is not one the model takes. | Use one of the listed values, or `null`. |
 | `model <m> not offered by <account>` | The model is not in the account's model list. | Check `modelpick ls models`. A warning only: the list may be out of date. |
@@ -178,4 +236,5 @@ It makes real usage calls, through the same floor as the CLI (never forced
 past it). It fails if a vendor's response is not in a shape modelpick
 recognises; other outcomes (no reading, expired token, an older reading) are
 logged, with window lengths and percents only. It is never run by
-`scripts/check.sh` or CI.
+`scripts/check.sh` or CI; `check.sh` only vets it (`go vet -tags live ./...`)
+so it keeps compiling.

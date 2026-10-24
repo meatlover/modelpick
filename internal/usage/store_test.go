@@ -427,9 +427,9 @@ func TestStateFileIsPrivateAndHoldsNoTemp(t *testing.T) {
 	if strings.Join(names, ",") != "work.json,work.lock" {
 		t.Fatalf("cache dir holds %q, want only work.json and work.lock", names)
 	}
-	got, err := s.Peek(acct)
-	if err != nil || got == nil || got.Windows[0].UsedPct != 10 {
-		t.Fatalf("Peek = %+v, %v", got, err)
+	got, err := s.Saved(acct)
+	if err != nil || got.Reading == nil || got.Reading.Windows[0].UsedPct != 10 {
+		t.Fatalf("Saved = %+v, %v", got, err)
 	}
 }
 
@@ -519,26 +519,6 @@ func TestInvalidAccountNameIsRefused(t *testing.T) {
 	}
 	if got := f.callCount(); got != 0 {
 		t.Fatalf("calls = %d, want 0", got)
-	}
-}
-
-func TestPeek(t *testing.T) {
-	c := newClock()
-	s := newStore(t, c)
-	if r, err := s.Peek(acct); r != nil || err != nil {
-		t.Fatalf("no state: Peek = %+v, %v; want nil, nil", r, err)
-	}
-	if err := os.WriteFile(filepath.Join(s.Dir, "work.json"), []byte(`{"last_go`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Peek(acct); err == nil {
-		t.Fatal("corrupt state: want an error")
-	}
-	good := reading(33, t0)
-	writeStateFile(t, s, state{LastGood: &good, LastAttempt: t0})
-	got, err := s.Peek(acct)
-	if err != nil || got == nil || got.Windows[0].UsedPct != 33 {
-		t.Fatalf("Peek = %+v, %v", got, err)
 	}
 }
 
@@ -715,4 +695,66 @@ func TestHelperProcess(t *testing.T) {
 		t.Fatalf("Get: %v", r.Err)
 	}
 	fmt.Printf("USED_PCT %v\nGET_MS %d\n", r.Reading.Windows[0].UsedPct, took.Milliseconds())
+}
+
+func TestSaved(t *testing.T) {
+	c := newClock()
+	s := newStore(t, c)
+	if got, err := s.Saved(acct); err != nil || got.Reading != nil || !got.RetryUntil.IsZero() || got.LastError != "" || !got.LastAttempt.IsZero() {
+		t.Fatalf("no state: Saved = %+v, %v; want zero, nil", got, err)
+	}
+	good := reading(33, t0)
+	writeStateFile(t, s, state{LastGood: &good, LastAttempt: t0, LastError: "HTTP 429", RetryUntil: t0.Add(time.Hour)})
+	got, err := s.Saved(acct)
+	if err != nil || got.Reading == nil || got.Reading.Windows[0].UsedPct != 33 ||
+		!got.RetryUntil.Equal(t0.Add(time.Hour)) || got.LastError != "HTTP 429" || !got.LastAttempt.Equal(t0) {
+		t.Fatalf("Saved = %+v, %v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Dir, "work.json"), []byte(`{"last_go`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Saved(acct); err == nil {
+		t.Fatal("corrupt state: want an error")
+	}
+	if _, err := s.Saved(adapter.Account{Name: "a/b"}); err == nil {
+		t.Fatal("bad name: want an error")
+	}
+}
+
+// A call cut short by the caller's ctx (Ctrl-C during a first reading) is
+// not an attempt: the state stays as it was, so the next run calls again
+// instead of showing "context canceled" until the floor passes. The
+// store's own CallTimeout is still a failed attempt.
+func TestCallerCancelIsNotRecorded(t *testing.T) {
+	c := newClock()
+	s := newStore(t, c)
+	earlier := reading(10, t0.Add(-30*time.Minute))
+	writeStateFile(t, s, state{LastGood: &earlier, LastAttempt: t0.Add(-30 * time.Minute)})
+	f := &fakeAdapter{reading: reading(20, t0), delay: 5 * time.Second}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for f.callCount() == 0 {
+			time.Sleep(time.Millisecond)
+		}
+		cancel()
+	}()
+	if r := s.Get(ctx, f, acct, false); !errors.Is(r.Err, context.Canceled) {
+		t.Fatalf("cancelled Get: %+v, want context.Canceled", r)
+	}
+	saved, err := s.Saved(acct)
+	if err != nil || saved.LastError != "" || !saved.LastAttempt.Equal(t0.Add(-30*time.Minute)) {
+		t.Fatalf("after a cancel: saved %+v, %v; want the state from before the call", saved, err)
+	}
+	f.set(func(f *fakeAdapter) { f.delay = 0 })
+	if r := s.Get(context.Background(), f, acct, false); r.Err != nil || usedPct(t, r) != 20 || f.callCount() != 2 {
+		t.Fatalf("next Get: %+v, calls %d; want a new call", r, f.callCount())
+	}
+
+	s.CallTimeout = 10 * time.Millisecond
+	f.set(func(f *fakeAdapter) { f.delay = 5 * time.Second })
+	c.advance(20 * time.Minute)
+	s.Get(context.Background(), f, acct, false)
+	if saved, _ := s.Saved(acct); !strings.Contains(saved.LastError, "deadline exceeded") || !saved.LastAttempt.Equal(c.t) {
+		t.Fatalf("after the store's timeout: saved %+v; want the failed attempt recorded", saved)
+	}
 }

@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -82,9 +83,9 @@ func plural(n int, one, many string) string {
 }
 
 // EffectiveCaps returns one cap per ordered window. Known-length windows take
-// cap[i] when present, else defaultCap; unknown-length windows always take
+// cap[i] when present ("default" reads as defaultCap), else defaultCap; unknown-length windows always take
 // defaultCap. Mismatches and unknown windows are described in warnings.
-func EffectiveCaps(account string, cap []float64, ordered []adapter.Window, defaultCap float64) (caps []float64, warnings []string) {
+func EffectiveCaps(account string, cap []CapElem, ordered []adapter.Window, defaultCap float64) (caps []CapElem, warnings []string) {
 	var knownLabels []string
 	for _, w := range ordered {
 		if w.Length > 0 {
@@ -106,16 +107,19 @@ func EffectiveCaps(account string, cap []float64, ordered []adapter.Window, defa
 		warnings = append(warnings, fmt.Sprintf("%s; ignored the last %d", head, m-n))
 	}
 
-	caps = make([]float64, len(ordered))
+	caps = make([]CapElem, len(ordered))
 	for i, w := range ordered {
 		if w.Length > 0 && i < m {
 			caps[i] = cap[i]
+			if cap[i].Kind == CapDefault {
+				caps[i] = CapElem{CapFixed, defaultCap}
+			}
 			continue
 		}
-		caps[i] = defaultCap
+		caps[i] = CapElem{CapFixed, defaultCap}
 		if w.Length <= 0 {
 			warnings = append(warnings, fmt.Sprintf("%s: unrecognised window %q capped at default_cap %g",
-				account, w.Label, defaultCap))
+				account, DisplayLabel(w), defaultCap))
 		}
 	}
 	return caps, warnings
@@ -133,4 +137,64 @@ func FormatLength(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
 	}
+}
+
+// PaceAllowed is the share of window w a pace position permits at now:
+// elapsed% + n capped at 100 (spec §3.2). elapsed is the share of the window
+// already gone, 0–100. ok is false when the length or reset time is unknown.
+func PaceAllowed(w adapter.Window, n float64, now time.Time) (allowed, elapsed float64, ok bool) {
+	if w.Length <= 0 || w.ResetsAt.IsZero() {
+		return 0, 0, false
+	}
+	start := w.ResetsAt.Add(-w.Length)
+	elapsed = float64(now.Sub(start)) / float64(w.Length) * 100
+	elapsed = math.Max(0, math.Min(100, elapsed))
+	return math.Min(100, elapsed+n), elapsed, true
+}
+
+// paceWhere says how far into the window the pace line stands: "day 2.7 of 7"
+// for whole-day lengths, else "hour 2.5 of 5".
+func paceWhere(length time.Duration, elapsed float64) string {
+	unit, name := time.Hour, "hour"
+	if length%(24*time.Hour) == 0 {
+		unit, name = 24*time.Hour, "day"
+	}
+	pos := elapsed / 100 * float64(length) / float64(unit)
+	return fmt.Sprintf("%s %s of %s", name, formatPct(math.Round(pos*10)/10),
+		formatPct(math.Round(float64(length)/float64(unit)*10)/10))
+}
+
+// DisplayLabel is the name a window carries on screen: its length, plus the
+// model it is scoped to ("5h", "7d", "7d Fable"). A window of unknown length
+// keeps the vendor's label.
+func DisplayLabel(w adapter.Window) string {
+	if w.Length <= 0 {
+		return w.Label
+	}
+	label := FormatLength(w.Length)
+	scope := w.ScopeModelName
+	if scope == "" {
+		scope = w.ScopeModelID
+	}
+	if scope != "" {
+		label += " " + scope
+	}
+	return label
+}
+
+// DisplayLabels labels one reading's windows. Windows whose display labels
+// collide keep their vendor labels: unambiguous beats pretty.
+func DisplayLabels(ws []adapter.Window) []string {
+	out := make([]string, len(ws))
+	seen := map[string]int{}
+	for i, w := range ws {
+		out[i] = DisplayLabel(w)
+		seen[out[i]]++
+	}
+	for i, w := range ws {
+		if seen[out[i]] > 1 {
+			out[i] = w.Label
+		}
+	}
+	return out
 }

@@ -102,6 +102,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	// Call. The attempt is recorded first: success and failure both count.
 	// Without the lock or a persisted attempt the floor cannot hold, so it
 	// fails closed: no call (Ruling 27).
+	prevAttempt := st.LastAttempt
 	if cacheErr == nil {
 		st.LastAttempt = now
 		cacheErr = s.write(name, st)
@@ -109,7 +110,7 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	if cacheErr != nil {
 		return cacheUnavailable(name, st.LastGood, cacheErr, now)
 	}
-	r, writeErr := s.callAndRecord(ctx, a, acct, st, now)
+	r, writeErr := s.callAndRecord(ctx, a, acct, st, prevAttempt, now)
 	return withCacheWarning(r, name, writeErr)
 }
 
@@ -165,10 +166,18 @@ func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, n
 }
 
 // callAndRecord makes the one usage call and stores its outcome. writeErr is
-// the failure to store it, if any; the result is still returned.
-func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapter.Account, st state, now time.Time) (res Result, writeErr error) {
+// the failure to store it, if any; the result is still returned. A call
+// that fails because the caller's ctx ended (Ctrl-C, the server closing)
+// is not an attempt: the state goes back to prevAttempt with no error
+// recorded, so the next run calls again. The store's own CallTimeout is
+// an attempt like any failure.
+func (s *Store) callAndRecord(ctx context.Context, a adapter.Adapter, acct adapter.Account, st state, prevAttempt, now time.Time) (res Result, writeErr error) {
 	name := acct.Name
 	r, callErr := s.call(ctx, a, acct)
+	if callErr != nil && ctx.Err() != nil {
+		st.LastAttempt = prevAttempt
+		return Result{Reading: st.LastGood, Err: callErr}, s.write(name, st)
+	}
 	if callErr == nil {
 		if r.TakenAt.IsZero() {
 			r.TakenAt = now
@@ -229,24 +238,41 @@ func (s *Store) call(ctx context.Context, a adapter.Adapter, acct adapter.Accoun
 	return a.Usage(ctx, acct)
 }
 
-// Peek returns the account's last good reading without waiting for the lock
-// and without any network call. No state file is (nil, nil).
-func (s *Store) Peek(acct adapter.Account) (*adapter.Reading, error) {
-	if err := checkName(acct.Name); err != nil {
-		return nil, err
+// Saved is what the state file holds, for display: no lock, no call.
+type Saved struct {
+	Reading     *adapter.Reading
+	RetryUntil  time.Time
+	LastError   string
+	LastAttempt time.Time
+}
+
+// Saved reads the account's state file without the lock and without any
+// network call. No state file is the zero Saved and a nil error.
+func (s *Store) Saved(acct adapter.Account) (Saved, error) {
+	st, err := s.readFile(acct.Name)
+	if err != nil {
+		return Saved{}, err
 	}
-	b, err := os.ReadFile(s.statePath(acct.Name))
+	return Saved{Reading: st.LastGood, RetryUntil: st.RetryUntil, LastError: st.LastError, LastAttempt: st.LastAttempt}, nil
+}
+
+// readFile loads the state file; a missing file is the empty state.
+func (s *Store) readFile(name string) (state, error) {
+	if err := checkName(name); err != nil {
+		return state{}, err
+	}
+	b, err := os.ReadFile(s.statePath(name))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return state{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return state{}, err
 	}
 	var st state
 	if err := json.Unmarshal(b, &st); err != nil {
-		return nil, fmt.Errorf("%s: %w", s.statePath(acct.Name), err)
+		return state{}, fmt.Errorf("%s: %w", s.statePath(name), err)
 	}
-	return st.LastGood, nil
+	return st, nil
 }
 
 func (s *Store) read(name string) state {
@@ -261,26 +287,12 @@ func (s *Store) read(name string) state {
 	return st
 }
 
-// write replaces the state file atomically: temp file (0600) in Dir, then rename.
+// write replaces the state file atomically (platform.WriteFileAtomic; a new
+// file is 0600).
 func (s *Store) write(name string, st state) error {
 	b, err := json.Marshal(st)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(s.Dir, name+".json.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	_, werr := tmp.Write(b)
-	cerr := tmp.Close()
-	if err := errors.Join(werr, cerr); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, s.statePath(name)); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return platform.WriteFileAtomic(s.statePath(name), b)
 }

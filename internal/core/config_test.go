@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,7 +24,7 @@ func TestExampleConfigParses(t *testing.T) {
 	if cd[3].Capped {
 		t.Error("coder-difficult[3] must be uncapped")
 	}
-	if !cd[1].Capped || !reflect.DeepEqual(cd[1].Cap, []float64{90, 98, 95}) {
+	if !cd[1].Capped || !reflect.DeepEqual(cd[1].Cap, []CapElem{{CapFixed, 90}, {CapFixed, 98}, {CapFixed, 95}}) {
 		t.Errorf("coder-difficult[1].Cap = %v capped=%v", cd[1].Cap, cd[1].Capped)
 	}
 	if th := cfg.Profiles["tester"][0].Thinking; th != nil {
@@ -38,7 +39,7 @@ func TestExampleConfigParses(t *testing.T) {
 	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "tester"}) {
 		t.Errorf("ProfileNames = %v", got)
 	}
-	if len(cfg.Schedules["deepseek-peak"].Ranges) != 2 {
+	if len(cfg.Schedules["deepseek-peak"].Rules[0].Ranges) != 2 {
 		t.Errorf("schedule = %+v", cfg.Schedules["deepseek-peak"])
 	}
 }
@@ -121,6 +122,13 @@ func TestValidationErrors(t *testing.T) {
 		{"bad utc", `{"version":1,"schedules":{"peak":{"days":["mon"],"utc":["01:00-04:00","25:00-26:00"]}}}`, "schedules.peak.utc[1]", `range "25:00-26:00": invalid time "25:00" (want HH:MM, 00:00-23:59)`},
 		{"empty days", `{"version":1,"schedules":{"peak":{"days":[],"utc":["01:00-04:00"]}}}`, "schedules.peak.days", "must not be empty"},
 		{"empty utc", `{"version":1,"schedules":{"peak":{"days":["mon"],"utc":[]}}}`, "schedules.peak.utc", "must not be empty"},
+		{"both kinds", prof(ok + `,{"account":"a","model":"m","thinking":null,"skip_during":["peak"],"allow_during":["peak"]}`), "profiles.tester[1]", "use skip_during or allow_during, not both"},
+		{"empty allow_during", prof(ok + `,{"account":"a","model":"m","thinking":null,"allow_during":[]}`), "profiles.tester[1].allow_during", "must not be empty"},
+		{"unknown allow schedule", prof(`{"account":"a","model":"m","thinking":null,"allow_during":["nope"]}`), "profiles.tester[0].allow_during", `unknown schedule "nope"`},
+		{"empty schedule list", `{"version":1,"schedules":{"peak":[]}}`, "schedules.peak", "must not be empty"},
+		{"list element empty days", `{"version":1,"schedules":{"peak":[{"days":[],"utc":["01:00-04:00"]}]}}`, "schedules.peak[0].days", "must not be empty"},
+		{"list bad utc", `{"version":1,"schedules":{"peak":[{"days":["mon"],"utc":["01:00-04:00"]},{"days":["tue"],"utc":["24:00-01:00"]}]}}`, "schedules.peak[1].utc[0]", `range "24:00-01:00": invalid time "24:00" (want HH:MM, 00:00-23:59)`},
+		{"empty object", `{"version":1,"schedules":{"peak":{}}}`, "schedules.peak.days", "must not be empty"},
 		{"default_cap out of range", `{"version":1,"settings":{"default_cap":101}}`, "settings.default_cap", "must be between 0 and 100"},
 	}
 	for _, c := range cases {
@@ -158,8 +166,96 @@ func TestAccountPathsAbsoluteOrHome(t *testing.T) {
 }
 
 func TestConfigErrorString(t *testing.T) {
-	e := &ConfigError{Path: "p.json", Field: "a.b", Msg: "bad"}
-	if e.Error() != "config p.json: a.b: bad" {
-		t.Errorf("Error() = %q", e.Error())
+	cases := []struct {
+		e    ConfigError
+		want string
+	}{
+		{ConfigError{"p.json", "a.b", "bad"}, "config p.json: a.b: bad"},
+		{ConfigError{"p.json", "", "bad"}, "config p.json: bad"},
+		{ConfigError{"", "a.b", "bad"}, "config: a.b: bad"},
+		{ConfigError{"", "", "bad"}, "config: bad"},
+	}
+	for _, c := range cases {
+		if got := c.e.Error(); got != c.want {
+			t.Errorf("%+v: Error() = %q, want %q", c.e, got, c.want)
+		}
+	}
+}
+
+func TestCapElements(t *testing.T) {
+	const field = "profiles.p[0].cap[0]"
+	parse := func(capJSON string) (*Config, error) {
+		doc := strings.Replace(minimal, `"thinking":null`, `"thinking":null,"cap":`+capJSON, 1)
+		return Parse([]byte(doc), "c.json", "/h")
+	}
+	cfg, err := parse(`[90, "pace+10", "default", 12.5]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CapElem{{CapFixed, 90}, {CapPace, 10}, {CapDefault, 0}, {CapFixed, 12.5}}
+	if got := cfg.Profiles["p"][0].Cap; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Cap = %v, want %v", got, want)
+	}
+	if got := fmt.Sprint(want[0], want[1], want[2], want[3]); got != "90 pace+10 default 12.5" {
+		t.Errorf("String() = %q", got)
+	}
+	refusals := []struct{ raw, msg string }{
+		{`["pace+51"]`, `"pace+51": N must be 5–50`},
+		{`["pace+2"]`, `"pace+2": N must be 5–50`},
+		{`["pace+1.5"]`, `"pace+1.5": N must be a whole number`},
+		{`["x"]`, `must be a number, "pace+N" or "default"`},
+		{`[120]`, `must be between 0 and 100`},
+		{`[null]`, `must be a number`},
+	}
+	for _, c := range refusals {
+		_, err := parse(c.raw)
+		var ce *ConfigError
+		if !errors.As(err, &ce) {
+			t.Errorf("%s: err = %v, want *ConfigError", c.raw, err)
+			continue
+		}
+		if ce.Field != field || ce.Msg != c.msg {
+			t.Errorf("%s: got %q: %q, want %q: %q", c.raw, ce.Field, ce.Msg, field, c.msg)
+		}
+	}
+}
+
+func TestReservedAccountName(t *testing.T) {
+	doc := `{"version":1,"accounts":{"models":{"vendor":"claude","config_dir":"/c"}}}`
+	_, err := Parse([]byte(doc), "c.json", "/h")
+	var ce *ConfigError
+	if !errors.As(err, &ce) || ce.Field != "accounts.models" || ce.Msg != "reserved name" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestScheduleForms(t *testing.T) {
+	const doc = `{"version":1,"schedules":{
+	  "one":{"days":["mon"],"utc":["22:00-24:00"]},
+	  "many":[{"days":["sat"],"utc":["08:00-12:00"]},{"days":["sun"],"utc":["09:00-11:00"]}],
+	  "none":{"days":[],"utc":[]}}}`
+	cfg, err := Parse([]byte(doc), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(cfg.Schedules["many"].Rules); n != 2 {
+		t.Errorf("many has %d rules, want 2", n)
+	}
+	if cfg.Schedules["one"].Rules[0].Ranges[0] != (MinuteRange{Start: 1320, End: 1440}) {
+		t.Errorf("one = %+v", cfg.Schedules["one"])
+	}
+	if cfg.Schedules["none"].Matches(at(t, "2026-10-22T07:30:00Z")) {
+		t.Error("an empty schedule matched")
+	}
+}
+
+func TestConfigAcceptsWholeDay(t *testing.T) {
+	cfg, err := Parse([]byte(`{"version":1,"schedules":{"d":{"days":["mon"],"utc":["00:00-24:00"]}}}`), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := cfg.Schedules["d"]
+	if !s.Matches(at(t, "2026-10-19T00:00:00Z")) || !s.Matches(at(t, "2026-10-19T23:59:00Z")) || s.Matches(at(t, "2026-10-20T00:00:00Z")) {
+		t.Error("whole-day Monday must cover 00:00 and 23:59 but not Tuesday 00:00")
 	}
 }

@@ -1,0 +1,12 @@
+{"version": 1,
+  "accounts": {
+    "claude-main": {"vendor": "claude", "config_dir": "~/.claude"},
+    "claude-rec": {"vendor": "claude", "config_dir": "~/.claude-rec"},
+    "go-1": {"vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1}
+  },
+  "schedules": {"deepseek-peak": {"days": ["mon", "tue", "wed", "thu", "fri"], "utc": ["01:00-04:00", "06:00-10:00"]}},
+  "profiles": {"p": [
+    {"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
+    {"account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95], "skip_during": ["deepseek-peak"]},
+    {"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}
+  ]}}

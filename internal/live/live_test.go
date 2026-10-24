@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/cli"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
@@ -24,7 +25,7 @@ import (
 // refresh=false, so the call floor still applies. It prints only the account
 // name, window lengths and percents.
 func TestLiveUsage(t *testing.T) {
-	d := cli.DefaultDeps()
+	d := app.DefaultDeps(cli.Version)
 	if d.Home == "" {
 		t.Fatal("$HOME is not set")
 	}

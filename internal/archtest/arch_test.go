@@ -10,13 +10,25 @@ import (
 
 // allowed lists, per restricted package (path relative to the module root),
 // the module packages it may import. A restricted package with an empty list
-// imports no module package. cmd/... and internal/cli are unrestricted.
+// imports no module package. cmd/... and internal/cli (the composition
+// roots) are unrestricted, and so is internal/app/apptest, the test fakes.
+// That exemption is removable by an entry for apptest naming what it
+// imports today (internal/app, internal/adapter), so a fake could not reach
+// web or cli; deferred because only _test.go files import apptest, so it
+// never ships in a binary, and its imports follow whatever the app, cli and
+// web/live suites need next.
 var allowed = map[string][]string{
 	"internal/pathx":    {},
 	"internal/platform": {"internal/pathx"},
 	"internal/adapter":  {},
 	"internal/core":     {"internal/adapter", "internal/pathx"},
 	"internal/usage":    {"internal/adapter", "internal/platform"},
+	"internal/app": {"internal/core", "internal/usage", "internal/adapter", "internal/adapter/claude",
+		"internal/adapter/codex", "internal/adapter/opencodego", "internal/platform", "internal/pathx"},
+	"internal/web":         {},
+	"internal/web/demo":    {"internal/web"},
+	"internal/web/live":    {"internal/web", "internal/app", "internal/core", "internal/adapter"},
+	"internal/web/webtest": {"internal/web"},
 }
 
 // vendorAllowed is the allowance for internal/adapter/<vendor>.
@@ -88,6 +100,21 @@ func TestViolationsDetectsForbiddenEdge(t *testing.T) {
 	})
 	if len(got) != 1 {
 		t.Fatalf("want exactly 1 violation for third-party import, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/app": {m + "/internal/web"},
+	})
+	if len(got) != 1 || !strings.Contains(got[0], m+"/internal/app") || !strings.Contains(got[0], m+"/internal/web") {
+		t.Fatalf("want exactly 1 violation for app->web, got %q", got)
+	}
+
+	got = violations(m, map[string][]string{
+		m + "/internal/web/live":    {m + "/internal/web", m + "/internal/app", m + "/internal/cli"},
+		m + "/internal/web/webtest": {m + "/internal/web", m + "/internal/app"},
+	})
+	if len(got) != 2 {
+		t.Fatalf("want 2 violations (live->cli, webtest->app), got %q", got)
 	}
 
 	got = violations(m, map[string][]string{
