@@ -84,23 +84,63 @@ func TestEnvCodex(t *testing.T) {
 	}
 }
 
-func TestEnvOpencodeNullThinking(t *testing.T) {
+// wantEnvOpencode ends with the key reference: nothing may unset it after.
+const wantEnvOpencode = `export MODELPICK_STATUS='ok'
+export MODELPICK_PROFILE='p'
+export MODELPICK_VENDOR='opencode-go'
+export MODELPICK_ACCOUNT='go-2'
+export MODELPICK_MODEL='glm-5'
+unset MODELPICK_THINKING
+export MODELPICK_KEY_FILE='/home/u/.ssh/k'
+export MODELPICK_KEY_LINE='2'
+`
+
+func envOpencode(t *testing.T) (string, int) {
+	t.Helper()
 	cfg := `{"version":1,
 	"accounts":{"go-2":{"vendor":"opencode-go","key_file":"~/.ssh/k","key_line":2}},
 	"profiles":{"p":[{"account":"go-2","model":"glm-5","thinking":null}]}}`
 	goFake := apptest.NewFake("opencode-go")
 	goFake.Readings["go-2"] = apptest.ClaudeReading(1, 1)
 	out, _, code := run(apptest.NewDeps(t, cfg, goFake), "env", "p")
-	if code != 0 {
-		t.Fatalf("exit %d; stdout\n%s", code, out)
+	return out, code
+}
+
+func TestEnvOpencodeNullThinking(t *testing.T) {
+	out, code := envOpencode(t)
+	if code != 0 || out != wantEnvOpencode {
+		t.Fatalf("exit %d, want 0; stdout\n%s\nwant\n%s", code, out, wantEnvOpencode)
 	}
-	prev := -1
-	for _, l := range []string{"unset MODELPICK_THINKING\n", "export MODELPICK_KEY_FILE='/home/u/.ssh/k'\n", "export MODELPICK_KEY_LINE='2'\n"} {
-		i := strings.Index(out, l)
-		if i <= prev {
-			t.Fatalf("%q missing or out of order in\n%s", l, out)
-		}
-		prev = i
+}
+
+// wantEnvQuotedDir is spec §10's quoting case: a config_dir with a quote
+// and a space.
+const wantEnvQuotedDir = `export MODELPICK_STATUS='ok'
+export MODELPICK_PROFILE='q'
+export MODELPICK_VENDOR='claude'
+export MODELPICK_ACCOUNT='odd'
+export MODELPICK_MODEL='claude-sonnet-5-5'
+unset MODELPICK_THINKING
+export CLAUDE_CONFIG_DIR='/home/u/it'\''s here'
+unset MODELPICK_KEY_FILE
+unset MODELPICK_KEY_LINE
+`
+
+func envQuotedDir(t *testing.T) (string, int) {
+	t.Helper()
+	cfg := `{"version":1,
+	"accounts":{"odd":{"vendor":"claude","config_dir":"~/it's here"}},
+	"profiles":{"q":[{"account":"odd","model":"claude-sonnet-5-5","thinking":null}]}}`
+	claude := apptest.NewFake("claude")
+	claude.Readings["odd"] = apptest.ClaudeReading(1, 1)
+	out, _, code := run(apptest.NewDeps(t, cfg, claude), "env", "q")
+	return out, code
+}
+
+func TestEnvQuotedConfigDir(t *testing.T) {
+	out, code := envQuotedDir(t)
+	if code != 0 || out != wantEnvQuotedDir {
+		t.Fatalf("exit %d, want 0; stdout\n%s\nwant\n%s", code, out, wantEnvQuotedDir)
 	}
 }
 
@@ -185,26 +225,32 @@ func TestShellQuoteRoundTrip(t *testing.T) {
 	}
 }
 
+// TestEnvEvalInShell evals each env output in every shell found, after
+// pre has left a stale value, and prints the exit status and the variables.
 func TestEnvEvalInShell(t *testing.T) {
 	okOut, _ := envWithErrors(t)
 	failOut, _ := envFailed(t)
+	goOut, _ := envOpencode(t)
+	quotedOut, _ := envQuotedDir(t)
+	cases := []struct{ name, script, pre, show, want string }{
+		{"ok", okOut, "MODELPICK_KEY_FILE=old", "$CLAUDE_CONFIG_DIR|$MODELPICK_ACCOUNT|${MODELPICK_KEY_FILE-unset}",
+			"rc=0 /home/u/.claude-rec|claude-rec|unset"},
+		{"failed", failOut, "MODELPICK_ACCOUNT=old", "${MODELPICK_ACCOUNT-unset}", "rc=1 unset"},
+		{"opencode", goOut, "MODELPICK_KEY_FILE=old", "$MODELPICK_KEY_FILE|$MODELPICK_KEY_LINE", "rc=0 /home/u/.ssh/k|2"},
+		{"quoted", quotedOut, "CLAUDE_CONFIG_DIR=old", "$CLAUDE_CONFIG_DIR", "rc=0 /home/u/it's here"},
+	}
 	dir := t.TempDir()
-	okFile, failFile := filepath.Join(dir, "ok.sh"), filepath.Join(dir, "fail.sh")
-	for f, s := range map[string]string{okFile: okOut, failFile: failOut} {
-		if err := os.WriteFile(f, []byte(s), 0o600); err != nil {
+	for _, c := range cases {
+		f := filepath.Join(dir, c.name+".sh")
+		if err := os.WriteFile(f, []byte(c.script), 0o600); err != nil {
 			t.Fatal(err)
 		}
-	}
-	for name, path := range shells(t) {
-		got := runShell(t, name, path, `MODELPICK_KEY_FILE=old; export MODELPICK_KEY_FILE; eval "$(cat `+okFile+
-			`)" 2>/dev/null; printf %s "$CLAUDE_CONFIG_DIR|$MODELPICK_ACCOUNT|${MODELPICK_KEY_FILE-unset}"`)
-		if want := "/home/u/.claude-rec|claude-rec|unset"; got != want {
-			t.Errorf("%s ok: got %q, want %q", name, got, want)
-		}
-		got = runShell(t, name, path, `MODELPICK_ACCOUNT=old; export MODELPICK_ACCOUNT; eval "$(cat `+failFile+
-			`)" 2>/dev/null; echo "rc=$? acct=${MODELPICK_ACCOUNT-unset}"`)
-		if want := "rc=1 acct=unset\n"; got != want {
-			t.Errorf("%s failed: got %q, want %q", name, got, want)
+		variable := c.pre[:strings.Index(c.pre, "=")]
+		script := c.pre + "; export " + variable + `; eval "$(cat ` + f + `)" 2>/dev/null; rc=$?; printf %s "rc=$rc ` + c.show + `"`
+		for name, path := range shells(t) {
+			if got := runShell(t, name, path, script); got != c.want {
+				t.Errorf("%s %s: got %q, want %q", name, c.name, got, c.want)
+			}
 		}
 	}
 }
