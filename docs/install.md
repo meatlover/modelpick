@@ -30,9 +30,12 @@ go build -o ~/.local/bin/modelpick ./cmd/modelpick
 ```
 
 Put the binary anywhere on your `PATH`; `~/.local/bin` is only an example.
-A build at a release tag reports that release's version; a build of `main`
-between releases reports the next version with `-dev`. The version appears only
-in the `User-Agent` of usage calls.
+`modelpick version` names the build: the release tag it was built at (`v0.2.0`),
+or else the commit's UTC date and first 6 hex digits (`20261024-54fbf8`), with
+`-dirty` for uncommitted changes. Go stamps this from git when it builds inside
+a clone; a build with no git information reports `dev`. The `User-Agent` of
+usage calls carries the release number instead: that release's at a release
+tag, the next one with `-dev` between releases.
 
 To keep a checkout's install current, set `git config modelpick.autodeploy true`; see the README's Development section.
 
