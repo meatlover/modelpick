@@ -41,6 +41,13 @@ func newClient(t *testing.T, b web.Backend) *client {
 
 func (c *client) do(method, path, body string) string {
 	c.t.Helper()
+	return c.send(method, path, body).Body.String()
+}
+
+// send is do with the whole response, for a case that checks the status
+// or a header.
+func (c *client) send(method, path, body string) *httptest.ResponseRecorder {
+	c.t.Helper()
 	r := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
 	r.AddCookie(c.cookie)
 	if method != http.MethodGet {
@@ -51,7 +58,7 @@ func (c *client) do(method, path, body string) string {
 	if w.Code == http.StatusUnauthorized || w.Code == http.StatusForbidden {
 		c.t.Fatalf("%s %s: %d", method, path, w.Code)
 	}
-	return w.Body.String()
+	return w
 }
 
 func (c *client) state() web.State {
@@ -64,8 +71,8 @@ func (c *client) state() web.State {
 }
 
 // bodies is every body a page session can see: the three reads, one call
-// of each operation, a refresh of each account, and the reads again while
-// the config is broken.
+// of each operation, a refresh of each account, a Check all, and the reads
+// again while the config is broken.
 func bodies(t *testing.T, h Harness, b web.Backend) []string {
 	t.Helper()
 	c := newClient(t, b)
@@ -84,6 +91,7 @@ func bodies(t *testing.T, h Harness, b web.Backend) []string {
 		}
 		out = append(out, c.do("POST", "/api/op", string(req)))
 	}
+	out = append(out, c.do("POST", "/api/doctor/all", ""))
 	out = append(out, reads()...)
 	h.Break(t)
 	out = append(out, reads()...)

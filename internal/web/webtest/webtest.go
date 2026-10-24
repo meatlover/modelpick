@@ -30,6 +30,12 @@ type Harness struct {
 	// Refreshable names an account whose refresh succeeds with a reading
 	// that has windows.
 	Refreshable string
+	// UsageCalls is the vendor usage calls made so far; a back end that
+	// calls no vendor answers 0.
+	UsageCalls func() int
+	// MissingTool makes one tool missing for two or more accounts and
+	// returns their names, sorted.
+	MissingTool func(t *testing.T) []string
 }
 
 // The fixture behind New must have at least one account, one profile and
@@ -55,6 +61,10 @@ func Run(t *testing.T, h Harness) {
 		{"RefreshNamesTheAccount", refreshNames},
 		{"RefreshReturnsTheRow", refreshRow},
 		{"NoSecretInAnyBody", noSecrets},
+		{"DoctorAllShape", doctorAllShape},
+		{"DoctorAllGetIs405", doctorAllGet},
+		{"DoctorMakesNoUsageCall", doctorNoUsageCall},
+		{"GroupedFindingCarriesAccounts", groupedAccounts},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, h) })
@@ -293,27 +303,46 @@ func usageRows(t *testing.T, h Harness) {
 
 func doctorShape(t *testing.T, h Harness) {
 	b := h.New(t)
-	s := b.State()
+	checkDoctor(t, b, b.Doctor())
+}
+
+// checkDoctor pins contract 6 on d: each severity, each subject's grammar
+// against b's accounts, and the counts.
+func checkDoctor(t *testing.T, b web.Backend, d web.Doctor) {
+	t.Helper()
 	accounts := map[string]bool{}
-	for _, a := range s.Accounts {
+	for _, a := range b.State().Accounts {
 		accounts[a.Name] = true
 	}
-	d := b.Doctor()
 	count := map[string]int{}
 	for _, f := range d.Findings {
 		count[f.Severity]++
 		if f.Severity != "error" && f.Severity != "warning" {
 			t.Errorf("finding %+v: severity", f)
 		}
-		ok := accounts[f.Subject] || f.Subject == "config" ||
+		ok := accounts[f.Subject] || f.Subject == "config" || grouped(f, accounts) ||
 			strings.HasPrefix(f.Subject, "profile ") || strings.HasPrefix(f.Subject, "schedule ")
 		if !ok {
-			t.Errorf("finding %+v: subject is not an account, profile, schedule or config", f)
+			t.Errorf("finding %+v: subject is not an account, accounts, profile, schedule or config", f)
 		}
 	}
 	if d.Errors != count["error"] || d.Warnings != count["warning"] {
 		t.Errorf("counts %d/%d, findings say %d/%d", d.Errors, d.Warnings, count["error"], count["warning"])
 	}
+}
+
+// grouped reports whether f is a grouped finding (contract 6): two or more
+// known accounts, and the subject is their names joined by ", ".
+func grouped(f web.Finding, accounts map[string]bool) bool {
+	if len(f.Accounts) < 2 || f.Subject != strings.Join(f.Accounts, ", ") {
+		return false
+	}
+	for _, a := range f.Accounts {
+		if !accounts[a] {
+			return false
+		}
+	}
+	return true
 }
 
 // choiceErrorSubject pins contract 6 for a choice: the page reddens a card
@@ -560,4 +589,100 @@ func usageRow(t *testing.T, b web.Backend, account string) web.UsageRow {
 	}
 	t.Fatalf("usage has no row for %s", account)
 	return web.UsageRow{}
+}
+
+// doctorBody decodes a doctor body twice: as the wire type, and as raw keys
+// so a null findings list is seen (the wire type would read it as empty).
+func doctorBody(t *testing.T, body string) (web.Doctor, map[string]json.RawMessage) {
+	t.Helper()
+	var d web.Doctor
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &d); err != nil {
+		t.Fatalf("doctor body %q: %v", body, err)
+	}
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		t.Fatalf("doctor body %q: %v", body, err)
+	}
+	return d, raw
+}
+
+// doctorAllShape: POST /api/doctor/all answers the GET /api/doctor shape
+// (contract 18), counts and all.
+func doctorAllShape(t *testing.T, h Harness) {
+	b := h.New(t)
+	c := newClient(t, b)
+	w := c.send("POST", "/api/doctor/all", "")
+	if w.Code != 200 {
+		t.Fatalf("POST /api/doctor/all: %d %s", w.Code, w.Body.String())
+	}
+	d, raw := doctorBody(t, w.Body.String())
+	_, plain := doctorBody(t, c.do("GET", "/api/doctor", ""))
+	if fmt.Sprint(sortedKeys(raw)) != fmt.Sprint(sortedKeys(plain)) {
+		t.Errorf("keys %v, GET /api/doctor has %v", sortedKeys(raw), sortedKeys(plain))
+	}
+	if f := string(raw["findings"]); f == "" || f == "null" {
+		t.Errorf("findings %q, want a list", f)
+	}
+	checkDoctor(t, b, d)
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// doctorAllGet: any other method is 405 with Allow: POST, as for refresh.
+func doctorAllGet(t *testing.T, h Harness) {
+	c := newClient(t, h.New(t))
+	for _, m := range []string{"GET", "PUT", "DELETE"} {
+		w := c.send(m, "/api/doctor/all", "")
+		if w.Code != 405 || w.Header().Get("Allow") != "POST" {
+			t.Errorf("%s /api/doctor/all: %d, Allow %q; want 405, POST", m, w.Code, w.Header().Get("Allow"))
+		}
+	}
+}
+
+// doctorNoUsageCall pins the anti-goal: plain doctor and the page's reads
+// never call a vendor for usage (contract 18).
+func doctorNoUsageCall(t *testing.T, h Harness) {
+	if h.UsageCalls == nil {
+		t.Fatal("the harness has no UsageCalls")
+	}
+	c := newClient(t, h.New(t))
+	before := h.UsageCalls()
+	for _, p := range []string{"/api/doctor", "/api/doctor", "/api/state", "/api/usage"} {
+		c.do("GET", p, "")
+	}
+	if after := h.UsageCalls(); after != before {
+		t.Errorf("usage calls %d -> %d across doctor, state and usage reads", before, after)
+	}
+}
+
+// groupedAccounts: a tool missing for several accounts is one finding that
+// names them on the wire (contract 6).
+func groupedAccounts(t *testing.T, h Harness) {
+	if h.MissingTool == nil {
+		t.Fatal("the harness has no MissingTool")
+	}
+	b := h.New(t)
+	c := newClient(t, b)
+	want := h.MissingTool(t)
+	if len(want) < 2 || !sort.StringsAreSorted(want) {
+		t.Fatalf("MissingTool returned %v, want two or more sorted names", want)
+	}
+	d, _ := doctorBody(t, c.do("GET", "/api/doctor", ""))
+	var hits []web.Finding
+	for _, f := range d.Findings {
+		if fmt.Sprint(f.Accounts) == fmt.Sprint(want) && f.Subject == strings.Join(want, ", ") {
+			hits = append(hits, f)
+		}
+	}
+	if len(hits) != 1 {
+		t.Errorf("%d findings name %v; findings %+v", len(hits), want, d.Findings)
+	}
+	checkDoctor(t, b, d) // the grouped subject is in the grammar
 }

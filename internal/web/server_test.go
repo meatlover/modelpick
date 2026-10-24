@@ -23,6 +23,7 @@ func (s *stub) Usage() []UsageRow {
 }
 func (s *stub) Refresh(a string) (UsageRow, error) { return UsageRow{Account: a}, nil }
 func (s *stub) Doctor() Doctor                     { return Doctor{Findings: []Finding{}} }
+func (s *stub) DoctorAll() Doctor                  { return Doctor{Findings: []Finding{}} }
 func (s *stub) Apply(OpRequest) (OpResult, error)  { return s.applyRes, s.applyErr }
 
 func do(t *testing.T, h http.Handler, method, path, host, origin string, authed bool) *httptest.ResponseRecorder {

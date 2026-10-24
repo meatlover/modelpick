@@ -1,7 +1,8 @@
 // Package live is the real web.Backend: the page's view of config.json,
 // the saved usage readings and the doctor, and its operations through the
-// app editor. A read never calls a vendor: only Refresh, and one background
-// first reading per account that has none (owner, 2026-10-23), do.
+// app editor. A read never calls a vendor: only Refresh, DoctorAll (Check
+// all), and one background first reading per account that has none (owner,
+// 2026-10-23), do.
 package live
 
 import (
@@ -337,15 +338,38 @@ func (l *Live) Refresh(account string) (web.UsageRow, error) {
 // reuses the model lists (ruling 4). A file that is missing or does not
 // parse is its one finding.
 func (l *Live) Doctor() web.Doctor {
+	cfg, bad := l.doctorConfig()
+	if cfg == nil {
+		return bad
+	}
+	l.ed.Checks().ForgetChecks()
+	return wireDoctor(app.Doctor(cfg, l.d, l.ed.Checks()))
+}
+
+// DoctorAll is Doctor after one usage call per account without a fresh
+// reading (contract 18). Like Doctor it holds no lock, so the page's reads
+// go on while the calls run; Close cancels them. A file that is missing or
+// does not parse is its one finding, and no call is made.
+func (l *Live) DoctorAll() web.Doctor {
+	cfg, bad := l.doctorConfig()
+	if cfg == nil {
+		return bad
+	}
+	l.ed.Checks().ForgetChecks()
+	return wireDoctor(app.DoctorAll(l.ctx, cfg, l.d, l.ed.Checks()))
+}
+
+// doctorConfig is the config to check, or nil and the doctor answer for a
+// file that is missing or does not parse.
+func (l *Live) doctorConfig() (*core.Config, web.Doctor) {
 	snap, err := l.ed.Load()
 	switch {
 	case err != nil:
-		return wireDoctor([]app.Finding{app.ConfigFinding(errors.New(l.unreadable(err)))})
+		return nil, wireDoctor([]app.Finding{app.ConfigFinding(errors.New(l.unreadable(err)))})
 	case snap.Config == nil:
-		return wireDoctor([]app.Finding{app.ConfigFinding(errors.New(snap.ReadOnly))})
+		return nil, wireDoctor([]app.Finding{app.ConfigFinding(errors.New(snap.ReadOnly))})
 	}
-	l.ed.Checks().ForgetChecks()
-	return wireDoctor(app.Doctor(snap.Config, l.d, l.ed.Checks()))
+	return snap.Config, web.Doctor{}
 }
 
 // Apply runs one operation through the editor's gate.

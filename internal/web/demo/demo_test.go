@@ -395,6 +395,49 @@ func TestDoctorAndAddError(t *testing.T) {
 	}
 }
 
+// DoctorAll's failed codex-main reading is one warning that stays: a
+// second Check all does not repeat it, and plain Doctor keeps showing it.
+func TestDoctorAllAddsTheFailedReadingOnce(t *testing.T) {
+	d := newDemo()
+	d.delay = 0
+	const want = "codex-main: last usage reading failed: usage endpoint returned HTTP 503"
+	count := func(doc web.Doctor) int {
+		n := 0
+		for _, f := range doc.Findings {
+			if f.Severity == "warning" && f.Subject+": "+f.Message == want {
+				n++
+			}
+		}
+		return n
+	}
+	if n := count(d.Doctor()); n != 0 {
+		t.Fatalf("before Check all: %d", n)
+	}
+	d.DoctorAll()
+	if doc := d.DoctorAll(); count(doc) != 1 || doc.Warnings != 2 {
+		t.Errorf("second Check all: %+v", doc)
+	}
+	if n := count(d.Doctor()); n != 1 {
+		t.Errorf("plain Doctor after Check all: %d", n)
+	}
+}
+
+// SetToolMissing is one grouped error naming the go accounts, until off.
+func TestSetToolMissing(t *testing.T) {
+	d := newDemo()
+	d.SetToolMissing(true)
+	doc := d.Doctor()
+	want := web.Finding{Severity: "error", Subject: "go-1, go-2, go-3", Message: "opencode not found on PATH",
+		Accounts: []string{"go-1", "go-2", "go-3"}}
+	if doc.Errors != 1 || fmt.Sprintf("%+v", doc.Findings[0]) != fmt.Sprintf("%+v", want) {
+		t.Fatalf("tool missing: %+v", doc)
+	}
+	d.SetToolMissing(false)
+	if doc := d.Doctor(); doc.Errors != 0 {
+		t.Errorf("tool back: %+v", doc)
+	}
+}
+
 func TestNoUnexpectedNulls(t *testing.T) {
 	d := newDemo()
 	d.AddError()

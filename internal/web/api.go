@@ -2,7 +2,7 @@
 // seam, authentication and static files. It imports no module package.
 //
 // Back-end contract: what the page relies on from every Backend (final
-// review of the UI branch, items 1–17; internal/web/webtest checks it on
+// review of the UI branch, items 1–18; internal/web/webtest checks it on
 // the demo and the live back end).
 //
 //  1. UsageRow.State is one of "ok", "expired token", "rate-limited until
@@ -20,7 +20,9 @@
 //     read-only config) leads with the account name.
 //  6. Doctor subjects: an account name, "profile <p>", "profile <p>,
 //     choice <n>" (1-based), "schedule <name>" or "config"; only "error"
-//     reddens; Errors and Warnings count Findings.
+//     reddens; Errors and Warnings count Findings. A finding with
+//     `accounts` covers each named account; its subject is their names
+//     joined by `, `.
 //  7. choice ops compare expect after normalising null vs [] lists and 90
 //     vs 90.0; a single identical choice elsewhere is used (spec §8.4).
 //  8. skip_during/allow_during [] means none: the key is dropped.
@@ -43,6 +45,9 @@
 //     display strings. No response ever holds a credential.
 //  16. A model whose Thinking is [] takes a null choice thinking.
 //  17. Times are RFC 3339 UTC; resets_at is "" when unknown.
+//  18. `POST /api/doctor/all` runs every check, including one usage call per
+//     account without a fresh reading; nothing else on the page causes a
+//     usage call except Refresh.
 //
 // Errors other than Conflict and Refused are internal: the server answers
 // 500 "internal error" (422 "<account>: refresh failed" for a refresh) and
@@ -121,18 +126,20 @@ type UsageWindow struct {
 	Scope    *string `json:"scope"`
 }
 
-// Doctor is GET /api/doctor.
+// Doctor is GET /api/doctor and POST /api/doctor/all.
 type Doctor struct {
 	Errors   int       `json:"errors"`
 	Warnings int       `json:"warnings"`
 	Findings []Finding `json:"findings"`
 }
 
-// Finding is one doctor finding.
+// Finding is one doctor finding. Accounts is set only on a grouped finding
+// (one cause on two or more accounts; contract 6).
 type Finding struct {
-	Severity string `json:"severity"`
-	Subject  string `json:"subject"`
-	Message  string `json:"message"`
+	Severity string   `json:"severity"`
+	Subject  string   `json:"subject"`
+	Message  string   `json:"message"`
+	Accounts []string `json:"accounts,omitempty"`
 }
 
 // OpRequest is the POST /api/op body.
@@ -153,7 +160,8 @@ type Backend interface {
 	State() State
 	Usage() []UsageRow
 	Refresh(account string) (UsageRow, error)
-	Doctor() Doctor
+	Doctor() Doctor    // local checks only: never a vendor usage call
+	DoctorAll() Doctor // Doctor after the usage calls of contract 18
 	Apply(req OpRequest) (OpResult, error)
 }
 

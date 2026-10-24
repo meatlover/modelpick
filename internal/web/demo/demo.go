@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,10 +39,12 @@ type window struct {
 type Demo struct {
 	mu         sync.Mutex
 	now        func() time.Time
-	delay      time.Duration // how long Refresh pretends to wait for the vendor
+	delay      time.Duration // how long Refresh and DoctorAll pretend to wait for the vendor
 	counter    int
 	readOnly   string
 	hasError   bool
+	toolGone   bool // opencode is missing for every go account
+	usageFail  bool // DoctorAll's codex-main usage call failed
 	defaultCap float64
 	accounts   []web.Account
 	models     map[string][]web.Model
@@ -326,8 +329,19 @@ func (d *Demo) findings() []web.Finding {
 		out = append(out, web.Finding{Severity: "error", Subject: "go-3",
 			Message: "key line 3 missing in ~/.ssh/opencode-go-api"})
 	}
-	return append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
+	if d.toolGone {
+		// One cause on several accounts is one grouped finding (contract 6).
+		gone := []string{"go-1", "go-2", "go-3"}
+		out = append(out, web.Finding{Severity: "error", Subject: strings.Join(gone, ", "),
+			Message: "opencode not found on PATH", Accounts: gone})
+	}
+	out = append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
 		Message: "token expired; open Claude Code with this account to refresh its login"})
+	if d.usageFail {
+		out = append(out, web.Finding{Severity: "warning", Subject: "codex-main",
+			Message: "last usage reading failed: usage endpoint returned HTTP 503"})
+	}
+	return out
 }
 
 // thinkingErrors flags each choice whose thinking level its model does
@@ -350,6 +364,21 @@ func (d *Demo) thinkingErrors() []web.Finding {
 func (d *Demo) Doctor() web.Doctor {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	return d.doctorLocked()
+}
+
+// DoctorAll pretends to call the vendors (the delay, without the lock, so
+// the page's reads go on), and codex-main's call fails: its warning stays
+// in every later Doctor, added once however often this runs.
+func (d *Demo) DoctorAll() web.Doctor {
+	time.Sleep(d.delay)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.usageFail = true
+	return d.doctorLocked()
+}
+
+func (d *Demo) doctorLocked() web.Doctor {
 	doc := web.Doctor{Findings: d.findings()}
 	for _, f := range doc.Findings {
 		if f.Severity == "error" {
@@ -384,6 +413,14 @@ func (d *Demo) SetBroken(msg string) {
 	defer d.mu.Unlock()
 	d.readOnly = msg
 	d.bump()
+}
+
+// SetToolMissing makes opencode missing for go-1, go-2 and go-3 (on) or
+// present again (off).
+func (d *Demo) SetToolMissing(on bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.toolGone = on
 }
 
 // AddError adds the go-3 error finding.

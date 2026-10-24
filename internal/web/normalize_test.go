@@ -21,6 +21,7 @@ func (nilStub) State() State {
 func (nilStub) Usage() []UsageRow                  { return nil }
 func (nilStub) Refresh(a string) (UsageRow, error) { return UsageRow{Account: a}, nil }
 func (nilStub) Doctor() Doctor                     { return Doctor{} }
+func (nilStub) DoctorAll() Doctor                  { return Doctor{} }
 func (nilStub) Apply(OpRequest) (OpResult, error)  { return OpResult{SHA256: "s"}, nil }
 
 // allowedNulls are the fields whose null means something (uncapped, no
