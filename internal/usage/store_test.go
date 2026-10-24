@@ -492,6 +492,32 @@ func TestUnusableCacheMakesNoCall(t *testing.T) {
 	}
 }
 
+// TestAnsweredWithoutLockSetsCacheErr: the lock cannot be taken, but no
+// call is due (the reading is within the floor), so Get answers from the
+// stored state; CacheErr still names the lock failure, beside the warning,
+// for a caller (doctor all) that reports it.
+func TestAnsweredWithoutLockSetsCacheErr(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a read-only directory")
+	}
+	s := newStore(t, newClock())
+	recent := reading(10, t0.Add(-time.Minute))
+	writeStateFile(t, s, state{LastGood: &recent, LastAttempt: recent.TakenAt})
+	if err := os.Chmod(s.Dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(s.Dir, 0o700) })
+
+	f := &fakeAdapter{reading: reading(20, t0)}
+	r := s.Get(context.Background(), f, acct, false)
+	if got := f.callCount(); got != 0 || r.Err != nil || usedPct(t, r) != 10 {
+		t.Fatalf("calls %d, result %+v: want the stored reading, no call", got, r)
+	}
+	if r.CacheErr == nil || !hasWarning(r, "work: cache unavailable: ") {
+		t.Fatalf("CacheErr %v, warnings %q: want the lock failure in both", r.CacheErr, r.Warnings)
+	}
+}
+
 func TestCallTimeoutApplies(t *testing.T) {
 	c := newClock()
 	s := newStore(t, c)

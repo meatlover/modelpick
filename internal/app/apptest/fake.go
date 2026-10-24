@@ -43,6 +43,8 @@ type Fake struct {
 	ModelDone  map[string]int               // Models calls that ran to the end (not cancelled)
 	ModelEnded map[string]int               // Models calls that returned, cancelled or not
 	UsageDelay time.Duration                // each Usage call takes this long, or until its ctx ends
+	UsageSlow  time.Duration                // a Usage call its ctx ended takes this long more to return
+	usageEnded int                          // Usage calls that returned, cancelled or not
 
 	mu sync.Mutex // guards the call counters, Errs, Checks and ModelList: calls run concurrently
 }
@@ -117,10 +119,16 @@ func (f *Fake) Usage(ctx context.Context, acct adapter.Account) (adapter.Reading
 	f.mu.Lock()
 	f.Calls[acct.Name]++
 	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.usageEnded++
+		f.mu.Unlock()
+	}()
 	if f.UsageDelay > 0 {
 		select {
 		case <-time.After(f.UsageDelay):
 		case <-ctx.Done():
+			time.Sleep(f.UsageSlow)
 			return adapter.Reading{}, ctx.Err()
 		}
 	}
@@ -180,6 +188,14 @@ func (f *Fake) TotalUsage() int {
 		n += c
 	}
 	return n
+}
+
+// UsageEnded is the Usage calls over all accounts that have returned,
+// cancelled or not; safe beside running calls.
+func (f *Fake) UsageEnded() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.usageEnded
 }
 
 // ClaudeReading reports a 5h and a 7d window, matching a two-value cap so no

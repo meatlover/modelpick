@@ -242,13 +242,14 @@ func TestLiveDoctorAllReadOnlyMakesNoCall(t *testing.T) {
 }
 
 // Close waits for a Check all still running, as for a first reading. The
-// slow model listing that follows the cancelled calls keeps DoctorAll busy
-// after Close cancels, so an untracked one is caught. Once closed, Check
-// all makes no call.
+// cancelled usage call is slow to return (UsageSlow), so an untracked
+// DoctorAll is caught: every call it started must have returned when Close
+// does. (DoctorAll's own return can trail its tracked region, so the test
+// does not wait for that.) Once closed, Check all makes no call.
 func TestCloseWaitsForDoctorAll(t *testing.T) {
 	f := newFixture(t)
 	f.claude.UsageDelay = 5 * time.Second
-	f.claude.ModelDelay = 300 * time.Millisecond
+	f.claude.UsageSlow = 300 * time.Millisecond
 	l := f.live()
 	done := make(chan struct{})
 	go func() {
@@ -257,16 +258,43 @@ func TestCloseWaitsForDoctorAll(t *testing.T) {
 	}()
 	waitFor(t, "a usage call", func() bool { return f.claude.TotalUsage() > 0 })
 	l.Close()
-	select {
-	case <-done:
-	default:
-		t.Error("Close returned while DoctorAll was still running")
+	if started, ended := f.claude.TotalUsage(), f.claude.UsageEnded(); ended != started {
+		t.Errorf("when Close returned: %d usage calls started, %d returned", started, ended)
 	}
 	<-done
 	before := f.usageCalls()
 	l.DoctorAll()
 	if after := f.usageCalls(); after != before {
 		t.Errorf("Check all after Close: usage calls %d -> %d", before, after)
+	}
+}
+
+// TestConcurrentDoctorAllShareOneRun: a Check all sent while one runs (a
+// second tab) waits for it and answers its result, so each account due a
+// call gets one. claude-rec, codex-main and go-1 have no reading;
+// claude-main's is fresh.
+func TestConcurrentDoctorAllShareOneRun(t *testing.T) {
+	f := newFixture(t)
+	f.claude.UsageDelay = 300 * time.Millisecond
+	l := f.live()
+	var got [2]web.Doctor
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		got[0] = l.DoctorAll()
+	}()
+	waitFor(t, "claude-rec's call", func() bool { return f.claude.TotalUsage() > 0 })
+	got[1] = l.DoctorAll()
+	wg.Wait()
+	calls := map[string]int{"claude-rec": f.claude.TotalUsage(), "codex-main": f.codex.TotalUsage(), "go-1": f.goSrv.count()}
+	for n, c := range calls {
+		if c != 1 {
+			t.Errorf("%s: %d usage calls over two concurrent Check alls, want 1", n, c)
+		}
+	}
+	if a, b := mustJSON(t, got[0]), mustJSON(t, got[1]); a != b {
+		t.Errorf("the second Check all answered\n%s\nwant the running one's\n%s", b, a)
 	}
 }
 

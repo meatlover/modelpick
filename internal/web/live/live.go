@@ -41,6 +41,13 @@ type Live struct {
 	mu       sync.Mutex
 	started  map[string]bool // accounts whose first reading was started
 	isClosed bool
+	checking *checkRun // the Check all running now; nil when none
+}
+
+// checkRun is one Check all; res is set before done closes.
+type checkRun struct {
+	done chan struct{}
+	res  web.Doctor
 }
 
 var _ web.Backend = (*Live)(nil)
@@ -355,19 +362,50 @@ func (l *Live) Doctor() web.Doctor {
 // DoctorAll is Doctor after at most one usage call per account without a
 // fresh reading (contract 18). Like Doctor it holds no lock, so the page's
 // reads go on while the calls run; Close cancels them and waits for it. A
-// file that is missing or does not parse is its one finding, and no call is
-// made; after Close it is plain Doctor.
+// Check all sent while one runs (a second tab) waits for that one and
+// answers its result, so it makes no second set of calls. A file that is
+// missing or does not parse is its one finding, and no call is made; after
+// Close it is plain Doctor.
 func (l *Live) DoctorAll() web.Doctor {
 	cfg, bad := l.doctorConfig()
 	if cfg == nil {
 		return bad
 	}
-	if !l.track() {
+	run, first := l.joinCheck()
+	if run == nil {
 		return l.Doctor()
 	}
+	if !first {
+		<-run.done
+		return run.res
+	}
 	defer l.wg.Done()
+	defer func() {
+		l.mu.Lock()
+		l.checking = nil
+		l.mu.Unlock()
+		close(run.done)
+	}()
 	l.ed.Checks().ForgetChecks()
-	return wireDoctor(app.DoctorAll(l.ctx, cfg, l.d, l.ed.Checks()))
+	run.res = wireDoctor(app.DoctorAll(l.ctx, cfg, l.d, l.ed.Checks()))
+	return run.res
+}
+
+// joinCheck answers the Check all running now (first false), or starts one
+// that Close waits for (first true; the caller ends it with wg.Done after
+// closing run.done). Once closed it answers nil.
+func (l *Live) joinCheck() (run *checkRun, first bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.checking != nil {
+		return l.checking, false
+	}
+	if l.isClosed {
+		return nil, false
+	}
+	l.wg.Add(1)
+	l.checking = &checkRun{done: make(chan struct{})}
+	return l.checking, true
 }
 
 // doctorConfig is the config to check, or nil and the doctor answer for a
