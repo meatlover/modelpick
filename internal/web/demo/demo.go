@@ -336,7 +336,7 @@ func (d *Demo) findings() []web.Finding {
 			Message: "opencode not found on PATH", Accounts: gone})
 	}
 	out = append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
-		Message: "token expired; open Claude Code with this account to refresh its login"})
+		Message: "token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login"})
 	// A row whose last call failed is its doctor warning, as in live.
 	for _, a := range d.accounts {
 		if r := d.readings[a.Name]; r != nil && strings.HasPrefix(r.state, "error: ") {
