@@ -4,6 +4,9 @@
 
 ### New
 
+- `modelpick version` (alias `--version`) names the build: the release tag it
+  was built at (`v0.2.0`), or else the commit's UTC date and first 6 hex
+  digits (`20261024-54fbf8`), with `-dirty` for uncommitted changes.
 - An expired Claude or Codex login is renewed. When a usage call is due,
   modelpick asks Claude Code (`claude -p`, a few tokens of that subscription)
   or Codex (`codex app-server`, no quota) to renew it, then makes the call. It

@@ -21,6 +21,7 @@ const usageText = `usage:
   modelpick config   (alias: conf)
   modelpick doctor [all]
   modelpick ui [--port N] [--no-open]
+  modelpick version   (alias: --version)
 `
 
 // Main runs the command in args (without the program name) and returns the
@@ -64,6 +65,8 @@ func dispatch(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runUI(args[1:], stdout, stderr, d)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, d)
+	case "version", "--version":
+		return runVersion(args[1:], stdout, stderr)
 	}
 	return badUsage(stderr, fmt.Sprintf("unknown command %q", args[0]))
 }
