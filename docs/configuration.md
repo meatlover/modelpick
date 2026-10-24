@@ -83,7 +83,7 @@ absolute or start with `~` (`~` or `~/…`, your home directory); a relative
 path is an error (`must be an absolute path or start with ~`), because it
 would depend on the directory modelpick happens to run in.
 
-`models` is a reserved account name (`accounts.models: reserved name`):
+`models` is a reserved account name (`accounts.models: models is a reserved account name`):
 `modelpick ls models` already means "list every account's models".
 
 | `vendor` | Fields | Credential read |

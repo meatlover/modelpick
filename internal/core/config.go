@@ -197,7 +197,7 @@ func (p parser) accounts(docs map[string]DocAccount, home string) (map[string]ad
 	for _, name := range sortedKeys(docs) {
 		prefix := "accounts." + name
 		if name == ReservedAccountName {
-			return nil, p.fail(prefix, "reserved name")
+			return nil, p.fail(prefix, "models is a reserved account name")
 		}
 		d := docs[name]
 		a := adapter.Account{Name: name, Vendor: d.Vendor, ConfigDir: d.ConfigDir, CodexHome: d.CodexHome, KeyFile: d.KeyFile, KeyLine: d.KeyLine}

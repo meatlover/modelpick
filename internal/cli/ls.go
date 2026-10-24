@@ -21,6 +21,8 @@ type lsWindow struct {
 	UsedPct  float64 `json:"used_pct"`
 	ResetsAt *string `json:"resets_at"`
 	Scope    *string `json:"scope"`
+
+	resetsAt time.Time `json:"-"` // for the table; zero when unknown
 }
 
 type lsAccount struct {
@@ -37,14 +39,17 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runLsModels(args[1:], stdout, stderr, d)
 	}
 	var refresh, asJSON bool
+	var named []string
 	for _, a := range args {
-		switch a {
-		case "--refresh":
+		switch {
+		case a == "--refresh":
 			refresh = true
-		case "--json":
+		case a == "--json":
 			asJSON = true
-		default:
+		case strings.HasPrefix(a, "-"):
 			return badUsage(stderr, fmt.Sprintf("ls: unexpected argument %q", a))
+		default:
+			named = append(named, a)
 		}
 	}
 	cfg, err := app.LoadConfig(d)
@@ -52,21 +57,47 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		fmt.Fprintf(stderr, "modelpick: %v\n", err)
 		return 1
 	}
-	rows := lsRows(cfg, app.NewEnv(d, cfg, refresh), d.Now())
+	names, err := lsNames(cfg, named)
+	if err != nil {
+		fmt.Fprintf(stderr, "modelpick: %v\n", err)
+		return 1
+	}
+	rows := lsRows(cfg, app.NewEnv(d, cfg, refresh), names, d.Now())
 	if asJSON {
 		return writeJSON(stdout, stderr, rows)
 	}
-	writeLsTable(stdout, rows)
+	writeLsTable(stdout, rows, d.Now())
 	return 0
 }
 
-// lsRows reads every account, sorted by name, through the usage store.
-func lsRows(cfg *core.Config, e *app.Env, now time.Time) []lsAccount {
-	names := make([]string, 0, len(cfg.Accounts))
+// lsNames is the accounts to show: the named ones in order without
+// duplicates, or every account sorted when none were named. An unknown name
+// is an error before any account is read.
+func lsNames(cfg *core.Config, named []string) ([]string, error) {
+	all := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
-		names = append(names, n)
+		all = append(all, n)
 	}
-	sort.Strings(names)
+	sort.Strings(all)
+	if len(named) == 0 {
+		return all, nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(named))
+	for _, n := range named {
+		if _, ok := cfg.Accounts[n]; !ok {
+			return nil, fmt.Errorf("ls: unknown account %q; configured: %s", n, strings.Join(all, ", "))
+		}
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// lsRows reads the given accounts, in order, through the usage store.
+func lsRows(cfg *core.Config, e *app.Env, names []string, now time.Time) []lsAccount {
 	rows := make([]lsAccount, 0, len(names))
 	for _, n := range names {
 		st := e.Usage(n)
@@ -75,7 +106,7 @@ func lsRows(cfg *core.Config, e *app.Env, now time.Time) []lsAccount {
 			age := int64(usage.Age(st.Reading.TakenAt, now) / time.Second)
 			row.AgeSeconds = &age
 			for _, w := range core.ApplyResets(*st.Reading, now).Windows {
-				lw := lsWindow{Label: w.Label, Length: core.FormatLength(w.Length), UsedPct: w.UsedPct}
+				lw := lsWindow{Label: w.Label, Length: core.FormatLength(w.Length), UsedPct: w.UsedPct, resetsAt: w.ResetsAt}
 				if !w.ResetsAt.IsZero() {
 					s := w.ResetsAt.UTC().Format(time.RFC3339)
 					lw.ResetsAt = &s
@@ -98,30 +129,82 @@ func cmpOr(a, b string) string {
 	return b
 }
 
-func writeLsTable(w io.Writer, rows []lsAccount) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ACCOUNT\tVENDOR\tWINDOW\tUSED\tRESETS\tAGE\tSTATE")
+// writeLsTable prints the v2 table: STATE second, one line per window with
+// the account, state and age on the account's first line only, RESETS as time
+// left and time. An errored account shows "error" in STATE and its message
+// goes after the table, one "<account>: <message>" line each.
+func writeLsTable(w io.Writer, rows []lsAccount, now time.Time) {
+	leftW, resetW := resetWidths(rows, now)
+	table := [][]string{{"ACCOUNT", "STATE", "WINDOW", "USED", "RESETS", "AGE"}}
+	var errLines []string
 	for _, r := range rows {
+		state := r.State
+		if m, ok := strings.CutPrefix(r.State, "error: "); ok {
+			state = "error"
+			errLines = append(errLines, r.Account+": "+m)
+		}
 		age := "-"
 		if r.AgeSeconds != nil {
 			age = formatAge(time.Duration(*r.AgeSeconds) * time.Second)
 		}
 		if len(r.Windows) == 0 {
-			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t%s\t%s\n", r.Account, r.Vendor, age, r.State)
+			table = append(table, []string{r.Account, state, "-", "-", "-", age})
+			continue
 		}
-		for _, win := range r.Windows {
-			label := fmt.Sprintf("%s (%s)", win.Label, win.Length)
-			if win.Scope != nil {
-				label += " " + *win.Scope
+		for i, win := range r.Windows {
+			// A continuation line keeps an empty AGE cell, so its RESETS cell is
+			// never the line's last and always counts toward the column width.
+			first, last := []string{r.Account, state}, age
+			if i > 0 {
+				first, last = []string{"", ""}, ""
 			}
-			resets := "-"
-			if win.ResetsAt != nil {
-				resets = *win.ResetsAt
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%g%%\t%s\t%s\t%s\n", r.Account, r.Vendor, label, win.UsedPct, resets, age, r.State)
+			cells := append(first, windowCell(win), fmt.Sprintf("%g%%", win.UsedPct), resetsCell(win, now, leftW, resetW))
+			table = append(table, append(cells, last))
 		}
 	}
-	_ = tw.Flush()
+	writeColumns(w, table, map[int]bool{3: true})
+	if len(errLines) > 0 {
+		fmt.Fprintln(w)
+		for _, l := range errLines {
+			fmt.Fprintln(w, l)
+		}
+	}
+}
+
+// windowCell is the length (5h, 7d), then the scope when the window is
+// model-scoped; the vendor's label when the length is unknown.
+func windowCell(win lsWindow) string {
+	c := win.Length
+	if c == "?" {
+		c = win.Label
+	}
+	if win.Scope != nil {
+		c += " " + *win.Scope
+	}
+	return c
+}
+
+// resetWidths is the widest fmtLeft and fmtReset over every window.
+func resetWidths(rows []lsAccount, now time.Time) (left, reset int) {
+	for _, r := range rows {
+		for _, win := range r.Windows {
+			if win.resetsAt.IsZero() {
+				continue
+			}
+			left = max(left, len(fmtLeft(win.resetsAt, now)))
+			reset = max(reset, len(fmtReset(win.resetsAt, now)))
+		}
+	}
+	return left, reset
+}
+
+// resetsCell is time left padded to leftW, two spaces, then the time right-
+// aligned to resetW; "-" for a window with no reset time.
+func resetsCell(win lsWindow, now time.Time, leftW, resetW int) string {
+	if win.resetsAt.IsZero() {
+		return "-"
+	}
+	return fmt.Sprintf("%-*s  %*s", leftW, fmtLeft(win.resetsAt, now), resetW, fmtReset(win.resetsAt, now))
 }
 
 func formatAge(d time.Duration) string {

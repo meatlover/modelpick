@@ -25,10 +25,10 @@ const keychainBase = "Claude Code-credentials"
 // configDir: the bare name for the default dir (home/.claude), otherwise the
 // name plus the first 8 hex digits of sha256 of the cleaned absolute path.
 func KeychainService(configDir, home string) string {
-	dir := filepath.Clean(configDir)
-	if dir == filepath.Join(home, ".claude") {
+	if IsDefaultConfigDir(configDir, home) {
 		return keychainBase
 	}
+	dir := filepath.Clean(configDir)
 	sum := sha256.Sum256([]byte(dir))
 	return keychainBase + "-" + hex.EncodeToString(sum[:])[:8]
 }
@@ -110,4 +110,10 @@ func (a *Adapter) status(source string, blob []byte) (credential, adapter.CredSt
 func (a *Adapter) Credential(acct adapter.Account) adapter.CredStatus {
 	_, st := a.load(context.Background(), acct)
 	return st
+}
+
+// IsDefaultConfigDir reports whether configDir is Claude Code's default
+// directory, home/.claude, after cleaning.
+func IsDefaultConfigDir(configDir, home string) bool {
+	return filepath.Clean(configDir) == filepath.Join(home, ".claude")
 }

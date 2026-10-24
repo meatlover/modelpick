@@ -231,8 +231,8 @@ func TestPickUsageErrorsPrintFailedJSON(t *testing.T) {
 		profile string
 		reason  string
 	}{
-		{[]string{"pick"}, "", "pick: missing <profile>"},
-		{[]string{"pick", "--refresh"}, "", "pick: missing <profile>"},
+		{[]string{"pick", ""}, "", "pick: missing <profile>"},
+		{[]string{"pick", "", "--refresh"}, "", "pick: missing <profile>"},
 		{[]string{"pick", "a", "b"}, "a", `pick: unexpected argument "b"`},
 		{[]string{"pick", "two-claude", "--refrsh"}, "two-claude", `pick: unknown flag "--refrsh"`},
 	} {
