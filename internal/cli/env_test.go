@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +13,7 @@ import (
 	"github.com/meatlover/modelpick/internal/app/apptest"
 )
 
-const wantEnvWithErrors = `echo 'modelpick: codex-main: usage endpoint returned HTTP 401; log in to Codex with this account' >&2
+const wantEnvWithErrors = `printf '%s\n' 'modelpick: codex-main: usage endpoint returned HTTP 401; log in to Codex with this account' >&2
 export MODELPICK_STATUS='ok_with_errors'
 export MODELPICK_PROFILE='codex-first'
 export MODELPICK_VENDOR='claude'
@@ -31,7 +33,7 @@ unset MODELPICK_MODEL
 unset MODELPICK_THINKING
 unset MODELPICK_KEY_FILE
 unset MODELPICK_KEY_LINE
-echo 'modelpick: same-account: no choice available' >&2
+printf '%s\n' 'modelpick: same-account: no choice available' >&2
 false
 `
 
@@ -163,8 +165,8 @@ func TestEnvUsageErrors(t *testing.T) {
 	} {
 		claude := apptest.NewFake("claude")
 		out, errOut, code := run(apptest.NewDeps(t, testConfig, claude), c.args...)
-		want := strings.Replace(wantEnvFailed, "echo 'modelpick: same-account: no choice available' >&2",
-			"echo 'modelpick: "+c.reason+"' >&2", 1)
+		want := strings.Replace(wantEnvFailed, "printf '%s\\n' 'modelpick: same-account: no choice available' >&2",
+			"printf '%s\\n' 'modelpick: "+c.reason+"' >&2", 1)
 		if code != 1 || !strings.Contains(errOut, "usage:") || out != want || claude.TotalUsage() != 0 {
 			t.Errorf("%q: exit %d stderr %q stdout\n%s\nwant\n%s", c.args, code, errOut, out, want)
 		}
@@ -255,7 +257,7 @@ func TestEnvEvalInShell(t *testing.T) {
 	}
 }
 
-// TestEnvFailedWithErrors: the error echoes come first, then the unsets,
+// TestEnvFailedWithErrors: the error lines come first, then the unsets,
 // the reason and false (spec §4 order, steps 1 and 2).
 func TestEnvFailedWithErrors(t *testing.T) {
 	cfg := `{"version":1,
@@ -264,9 +266,39 @@ func TestEnvFailedWithErrors(t *testing.T) {
 	codex := apptest.NewFake("codex")
 	codex.Errs["codex-main"] = adapter.ErrUnauthorized
 	out, _, code := run(apptest.NewDeps(t, cfg, codex), "env", "only-codex")
-	want := "echo 'modelpick: codex-main: usage endpoint returned HTTP 401; log in to Codex with this account' >&2\n" +
+	want := "printf '%s\\n' 'modelpick: codex-main: usage endpoint returned HTTP 401; log in to Codex with this account' >&2\n" +
 		strings.Replace(wantEnvFailed, "same-account: no choice available", "only-codex: no choice available", 1)
 	if code != 1 || out != want {
 		t.Fatalf("exit %d, want 1; stdout\n%s\nwant\n%s", code, out, want)
+	}
+}
+
+// TestEnvMessageKeepsBackslashes: an error text with \n and \c reaches stderr
+// verbatim in every shell (echo would turn \n into a newline and cut at \c).
+func TestEnvMessageKeepsBackslashes(t *testing.T) {
+	const text = `bad \n path \c end`
+	codex := apptest.NewFake("codex")
+	codex.Errs["codex-main"] = errors.New(text)
+	out, _, _ := run(apptest.NewDeps(t, testConfig, apptest.NewFake("claude"), codex), "env", "codex-first")
+	f := filepath.Join(t.TempDir(), "env.sh")
+	if err := os.WriteFile(f, []byte(out), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := "modelpick: codex-main: " + text + "\n"
+	for name, path := range shells(t) {
+		args := []string{"-c", `eval "$(cat ` + f + `)" >/dev/null`}
+		if name == "zsh" {
+			args = append([]string{"-f"}, args...)
+		}
+		var stderr bytes.Buffer
+		cmd := exec.Command(path, args...)
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + t.TempDir()}
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("%s: stderr %q lacks line %q", name, stderr.String(), want)
+		}
 	}
 }

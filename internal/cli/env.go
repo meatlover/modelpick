@@ -23,7 +23,7 @@ func runEnv(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		err = errors.New("env: missing <profile>")
 	}
 	if err != nil {
-		// There is no profile to name: the echo line is just the reason.
+		// There is no profile to name: the message line is just the reason.
 		_, _ = io.WriteString(stdout, failedScript("modelpick: "+err.Error()))
 		badUsage(stderr, err.Error())
 		return 1
@@ -39,7 +39,7 @@ func failedScript(msg string) string {
 	for _, v := range modelpickVars {
 		b.WriteString("unset MODELPICK_" + v + "\n")
 	}
-	b.WriteString("echo " + shellQuote(msg) + " >&2\nfalse\n")
+	b.WriteString("printf '%s\\n' " + shellQuote(msg) + " >&2\nfalse\n")
 	return b.String()
 }
 
@@ -47,7 +47,7 @@ func failedScript(msg string) string {
 func envScript(res core.Result, home string) string {
 	var b strings.Builder
 	for _, e := range res.Errors {
-		b.WriteString("echo " + shellQuote("modelpick: "+e.Account+": "+e.Error) + " >&2\n")
+		b.WriteString("printf '%s\\n' " + shellQuote("modelpick: "+e.Account+": "+e.Error) + " >&2\n")
 	}
 	if res.Status == core.StatusFailed {
 		reason := ""
