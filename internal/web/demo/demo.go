@@ -197,7 +197,7 @@ func (d *Demo) buildReadings(t0 time.Time) {
 		"claude-main": mk(4*time.Minute, "ok", true,
 			w("5h", 5*time.Hour, 31, at(time.Hour+50*time.Minute)),
 			w("7d", 7*day, 58, at(2*day+11*time.Hour+50*time.Minute)), fable),
-		"claude-rec": {state: "expired token"},
+		"claude-rec": {state: "expired token", canRefresh: true}, // Claude Code renews it on refresh
 		"codex-main": mk(12*time.Minute, "ok", true, w("7d", 7*day, 41, at(2*day+50*time.Minute))),
 		"go-1":       mk(9*time.Minute, "ok", true, goWin(0, 62, 95)...),
 		"go-2":       mk(9*time.Minute, "ok", true, goWin(3, 70, 96)...),
@@ -336,7 +336,7 @@ func (d *Demo) findings() []web.Finding {
 			Message: "opencode not found on PATH", Accounts: gone})
 	}
 	out = append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
-		Message: "token expired; open Claude Code with this account to refresh its login"})
+		Message: "token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login"})
 	// A row whose last call failed is its doctor warning, as in live.
 	for _, a := range d.accounts {
 		if r := d.readings[a.Name]; r != nil && strings.HasPrefix(r.state, "error: ") {

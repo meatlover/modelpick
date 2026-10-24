@@ -25,7 +25,11 @@ func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return writeReport(stdout, []app.Finding{app.ConfigFinding(err)})
 	}
 	if all {
-		return writeReport(stdout, app.DoctorAll(context.Background(), cfg, d, &app.CheckCache{}))
+		ctx := d.Ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return writeReport(stdout, app.DoctorAll(ctx, cfg, d, &app.CheckCache{}))
 	}
 	return writeReport(stdout, app.Doctor(cfg, d, &app.CheckCache{}))
 }

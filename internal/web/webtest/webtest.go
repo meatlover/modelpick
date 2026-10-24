@@ -267,8 +267,10 @@ func checkRow(t *testing.T, r web.UsageRow) {
 	if !stateKnown(r.State) {
 		t.Errorf("%s: state %q is not in the vocabulary", r.Account, r.State)
 	}
-	blocked := r.State == "expired token" || strings.HasPrefix(r.State, "rate-limited until ")
-	if r.CanRefresh == blocked {
+	// An expired token blocks a refresh unless the vendor's own CLI can renew
+	// the login, so either value is allowed; rate-limited always blocks.
+	blocked := strings.HasPrefix(r.State, "rate-limited until ")
+	if r.State != "expired token" && r.CanRefresh == blocked {
 		t.Errorf("%s: can_refresh %v with state %q", r.Account, r.CanRefresh, r.State)
 	}
 	if r.ReadingAgeSeconds == nil && len(r.Windows) > 0 {

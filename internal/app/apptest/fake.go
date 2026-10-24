@@ -46,6 +46,13 @@ type Fake struct {
 	UsageSlow  time.Duration                // a Usage call its ctx ended takes this long more to return
 	usageEnded int                          // Usage calls that returned, cancelled or not
 
+	// Renewable makes the vendor's adapter in NewDeps implement
+	// adapter.Renewer (any entry, so an empty map stays non-renewing); an
+	// account listed false fails Renew. A successful Renew clears Expired.
+	Renewable  map[string]bool
+	RenewCalls map[string]int   // Renew calls per account
+	RenewErr   map[string]error // Renew fails with this error
+
 	mu sync.Mutex // guards the call counters, Errs, Checks and ModelList: calls run concurrently
 }
 
@@ -103,7 +110,34 @@ func NewFake(vendor string) *Fake {
 		ModelCalls: map[string]int{},
 		ModelDone:  map[string]int{},
 		ModelEnded: map[string]int{},
+		Renewable:  map[string]bool{},
+		RenewCalls: map[string]int{},
+		RenewErr:   map[string]error{},
 	}
+}
+
+// renewingFake is a Fake that is also an adapter.Renewer. NewDeps wraps a
+// Fake in it only when Renewable is set, so a plain Fake stays non-renewing.
+type renewingFake struct{ *Fake }
+
+// Renew counts the call, then fails or clears the account's Expired flag.
+// Like a real renewal it ends with its ctx.
+func (r renewingFake) Renew(ctx context.Context, acct adapter.Account) error {
+	f := r.Fake
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RenewCalls[acct.Name]++
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := f.RenewErr[acct.Name]; err != nil {
+		return err
+	}
+	if !f.Renewable[acct.Name] {
+		return &adapter.RenewError{Reason: "not renewable"}
+	}
+	delete(f.Expired, acct.Name)
+	return nil
 }
 
 func (f *Fake) Vendor() string { return f.vendor }
@@ -232,6 +266,9 @@ func NewDepsDir(dir, configJSON string, fakes ...*Fake) (app.Deps, error) {
 	adapters := map[string]adapter.Adapter{}
 	for _, f := range fakes {
 		adapters[f.vendor] = f
+		if len(f.Renewable) > 0 {
+			adapters[f.vendor] = renewingFake{f}
+		}
 	}
 	return app.Deps{
 		Getenv:   func(k string) string { return vars[k] },

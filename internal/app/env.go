@@ -69,6 +69,16 @@ func (e *Env) Credential(name string) adapter.CredStatus {
 	return c
 }
 
+// Renewable reports whether the account's adapter can renew an expired login.
+func (e *Env) Renewable(name string) bool {
+	_, a, err := e.AdapterFor(name)
+	if err != nil {
+		return false
+	}
+	_, ok := a.(adapter.Renewer)
+	return ok
+}
+
 // Usage returns the account's reading through the store (floor, cache,
 // Retry-After), with errors rewritten as advice.
 func (e *Env) Usage(name string) core.AccountState {
@@ -78,9 +88,14 @@ func (e *Env) Usage(name string) core.AccountState {
 	acct, a, err := e.AdapterFor(name)
 	st := core.AccountState{Err: err}
 	if err == nil {
-		res := e.store.Get(context.Background(), a, acct, e.refresh)
+		ctx := e.d.Ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		res := e.store.Get(ctx, a, acct, e.refresh)
 		st = core.AccountState{Reading: res.Reading, Warnings: res.Warnings,
-			TokenExpired: res.TokenExpired, RetryUntil: res.RetryUntil}
+			TokenExpired: res.TokenExpired, RetryUntil: res.RetryUntil,
+			Renewable: e.Renewable(name)}
 		if res.Err != nil {
 			st.Err = UsageError(acct.Vendor, res.Err)
 		}

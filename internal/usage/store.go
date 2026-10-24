@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/platform"
@@ -19,6 +20,13 @@ import (
 // DefaultCallTimeout bounds one usage call when Store.CallTimeout is zero.
 const DefaultCallTimeout = 10 * time.Second
 
+// DefaultRenewTimeout bounds one login renewal when Store.RenewTimeout is
+// zero. It is separate from, and longer than, the usage-call limit.
+const DefaultRenewTimeout = 60 * time.Second
+
+// maxReasonBytes caps the reason a failed renewal is recorded and shown with.
+const maxReasonBytes = 200
+
 // Result is the outcome of Get. Reading is the freshest reading available
 // (possibly cached, possibly old); Err is set whenever Reading is nil, and
 // also when a call failed but an older reading is returned.
@@ -26,7 +34,8 @@ type Result struct {
 	Reading  *adapter.Reading
 	Err      error
 	Warnings []string
-	// TokenExpired: the local credential is expired, so no call was made.
+	// TokenExpired: the local credential is expired and Reading holds no
+	// reading taken in this Get (none was renewed and called).
 	TokenExpired bool
 	// RetryUntil: a server Retry-After that has not elapsed; zero = none.
 	RetryUntil time.Time
@@ -42,6 +51,9 @@ type Store struct {
 	Floor       time.Duration
 	Now         func() time.Time
 	CallTimeout time.Duration // 10s
+
+	RenewTimeout time.Duration // 0 = DefaultRenewTimeout
+	NoRenew      bool          // true = never renew an expired login (the live smoke test)
 }
 
 // state is the on-disk record <Dir>/<account>.json. It never holds credentials.
@@ -99,7 +111,8 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 
 	st := s.read(name) // missing or corrupt = empty
 	now := s.now()
-	if r, answered := s.withoutCall(a, acct, st, now, refresh); answered {
+	renewer, canRenew := a.(adapter.Renewer)
+	if r, answered := s.withoutCall(a, acct, st, now, refresh, canRenew && !s.NoRenew); answered {
 		return withCacheWarning(r, name, cacheErr)
 	}
 
@@ -113,6 +126,11 @@ func (s *Store) Get(ctx context.Context, a adapter.Adapter, acct adapter.Account
 	}
 	if cacheErr != nil {
 		return cacheUnavailable(name, st.LastGood, cacheErr, now)
+	}
+	if canRenew && !s.NoRenew && a.Credential(acct).Expired {
+		if r, answered, writeErr := s.renew(ctx, renewer, a, acct, st, prevAttempt, now); answered {
+			return withCacheWarning(r, name, writeErr)
+		}
 	}
 	r, writeErr := s.callAndRecord(ctx, a, acct, st, prevAttempt, now)
 	return withCacheWarning(r, name, writeErr)
@@ -129,13 +147,16 @@ func withCacheWarning(res Result, name string, err error) Result {
 
 // withoutCall answers from the stored state when no call may be made: an
 // expired token, an unexpired Retry-After, or the floor. answered is false
-// when a call is due.
-func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, now time.Time, refresh bool) (res Result, answered bool) {
+// when a call is due. With renewable, an expired token with no reading or a
+// reading older than Floor is not answered here: it goes through the same
+// Retry-After and floor checks as a live token, and then Get renews it.
+func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, now time.Time, refresh, renewable bool) (res Result, answered bool) {
 	name := acct.Name
 	res.Reading = st.LastGood
 
-	if a.Credential(acct).Expired {
-		res.TokenExpired = true
+	expired := a.Credential(acct).Expired
+	res.TokenExpired = expired
+	if expired && !(renewable && (st.LastGood == nil || Age(st.LastGood.TakenAt, now) > s.Floor)) {
 		if st.LastGood == nil {
 			res.Err = adapter.ErrTokenExpired
 		} else {
@@ -168,6 +189,63 @@ func (s *Store) withoutCall(a adapter.Adapter, acct adapter.Account, st state, n
 		return res, true
 	}
 	return Result{}, false
+}
+
+// renew asks the adapter to renew the expired login of a call that is due
+// and whose attempt is already recorded. answered is false when the login is
+// renewed and the usage call should follow; it and the renewal are one
+// attempt. A renewal that fails, or leaves the credential expired, is an
+// attempt like a failed call: LastError records it and the stored reading is
+// returned. One that fails because the caller's ctx ended is not an attempt:
+// the state goes back to prevAttempt, as in callAndRecord.
+func (s *Store) renew(ctx context.Context, r adapter.Renewer, a adapter.Adapter, acct adapter.Account, st state, prevAttempt, now time.Time) (res Result, answered bool, writeErr error) {
+	name := acct.Name
+	timeout := s.RenewTimeout
+	if timeout <= 0 {
+		timeout = DefaultRenewTimeout
+	}
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	err := r.Renew(rctx, acct)
+	if err != nil && ctx.Err() != nil {
+		st.LastAttempt = prevAttempt
+		return Result{Reading: st.LastGood, Err: fmt.Errorf("renewal: %w", ctx.Err()), TokenExpired: true}, true, s.write(name, st)
+	}
+	var reason string
+	switch {
+	case err != nil:
+		reason = capReason(err.Error())
+	case a.Credential(acct).Expired:
+		reason = "the login is still expired after renewal"
+	default:
+		return Result{}, false, nil
+	}
+	st.LastError, st.LastErrorAt = "renewal failed: "+reason, now
+	writeErr = s.write(name, st)
+	res = Result{Reading: st.LastGood, TokenExpired: true}
+	if st.LastGood == nil {
+		res.Err = &adapter.RenewError{Reason: reason}
+		if writeErr != nil {
+			res.Err = fmt.Errorf("%w; cache unavailable: %w", res.Err, writeErr)
+		}
+		return res, true, writeErr
+	}
+	res.Warnings = append(res.Warnings, fmt.Sprintf("%s: renewal failed: %s; using reading from %s (%d min old)",
+		name, reason, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now)))
+	return res, true, writeErr
+}
+
+// capReason cuts a renewal failure's text to maxReasonBytes, on a rune
+// boundary.
+func capReason(reason string) string {
+	if len(reason) <= maxReasonBytes {
+		return reason
+	}
+	cut := maxReasonBytes
+	for cut > 0 && !utf8.RuneStart(reason[cut]) {
+		cut--
+	}
+	return reason[:cut]
 }
 
 // callAndRecord makes the one usage call and stores its outcome. writeErr is

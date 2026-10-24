@@ -20,9 +20,9 @@ type dueCall struct {
 // DoctorAll is Doctor after one usage call per account that has no fresh
 // reading, made concurrently through the store with refresh (the explicit
 // request Refresh is). A reading younger than the call interval is used as
-// is; the store itself still refuses an expired token and an unexpired
-// Retry-After. A failed call shows as Doctor's "last usage reading failed"
-// warning, because the store records it; a cache that cannot be updated
+// is; an expired token is renewed first (the store's renewal), and an
+// unexpired Retry-After still holds. A failed call shows as Doctor's "last
+// usage reading failed" warning, because the store records it; a cache that cannot be updated
 // shows as its own warning. A ctx that ends cancels the calls, which the
 // store does not record.
 func DoctorAll(ctx context.Context, cfg *core.Config, d Deps, cache *CheckCache) []Finding {

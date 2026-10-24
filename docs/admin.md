@@ -16,8 +16,10 @@ config format is in the [configuration guide](configuration.md).
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
 
 Credentials are held in memory for the one request that needs them. They are
-never written to the cache, printed, or logged. modelpick never refreshes a
-token and never writes a vendor file.
+never written to the cache, printed, or logged. modelpick never writes a
+vendor file and never handles a refresh token. When a call is due and a Claude
+or Codex login has expired, it asks the vendor's tool to renew it (see
+"An expired token" under Routine tasks).
 
 ### State files
 
@@ -40,14 +42,14 @@ starts it with an empty state; the old file stays until you delete it.
 
 | Command | Usage calls | Other outside contact |
 |---|---|---|
-| `pick <profile>` | Only for accounts whose capped choice is reached, at most one per account per floor. Uncapped choices and skipped choices never trigger one. | `claude --version` once, for the User-Agent, when a Claude call is made. |
+| `pick <profile>` | Only for accounts whose capped choice is reached, at most one per account per floor. Uncapped choices and skipped choices never trigger one. | `claude --version` once, for the User-Agent, when a Claude call is made. An expired login is first renewed: `claude -p` (a few tokens) for Claude, `codex app-server` (no quota) for Codex. |
 | `env <profile>` | Same as `pick <profile>`. | Same. |
 | `pick` (no profile) | Each account any profile reaches, read at most once for the whole table, subject to the floor. | Same. |
 | `ls [<account>…]` | The named accounts, or every configured account when none are named, subject to the floor. | Same. |
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
-| `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After`, an expired token, or a tool or credential error. | Runs `opencode models opencode-go`; reads the Keychain. |
-| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After` or an expired token. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
+| `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After` or a tool or credential error. An expired login is renewed first. | Runs `opencode models opencode-go`; reads the Keychain; may run `claude -p` or `codex app-server` to renew a login. |
+| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After`. An expired login is renewed first. | Runs `opencode models opencode-go` once per run per account; reads the Keychain; may run `claude -p` (a few tokens) or `codex app-server` (no quota) to renew an expired login. |
 
 The endpoints are undocumented and may change:
 
@@ -112,10 +114,10 @@ page works only in a browser that opened that URL.
 **Usage.** Opening or reloading the page shows the saved readings only, as the
 last `pick`, `ls` or Refresh stored them; it calls no vendor. Three things
 call out. The Refresh buttons, like `ls --refresh`, skip the floor; a
-`Retry-After` and an expired token still hold. Check all runs `doctor all`
+`Retry-After` still holds. Check all runs `doctor all`
 (below). And an account with no saved reading gets one first reading in the
 background per run, when the server starts or the account is added; it is an
-ordinary read, so the floor, `Retry-After` and an expired token all apply.
+ordinary read, so the floor and `Retry-After` apply.
 
 **Doctor status.** The top-right status lists every `doctor` problem, and its
 Check all button runs `doctor all`, which calls the vendor once for each
@@ -222,9 +224,22 @@ after it; append instead.
 effective result, and `doctor` warns when a cap array no longer matches the
 number of windows the account last reported.
 
-**An expired token.** modelpick never refreshes tokens. Open the vendor tool
-with that account (`CLAUDE_CONFIG_DIR=<config_dir> claude`) and it refreshes
-its own login. Until then the account uses its last good reading, if any.
+**An expired token.** When a usage call is due and the login has expired,
+modelpick asks the vendor's tool to renew it, then makes the call. For Claude
+it runs `claude -p` with a tiny prompt on haiku: a few tokens of that
+subscription, about 10 seconds. For Codex it runs `codex app-server` and asks
+for the account with a token refresh: no quota, about 3 seconds. modelpick
+never writes a vendor file or handles a refresh token; the tool renews its own
+login.
+
+Renewal happens only when the last good reading is older than the floor. Even
+`--refresh` and the page's Refresh do not renew for a fresher reading. A failed
+renewal counts as an attempt: it is retried at most once per
+`min_call_interval_minutes`, and the old reading shows with `renewal failed:
+<reason>`. Once the refresh token itself has expired, log in again: `/login`
+in Claude Code (`CLAUDE_CONFIG_DIR=<config_dir> claude`), or `codex login`
+(`CODEX_HOME=<codex_home>`). Ctrl-C ends `ls`, `pick`, `env` and `doctor` with
+exit 130 and cancels a renewal in progress.
 
 ## Troubleshooting
 
@@ -239,7 +254,7 @@ shows `error` there, and its message is on a line below the table
 | `no credential: not found in keychain: ... or file: ...` | No Claude login for that `config_dir`. | Log in with `CLAUDE_CONFIG_DIR=<config_dir> claude`. Check the path is the exact one you logged in with; the Keychain name is derived from it. |
 | `no credential: not found: <codex_home>/auth.json` | No Codex login there. | `CODEX_HOME=<codex_home> codex login`. |
 | `credential unreadable (...)` | The login exists but is not in the expected shape, or the Keychain lookup failed or timed out. | Log in again with the tool. On macOS, check for a Keychain permission prompt. |
-| `token expired — open Claude Code with this account to refresh it` (or Codex) | The stored token is past its expiry. | Open the tool with that account. |
+| `token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login` (or Codex) | The stored token is past its expiry. | Nothing yet: the next due call renews it. If `renewal failed: <reason>` shows, log in again (`/login` in Claude Code, `codex login`). |
 | `usage endpoint returned HTTP 401; log in to <tool> with this account` | The vendor rejected the login. | Log in again. |
 | `usage endpoint returned HTTP <n>` | Any other HTTP failure, including a refused redirect (3xx). | Usually transient; the next call after the floor retries. |
 | `rate-limited until <time>` | The server sent `Retry-After`. | Wait; `--refresh` does not override it. |
@@ -256,7 +271,7 @@ shows `error` there, and its message is on a line below the table
 account's usage can be read. It uses a saved reading younger than
 `min_call_interval_minutes` as is. Otherwise it calls the vendor once for that
 account, like Refresh: the call ignores the floor but not a server
-`Retry-After` or an expired token, and an account whose tool or credential
+`Retry-After`, an expired login is renewed first, and an account whose tool or credential
 `doctor` already reports as an error is not called. The accounts are called at
 the same time. A failed call shows as the warning `last usage reading failed: <error>`,
 except when the vendor answered with a rate limit and `Retry-After`, which is
@@ -275,7 +290,8 @@ go test -tags live ./internal/live/ -v
 ```
 
 It makes real usage calls, through the same floor as the CLI (never forced
-past it). It fails if a vendor's response is not in a shape modelpick
+past it). It does not renew an expired login unless `MODELPICK_LIVE_RENEW=1`
+is set, because a Claude renewal spends a few tokens. It fails if a vendor's response is not in a shape modelpick
 recognises; other outcomes (no reading, expired token, an older reading) are
 logged, with window lengths and percents only. It is never run by
 `scripts/check.sh` or CI; `check.sh` only vets it (`go vet -tags live ./...`)

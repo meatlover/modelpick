@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
 )
 
@@ -204,6 +208,34 @@ func TestUsageTextListsDoctorAll(t *testing.T) {
 	_, stderr, code := run(apptest.NewDeps(t, doctorConfig))
 	if code != 1 || !strings.Contains(stderr, "\n  modelpick doctor [all]\n") {
 		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+}
+
+// doctor all runs under Main's signal context: once it is cancelled, an
+// expired renewable account is neither renewed nor recorded as an attempt.
+func TestDoctorAllCtxCancelled(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	claude.Renewable["claude-main"] = true
+	claude.Expired["claude-main"] = true
+	d := apptest.NewDeps(t, doctorConfig, claude, codex)
+	old := apptest.Now.Add(-48 * time.Hour)
+	apptest.WriteStored(t, d, "claude-main", `{"last_attempt":"`+old.Format(time.RFC3339)+`"}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d.Ctx = ctx
+
+	runDoctor([]string{"all"}, &bytes.Buffer{}, &bytes.Buffer{}, d)
+
+	cfg, err := app.LoadConfig(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := app.NewStore(d, cfg).Saved(cfg.Accounts["claude-main"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.LastAttempt.Equal(old) {
+		t.Errorf("LastAttempt = %v, want it unchanged at %v", saved.LastAttempt, old)
 	}
 }
 

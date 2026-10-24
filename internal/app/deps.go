@@ -5,6 +5,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -21,6 +22,7 @@ import (
 
 // Deps is everything a command needs from the outside world.
 type Deps struct {
+	Ctx      context.Context // nil = context.Background(); ends a renewal or call early
 	Getenv   func(string) string
 	Home     string // "" = unknown; commands refuse to run
 	Now      func() time.Time
@@ -48,7 +50,7 @@ func DefaultDeps(version string) Deps {
 			// Claude computes its own User-Agent from `claude --version`.
 			claude.New(claude.Options{HTTP: client, Home: home, Now: time.Now,
 				Keychain: platform.KeychainPassword, Run: platform.ExecRunner, LookPath: exec.LookPath}),
-			codex.New(codex.Options{HTTP: client, Now: time.Now, LookPath: exec.LookPath, UserAgent: ua}),
+			codex.New(codex.Options{HTTP: client, Now: time.Now, LookPath: exec.LookPath, UserAgent: ua, Version: version}),
 			opencodego.New(opencodego.Options{HTTP: client, Now: time.Now,
 				Run: platform.ExecRunner, LookPath: exec.LookPath, UserAgent: ua}),
 		),

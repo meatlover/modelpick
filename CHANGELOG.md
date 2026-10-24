@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- An expired Claude or Codex login is renewed. When a usage call is due,
+  modelpick asks Claude Code (`claude -p`, a few tokens of that subscription)
+  or Codex (`codex app-server`, no quota) to renew it, then makes the call. It
+  still never writes a vendor file or handles a refresh token. A failed
+  renewal counts as an attempt, retried at most once per
+  `min_call_interval_minutes`, and shows the old reading with `renewal failed:
+  <reason>`. If the refresh token itself has expired, log in again.
+- The page's Refresh button works for an expired account that can be renewed.
+
+### Changed
+
+- `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which cancels a renewal.
+- The live smoke test renews only with `MODELPICK_LIVE_RENEW=1`.
+
 ## v0.2.0 — 2026-10-24
 
 ### New

@@ -808,3 +808,253 @@ func TestResultNamesTheCacheFailure(t *testing.T) {
 		t.Errorf("warnings %q do not carry CacheErr %v", r.Warnings, r.CacheErr)
 	}
 }
+
+// renewingAdapter is a fakeAdapter that can renew: Renew counts calls, can
+// sleep (delay, honouring ctx) and fail (err); on success the credential is
+// no longer expired unless stayExpired.
+type renewingAdapter struct {
+	*fakeAdapter
+	rmu         sync.Mutex
+	renews      int
+	renewDelay  time.Duration
+	renewErr    error
+	stayExpired bool
+}
+
+func (r *renewingAdapter) Renew(ctx context.Context, _ adapter.Account) error {
+	r.rmu.Lock()
+	r.renews++
+	delay, err, stay := r.renewDelay, r.renewErr, r.stayExpired
+	r.rmu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if !stay {
+		r.fakeAdapter.set(func(f *fakeAdapter) { f.expired = false })
+	}
+	return nil
+}
+
+func (r *renewingAdapter) renewCount() int {
+	r.rmu.Lock()
+	defer r.rmu.Unlock()
+	return r.renews
+}
+
+func (r *renewingAdapter) setRenew(fn func(r *renewingAdapter)) {
+	r.rmu.Lock()
+	defer r.rmu.Unlock()
+	fn(r)
+}
+
+// expiredRenewer is an expired renewable account whose stored reading (10%)
+// is age old at t0; renewal then a call yields 20%.
+func expiredRenewer(t *testing.T, s *Store, age time.Duration) *renewingAdapter {
+	t.Helper()
+	if age >= 0 {
+		old := reading(10, t0.Add(-age))
+		writeStateFile(t, s, state{LastGood: &old, LastAttempt: t0.Add(-age)})
+	}
+	return &renewingAdapter{fakeAdapter: &fakeAdapter{expired: true, reading: reading(20, t0)}}
+}
+
+func TestRenewThenCall(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 16*time.Minute)
+	r := s.Get(context.Background(), f, acct, false)
+	if f.renewCount() != 1 || f.callCount() != 1 || r.Err != nil || usedPct(t, r) != 20 || r.TokenExpired || len(r.Warnings) != 0 {
+		t.Fatalf("renews %d calls %d result %+v; want 1, 1, 20%%, not expired, no warnings", f.renewCount(), f.callCount(), r)
+	}
+}
+
+func TestRenewNotWhenReadingFresh(t *testing.T) {
+	for _, refresh := range []bool{false, true} {
+		s := newStore(t, newClock())
+		f := expiredRenewer(t, s, 15*time.Minute)
+		r := s.Get(context.Background(), f, acct, refresh)
+		want := "work: token expired; using reading from 2026-10-22T11:45:00Z (15 min old)"
+		if f.renewCount() != 0 || f.callCount() != 0 || usedPct(t, r) != 10 || !r.TokenExpired || len(r.Warnings) != 1 || r.Warnings[0] != want {
+			t.Fatalf("refresh=%v: renews %d calls %d result %+v; want none, 10%%, expired, warning %q", refresh, f.renewCount(), f.callCount(), r, want)
+		}
+	}
+}
+
+func TestRenewWithoutReading(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, -1)
+	r := s.Get(context.Background(), f, acct, false)
+	if f.renewCount() != 1 || f.callCount() != 1 || r.Err != nil || usedPct(t, r) != 20 {
+		t.Fatalf("renews %d calls %d result %+v; want 1, 1, 20%%", f.renewCount(), f.callCount(), r)
+	}
+}
+
+func TestRenewFailureIsAnAttempt(t *testing.T) {
+	c := newClock()
+	s := newStore(t, c)
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New("exit status 1: boom") })
+	r := s.Get(context.Background(), f, acct, false)
+	want := "work: renewal failed: exit status 1: boom; using reading from 2026-10-22T11:30:00Z (30 min old)"
+	if f.renewCount() != 1 || f.callCount() != 0 || usedPct(t, r) != 10 || !r.TokenExpired || len(r.Warnings) != 1 || r.Warnings[0] != want {
+		t.Fatalf("renews %d calls %d result %+v; want 1, 0, 10%%, expired, warning %q", f.renewCount(), f.callCount(), r, want)
+	}
+	if saved, _ := s.Saved(acct); saved.LastError != "renewal failed: exit status 1: boom" || !saved.LastAttempt.Equal(t0) {
+		t.Fatalf("saved %+v; want the failure recorded as an attempt", saved)
+	}
+	c.advance(5 * time.Minute)
+	s.Get(context.Background(), f, acct, false)
+	if f.renewCount() != 1 {
+		t.Fatalf("5 min later without refresh: renews = %d, want still 1", f.renewCount())
+	}
+	s.Get(context.Background(), f, acct, true)
+	if f.renewCount() != 2 {
+		t.Fatalf("with refresh: renews = %d, want 2", f.renewCount())
+	}
+}
+
+func TestRenewFailureWithoutReading(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, -1)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New("exit status 1: boom") })
+	r := s.Get(context.Background(), f, acct, false)
+	var re *adapter.RenewError
+	if r.Reading != nil || !errors.As(r.Err, &re) || re.Reason != "exit status 1: boom" || !errors.Is(r.Err, adapter.ErrTokenExpired) {
+		t.Fatalf("result %+v; want no reading and a RenewError with the reason", r)
+	}
+}
+
+func TestRenewStillExpired(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.stayExpired = true })
+	r := s.Get(context.Background(), f, acct, false)
+	want := "work: renewal failed: the login is still expired after renewal; using reading from 2026-10-22T11:30:00Z (30 min old)"
+	if f.renewCount() != 1 || f.callCount() != 0 || len(r.Warnings) != 1 || r.Warnings[0] != want {
+		t.Fatalf("renews %d calls %d result %+v; want warning %q", f.renewCount(), f.callCount(), r, want)
+	}
+}
+
+func TestRenewRespectsRetryAfter(t *testing.T) {
+	s := newStore(t, newClock())
+	old := reading(10, t0.Add(-30*time.Minute))
+	writeStateFile(t, s, state{LastGood: &old, LastAttempt: t0.Add(-30 * time.Minute), RetryUntil: t0.Add(10 * time.Minute)})
+	f := &renewingAdapter{fakeAdapter: &fakeAdapter{expired: true, reading: reading(20, t0)}}
+	r := s.Get(context.Background(), f, acct, false)
+	if f.renewCount() != 0 || f.callCount() != 0 || !r.TokenExpired || r.RetryUntil.IsZero() {
+		t.Fatalf("renews %d calls %d result %+v; want none, expired, RetryUntil set", f.renewCount(), f.callCount(), r)
+	}
+}
+
+func TestRenewCallerCancel(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewDelay = 5 * time.Second })
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	r := s.Get(ctx, f, acct, false)
+	if !errors.Is(r.Err, context.Canceled) {
+		t.Fatalf("result %+v; want context.Canceled", r)
+	}
+	saved, err := s.Saved(acct)
+	if err != nil || saved.LastError != "" || !saved.LastAttempt.Equal(t0.Add(-30*time.Minute)) {
+		t.Fatalf("saved %+v, %v; want the state from before the Get", saved, err)
+	}
+}
+
+// A renewal that dies with its own error because the caller's ctx ended
+// reports the ctx, not the child's "signal: killed".
+func TestRenewCallerCancelReportsCtx(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New("signal: killed") })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := s.Get(ctx, f, acct, false)
+	if !errors.Is(r.Err, context.Canceled) {
+		t.Fatalf("result %+v; want context.Canceled", r)
+	}
+}
+
+func TestRenewTimeout(t *testing.T) {
+	s := newStore(t, newClock())
+	s.RenewTimeout = 50 * time.Millisecond
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewDelay = 5 * time.Second })
+	s.Get(context.Background(), f, acct, false)
+	saved, _ := s.Saved(acct)
+	if !strings.HasPrefix(saved.LastError, "renewal failed: ") || !strings.Contains(saved.LastError, "context deadline exceeded") || !saved.LastAttempt.Equal(t0) {
+		t.Fatalf("saved %+v; want a recorded renewal timeout", saved)
+	}
+}
+
+func TestNoRenew(t *testing.T) {
+	s := newStore(t, newClock())
+	s.NoRenew = true
+	f := expiredRenewer(t, s, 30*time.Minute)
+	r := s.Get(context.Background(), f, acct, false)
+	want := "work: token expired; using reading from 2026-10-22T11:30:00Z (30 min old)"
+	if f.renewCount() != 0 || f.callCount() != 0 || !r.TokenExpired || len(r.Warnings) != 1 || r.Warnings[0] != want {
+		t.Fatalf("renews %d calls %d result %+v; want today's expired answer", f.renewCount(), f.callCount(), r)
+	}
+}
+
+func TestRenewFloorZero(t *testing.T) {
+	s := newStore(t, newClock())
+	s.Floor = 0
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New("boom") })
+	for i := 0; i < 3; i++ {
+		r := s.Get(context.Background(), f, acct, false)
+		if usedPct(t, r) != 10 || !hasWarning(r, "work: renewal failed: boom; using reading from") {
+			t.Fatalf("Get %d: %+v; want 10%% with the renewal warning", i, r)
+		}
+	}
+	if f.renewCount() != 3 {
+		t.Fatalf("renews = %d, want 3", f.renewCount())
+	}
+}
+
+func TestRenewReasonIsCapped(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, -1)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New(strings.Repeat("é", 300)) })
+	r := s.Get(context.Background(), f, acct, false)
+	var re *adapter.RenewError
+	if !errors.As(r.Err, &re) || len(re.Reason) > 200 || !strings.HasPrefix(re.Reason, "é") {
+		t.Fatalf("result %+v; want a reason of at most 200 bytes", r)
+	}
+}
+
+func TestRenewOnceUnderContention(t *testing.T) {
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewDelay = 200 * time.Millisecond })
+	var wg sync.WaitGroup
+	results := make([]Result, 5)
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = s.Get(context.Background(), f, acct, false)
+		}()
+	}
+	wg.Wait()
+	if f.renewCount() != 1 || f.callCount() != 1 {
+		t.Fatalf("renews %d calls %d; want 1, 1", f.renewCount(), f.callCount())
+	}
+	for i, r := range results {
+		if r.Err != nil || usedPct(t, r) != 20 {
+			t.Fatalf("Get %d: %+v; want 20%%", i, r)
+		}
+	}
+}

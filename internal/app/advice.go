@@ -21,7 +21,10 @@ func UsageError(vendor string, err error) error {
 	if !ok {
 		tool = vendor
 	}
+	var renew *adapter.RenewError
 	switch {
+	case errors.As(err, &renew):
+		return &adviceError{"token expired and " + tool + " could not renew it (" + renew.Reason + "); log in again in " + tool + " with this account", err}
 	case errors.Is(err, adapter.ErrUnauthorized):
 		return &adviceError{"usage endpoint returned HTTP 401; log in to " + tool + " with this account", err}
 	case errors.Is(err, adapter.ErrTokenExpired):

@@ -46,8 +46,9 @@ modelpick ui [--port N] [--no-open]              a local page to read usage and 
 The page shows saved readings. It calls a vendor only from its Refresh
 buttons and its Check all button (`doctor all`), which skip the floor like
 `--refresh`, and for one background first reading per run of an account that
-has none, which keeps the floor. None of them passes a server `Retry-After`
-or an expired token. Every edit applies to the config file at once, and only
+has none, which keeps the floor. None of them passes a server `Retry-After`.
+When the login has expired, each asks Claude Code or Codex to renew it first.
+Refresh is enabled for an expired account that can be renewed. Every edit applies to the config file at once, and only
 if it adds no `doctor` error. The first edit rewrites a hand-written file in a
 canonical layout; before it, the file is copied to
 `~/.cache/modelpick/config.before-ui.json`. One instance runs per user: a
@@ -57,11 +58,18 @@ See the [admin guide](docs/admin.md#the-ui-modelpick-ui).
 `--refresh` forces a usage call even when the last reading is younger than the
 floor. It still honours a server `Retry-After` that has not elapsed.
 
+An expired login is renewed only when the last good reading is older than the
+floor. `--refresh` and the page's Refresh do not renew for a fresher reading.
+A failed renewal counts as an attempt: it is retried at most once per
+`min_call_interval_minutes`, and the old reading shows with `renewal failed:
+<reason>`. `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which also
+cancels a renewal.
+
 `modelpick doctor all` does what `doctor` does and also checks that each
 account's usage can be read. An account whose saved reading is younger than
 `min_call_interval_minutes` is used as is; for any other account it calls the
-vendor once, like Refresh, ignoring the floor but not a server `Retry-After`
-or an expired token. A reading that fails shows as a warning, unless the vendor answered with a
+vendor once, like Refresh, ignoring the floor but not a server `Retry-After`;
+an expired login is renewed first. A reading that fails shows as a warning, unless the vendor answered with a
 rate limit (`Retry-After`), which is not reported.
 
 `doctor` and `ls models` make no usage calls, but they do list each account's
@@ -112,8 +120,13 @@ Read this before you use modelpick.
   credentials file, Codex's `auth.json`, your OpenCode Go key file) **in
   memory**, only to call that vendor's usage endpoint.
 - It **stores no credentials**: not in its cache, its output or its logs.
-- It **never refreshes tokens** and never writes any vendor file. An expired
-  Claude token is reported, not renewed; open Claude Code to refresh it.
+- It **never writes any vendor file** and never handles a refresh token. When a
+  usage call is due and a Claude or Codex login has expired, it asks the
+  vendor's own tool to renew it: `claude -p` with a tiny prompt (a few tokens
+  of that Claude subscription, about 10 seconds) or `codex app-server` (no
+  quota, about 3 seconds). The tool renews its own login. If the refresh
+  token itself has expired, log in again (`/login` in Claude Code,
+  `codex login`).
 
 All three usage endpoints are undocumented and may change without notice; a
 changed response is reported as “usage unknown”, never as 0%.

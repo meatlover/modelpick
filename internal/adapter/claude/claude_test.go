@@ -565,7 +565,7 @@ func TestCheck(t *testing.T) {
 		f.a.o.Keychain = keychainWith(credJSON(fakeToken, testNow.Add(-time.Second)), true, nil, nil)
 		got := f.a.Check(context.Background(), f.acct)
 		want := adapter.Finding{Severity: adapter.SeverityWarning, Account: "work",
-			Message: "token expired — open Claude Code with this account to refresh it"}
+			Message: "token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login"}
 		if len(got) != 1 || got[0] != want {
 			t.Fatalf("got %+v, want [%+v]", got, want)
 		}
