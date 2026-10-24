@@ -10,7 +10,7 @@ import (
 )
 
 const usageText = `usage:
-  modelpick pick <profile> [--refresh]
+  modelpick pick [<profile>] [--refresh]
   modelpick env <profile> [--refresh]
   modelpick ls [<account>…] [--refresh] [--json]
   modelpick ls models [--json]

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,19 +10,20 @@ import (
 	"github.com/meatlover/modelpick/internal/platform"
 )
 
-// runPick is `modelpick pick <profile> [--refresh]`: the result JSON on
-// stdout, its exit code returned.
+// runPick is `modelpick pick [<profile>] [--refresh]`: with a profile, the
+// result JSON on stdout; without, the table of every profile (runPickAll).
+// The exit code is returned.
 func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	profile, refresh, err := parseProfileArgs("pick", args)
-	if err == nil && profile == "" {
-		err = errors.New("pick: missing <profile>") // Task 4 replaces this with the table
-	}
 	if err != nil {
 		// A launcher reads stdout: it gets a failed result, the user the usage.
 		res := core.Failed(profile, err.Error())
 		_, _ = stdout.Write(res.JSON())
 		badUsage(stderr, err.Error())
 		return res.ExitCode()
+	}
+	if profile == "" {
+		return runPickAll(refresh, stdout, stderr, d)
 	}
 	res := pick(profile, refresh, d)
 	_, _ = stdout.Write(res.JSON())
@@ -32,7 +32,7 @@ func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 
 // parseProfileArgs parses `<cmd> <profile> [--refresh]`. It returns the
 // profile seen so far even on error, so a failed result can name it. A
-// missing profile is not an error here: callers report it.
+// missing profile is not an error here: pick prints the table, env reports it.
 func parseProfileArgs(cmd string, args []string) (profile string, refresh bool, err error) {
 	for _, a := range args {
 		switch {

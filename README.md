@@ -32,7 +32,7 @@ setup and uninstalling.
 ## Commands
 
 ```
-modelpick pick <profile> [--refresh]             JSON: the chosen vendor/account/model/thinking, or why none
+modelpick pick [<profile>] [--refresh]   JSON for one profile; with none, a table of every profile
 modelpick env <profile> [--refresh]              the pick as sh export lines, for eval
 modelpick ls [<account>…] [--refresh] [--json]   usage of the named accounts (default: every account): windows, % used, resets, reading age
 modelpick ls models [--json]                     models each configured account's subscription offers
