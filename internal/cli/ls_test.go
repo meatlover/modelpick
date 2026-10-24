@@ -245,3 +245,59 @@ func TestLsModels(t *testing.T) {
 		t.Errorf("claude-rec = %+v, want error and no models", got[1])
 	}
 }
+
+func TestLsNamedAccountsInOrder(t *testing.T) {
+	claude, codex := lsFakes()
+	d := apptest.NewDeps(t, testConfig, claude, codex)
+	stdout, stderr, code := run(d, "ls", "codex-main", "--json", "claude-main", "codex-main")
+	if code != 0 {
+		t.Fatalf("exit %d; stderr %q", code, stderr)
+	}
+	var got []gotAccount
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(got) != 2 || got[0].Account != "codex-main" || got[1].Account != "claude-main" {
+		t.Fatalf("accounts = %+v, want [codex-main claude-main]", got)
+	}
+	if claude.Calls["claude-rec"] != 0 {
+		t.Errorf("claude-rec was read %d times", claude.Calls["claude-rec"])
+	}
+}
+
+func TestLsUnknownAccount(t *testing.T) {
+	claude, codex := lsFakes()
+	d := apptest.NewDeps(t, testConfig, claude, codex)
+	stdout, stderr, code := run(d, "ls", "claude-main", "go-9")
+	want := "modelpick: ls: unknown account \"go-9\"; configured: claude-main, claude-rec, codex-main\n"
+	if code != 1 || stdout != "" || stderr != want {
+		t.Fatalf("code %d stdout %q stderr %q", code, stdout, stderr)
+	}
+	if n := claude.TotalUsage() + codex.TotalUsage(); n != 0 {
+		t.Errorf("usage calls = %d, want 0", n)
+	}
+}
+
+func TestLsModelsOnlyFirst(t *testing.T) {
+	claude, codex := lsFakes()
+	d := apptest.NewDeps(t, testConfig, claude, codex)
+	_, stderr, code := run(d, "ls", "claude-main", "models")
+	if code != 1 || !strings.Contains(stderr, `unknown account "models"`) {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+}
+
+func TestLsRefreshOnlyNamed(t *testing.T) {
+	claude, codex := lsFakes()
+	d := apptest.NewDeps(t, testConfig, claude, codex)
+	if _, _, code := run(d, "ls"); code != 0 {
+		t.Fatalf("seed exit %d", code)
+	}
+	main0, rec0 := claude.Calls["claude-main"], claude.Calls["claude-rec"]
+	if _, _, code := run(d, "ls", "claude-main", "--refresh"); code != 0 {
+		t.Fatalf("refresh exit %d", code)
+	}
+	if claude.Calls["claude-main"] != main0+1 || claude.Calls["claude-rec"] != rec0 {
+		t.Errorf("calls main %d->%d, rec %d->%d", main0, claude.Calls["claude-main"], rec0, claude.Calls["claude-rec"])
+	}
+}

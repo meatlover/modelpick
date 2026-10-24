@@ -32,12 +32,12 @@ setup and uninstalling.
 ## Commands
 
 ```
-modelpick pick <profile> [--refresh]   JSON: the chosen vendor/account/model/thinking, or why none
-modelpick ls [--refresh] [--json]      usage of every configured account: windows, % used, resets, reading age
-modelpick ls models [--json]           models each configured account's subscription offers
-modelpick config                       the effective configuration. No network.
-modelpick doctor [all]                 validates the config and everything it depends on. No usage calls, unless `all`.
-modelpick ui [--port N] [--no-open]    a local page to read usage and edit the config
+modelpick pick <profile> [--refresh]             JSON: the chosen vendor/account/model/thinking, or why none
+modelpick ls [<account>…] [--refresh] [--json]   usage of the named accounts (default: every account): windows, % used, resets, reading age
+modelpick ls models [--json]                     models each configured account's subscription offers
+modelpick config                                 the effective configuration. No network.
+modelpick doctor [all]                           validates the config and everything it depends on. No usage calls, unless `all`.
+modelpick ui [--port N] [--no-open]              a local page to read usage and edit the config
 ```
 
 `modelpick ui` serves a page on `127.0.0.1`, prints its URL and opens it.

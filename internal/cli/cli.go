@@ -11,7 +11,7 @@ import (
 
 const usageText = `usage:
   modelpick pick <profile> [--refresh]
-  modelpick ls [--refresh] [--json]
+  modelpick ls [<account>…] [--refresh] [--json]
   modelpick ls models [--json]
   modelpick config
   modelpick doctor [all]

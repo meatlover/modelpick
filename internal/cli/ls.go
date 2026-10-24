@@ -37,14 +37,17 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runLsModels(args[1:], stdout, stderr, d)
 	}
 	var refresh, asJSON bool
+	var named []string
 	for _, a := range args {
-		switch a {
-		case "--refresh":
+		switch {
+		case a == "--refresh":
 			refresh = true
-		case "--json":
+		case a == "--json":
 			asJSON = true
-		default:
+		case strings.HasPrefix(a, "-"):
 			return badUsage(stderr, fmt.Sprintf("ls: unexpected argument %q", a))
+		default:
+			named = append(named, a)
 		}
 	}
 	cfg, err := app.LoadConfig(d)
@@ -52,7 +55,12 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		fmt.Fprintf(stderr, "modelpick: %v\n", err)
 		return 1
 	}
-	rows := lsRows(cfg, app.NewEnv(d, cfg, refresh), d.Now())
+	names, err := lsNames(cfg, named)
+	if err != nil {
+		fmt.Fprintf(stderr, "modelpick: %v\n", err)
+		return 1
+	}
+	rows := lsRows(cfg, app.NewEnv(d, cfg, refresh), names, d.Now())
 	if asJSON {
 		return writeJSON(stdout, stderr, rows)
 	}
@@ -60,13 +68,34 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	return 0
 }
 
-// lsRows reads every account, sorted by name, through the usage store.
-func lsRows(cfg *core.Config, e *app.Env, now time.Time) []lsAccount {
-	names := make([]string, 0, len(cfg.Accounts))
+// lsNames is the accounts to show: the named ones in order without
+// duplicates, or every account sorted when none were named. An unknown name
+// is an error before any account is read.
+func lsNames(cfg *core.Config, named []string) ([]string, error) {
+	all := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
-		names = append(names, n)
+		all = append(all, n)
 	}
-	sort.Strings(names)
+	sort.Strings(all)
+	if len(named) == 0 {
+		return all, nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(named))
+	for _, n := range named {
+		if _, ok := cfg.Accounts[n]; !ok {
+			return nil, fmt.Errorf("ls: unknown account %q; configured: %s", n, strings.Join(all, ", "))
+		}
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// lsRows reads the given accounts, in order, through the usage store.
+func lsRows(cfg *core.Config, e *app.Env, names []string, now time.Time) []lsAccount {
 	rows := make([]lsAccount, 0, len(names))
 	for _, n := range names {
 		st := e.Usage(n)

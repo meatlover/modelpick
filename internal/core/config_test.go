@@ -224,7 +224,7 @@ func TestReservedAccountName(t *testing.T) {
 	doc := `{"version":1,"accounts":{"models":{"vendor":"claude","config_dir":"/c"}}}`
 	_, err := Parse([]byte(doc), "c.json", "/h")
 	var ce *ConfigError
-	if !errors.As(err, &ce) || ce.Field != "accounts.models" || ce.Msg != "reserved name" {
+	if !errors.As(err, &ce) || ce.Field != "accounts.models" || ce.Msg != "models is a reserved account name" {
 		t.Fatalf("err = %v", err)
 	}
 }
