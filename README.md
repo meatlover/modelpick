@@ -56,7 +56,8 @@ floor. It still honours a server `Retry-After` that has not elapsed.
 account's usage can be read. An account whose saved reading is younger than
 `min_call_interval_minutes` is used as is; for any other account it calls the
 vendor once, like Refresh, ignoring the floor but not a server `Retry-After`
-or an expired token. A reading that fails shows as a warning.
+or an expired token. A reading that fails shows as a warning, unless the vendor answered with a
+rate limit (`Retry-After`), which is not reported.
 
 `doctor` and `ls models` make no usage calls, but they do list each account's
 models locally: Claude from a list built into modelpick, Codex from

@@ -198,3 +198,22 @@ func TestDoctorAllUnwritableCache(t *testing.T) {
 }
 
 const reading1140 = `"last_good":{"taken_at":"2026-10-22T11:40:00Z","windows":[]}`
+
+func TestDoctorAllCallsWithCorruptState(t *testing.T) {
+	e := newAllEnv(t, `{not json`)
+	e.codex.Readings["codex-main"] = apptest.ClaudeReading(10, 20)
+	got := e.run()
+	wantCalls(t, e, 1)
+	var warn []app.Finding
+	for _, f := range got {
+		if f.Subject == "codex-main" && strings.HasPrefix(f.Message, "cannot read stored usage: ") {
+			warn = append(warn, f)
+		}
+	}
+	if len(warn) != 1 || warn[0].Severity != "warning" {
+		t.Fatalf("findings = %+v, want one cannot-read warning for codex-main", got)
+	}
+	if r := e.saved("codex-main").Reading; r == nil {
+		t.Fatal("state file still unreadable or empty after the call")
+	}
+}

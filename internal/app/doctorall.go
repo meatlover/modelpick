@@ -30,17 +30,25 @@ func DoctorAll(ctx context.Context, cfg *core.Config, d Deps, cache *CheckCache)
 		cache = &CheckCache{}
 	}
 	store := NewStore(d, cfg)
-	cacheErrs := callDue(ctx, store, dueCalls(cfg, d, cache, store))
+	due, readErrs := dueCalls(cfg, d, cache, store)
+	cacheErrs := callDue(ctx, store, due)
 	out := Doctor(cfg, d, cache)
 	seen := map[findingKey]bool{}
 	for _, x := range out {
 		seen[x.key()] = true
 	}
-	for _, n := range sortedKeys(cacheErrs) {
-		x := Finding{Severity: sevWarning, Subject: n, Message: "cannot update stored usage: " + cacheErrs[n].Error()}
-		if !seen[x.key()] {
-			seen[x.key()] = true
-			out = append(out, x)
+	// A call may have repaired an unreadable state file, so Doctor no longer
+	// sees the read error; it is reported from before the call.
+	for prefix, errs := range map[string]map[string]error{
+		"cannot read stored usage: ":   readErrs,
+		"cannot update stored usage: ": cacheErrs,
+	} {
+		for _, n := range sortedKeys(errs) {
+			x := Finding{Severity: sevWarning, Subject: n, Message: prefix + errs[n].Error()}
+			if !seen[x.key()] {
+				seen[x.key()] = true
+				out = append(out, x)
+			}
 		}
 	}
 	sortFindings(out)
@@ -49,9 +57,10 @@ func DoctorAll(ctx context.Context, cfg *core.Config, d Deps, cache *CheckCache)
 
 // dueCalls lists the accounts to call, in name order: those whose adapter
 // exists, whose Check reports no error, and whose saved reading is missing
-// or at least the call interval old. An unreadable state file is left to
-// Doctor, which reports it.
-func dueCalls(cfg *core.Config, d Deps, cache *CheckCache, store *usage.Store) []dueCall {
+// or at least the call interval old. An unreadable state file counts as no
+// reading (the store treats it as empty and rewrites it); its error is
+// returned by account so DoctorAll can report it.
+func dueCalls(cfg *core.Config, d Deps, cache *CheckCache, store *usage.Store) ([]dueCall, map[string]error) {
 	e := NewEnv(d, cfg, false)
 	names := make([]string, 0, len(cfg.Accounts))
 	for n := range cfg.Accounts {
@@ -60,6 +69,7 @@ func dueCalls(cfg *core.Config, d Deps, cache *CheckCache, store *usage.Store) [
 	sort.Strings(names)
 	cache.warmChecks(e, names)
 	var due []dueCall
+	readErrs := map[string]error{}
 	for _, n := range names {
 		acct, a, err := e.AdapterFor(n)
 		if err != nil {
@@ -71,14 +81,14 @@ func dueCalls(cfg *core.Config, d Deps, cache *CheckCache, store *usage.Store) [
 		}
 		s, err := store.Saved(acct)
 		if err != nil {
-			continue
+			readErrs[n] = err
 		}
 		if s.Reading != nil && usage.Age(s.Reading.TakenAt, d.Now()) < cfg.Settings.MinCallInterval {
 			continue
 		}
 		due = append(due, dueCall{n, acct, a})
 	}
-	return due
+	return due, readErrs
 }
 
 // callDue runs one Get per account at once and waits for all of them. It

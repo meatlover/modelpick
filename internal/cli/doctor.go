@@ -13,9 +13,12 @@ import (
 // lock (Saved only); `doctor all` also makes one usage call per account that
 // has no fresh reading.
 func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
-	all := len(args) == 1 && args[0] == "all"
+	all := len(args) > 0 && args[0] == "all"
 	if len(args) > 0 && !all {
 		return badUsage(stderr, fmt.Sprintf("doctor: unexpected argument %q", args[0]))
+	}
+	if len(args) > 1 {
+		return badUsage(stderr, fmt.Sprintf("doctor: unexpected argument %q", args[1]))
 	}
 	cfg, err := app.LoadConfig(d)
 	if err != nil {

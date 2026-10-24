@@ -202,3 +202,10 @@ func TestUsageTextListsDoctorAll(t *testing.T) {
 		t.Fatalf("exit %d stderr %q", code, stderr)
 	}
 }
+
+func TestDoctorAllRejectsExtraArgument(t *testing.T) {
+	_, stderr, code := run(apptest.NewDeps(t, doctorConfig), "doctor", "all", "extra")
+	if code != 1 || !strings.Contains(stderr, `doctor: unexpected argument "extra"`) {
+		t.Fatalf("exit %d stderr %q", code, stderr)
+	}
+}

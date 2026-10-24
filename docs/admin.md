@@ -228,9 +228,11 @@ account's usage can be read. It uses a saved reading younger than
 account, like Refresh: the call ignores the floor but not a server
 `Retry-After` or an expired token, and an account whose tool or credential
 `doctor` already reports as an error is not called. The accounts are called at
-the same time. A failed call shows as a warning, `last usage reading failed:
-<error>`, and a cache that cannot be written as `cannot update stored usage:
-<error>`.
+the same time. A failed call shows as the warning `last usage reading failed: <error>`,
+except when the vendor answered with a rate limit and `Retry-After`, which is
+not reported. A state file that cannot be read shows as `cannot read stored
+usage: <error>` (the call still goes ahead and rewrites it), and a cache that
+cannot be written as `cannot update stored usage: <error>`.
 
 `doctor` exits 1 if it found any error, else 0; so does `doctor all`.
 
