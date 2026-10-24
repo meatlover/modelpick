@@ -26,7 +26,7 @@ setup and uninstalling.
 
 - [Installation guide](docs/install.md): requirements, install, first setup, uninstall.
 - [Configuration guide](docs/configuration.md): every field of the config file.
-- [Admin guide](docs/admin.md): files, network calls, the call floor, launchers, troubleshooting.
+- [Admin guide](docs/admin.md): files, network calls, the call floor, the UI, launchers, troubleshooting.
 - [Architecture guide](docs/architecture.md): packages, layering, the pick and store flow, adding a vendor.
 
 ## Commands
@@ -37,7 +37,17 @@ modelpick ls [--refresh] [--json]      usage of every configured account: window
 modelpick ls models [--json]           models each configured account's subscription offers
 modelpick config                       the effective configuration. No network.
 modelpick doctor                       validates the config and everything it depends on. No usage calls.
+modelpick ui [--port N] [--no-open]    a local page to read usage and edit the config
 ```
+
+`modelpick ui` serves a page on `127.0.0.1`, prints its URL and opens it.
+The page shows saved readings and calls a vendor only from its Refresh
+buttons (plus one first reading per run for an account that has none). Every
+edit applies to the config file at once, and only if it adds no `doctor`
+error. The first edit rewrites a hand-written file in a canonical layout;
+before it, the file is copied to `~/.cache/modelpick/config.before-ui.json`.
+One instance runs per user: a second `modelpick ui` opens the running one.
+See the [admin guide](docs/admin.md#the-ui-modelpick-ui).
 
 `--refresh` forces a usage call even when the last reading is younger than the
 floor. It still honours a server `Retry-After` that has not elapsed.
@@ -104,8 +114,8 @@ vendor is your decision. You decide whether to use it.
 ## Development
 
 Run `git config core.hooksPath .githooks` once after cloning; the pre-commit
-hook then runs `bash scripts/check.sh` (gofmt, vet, tests, four-target
-cross-build) and refuses a commit that fails.
+hook then runs `bash scripts/check.sh` (gofmt, vet, including the `live`-tagged
+smoke test, tests, four-target cross-build) and refuses a commit that fails.
 
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):
