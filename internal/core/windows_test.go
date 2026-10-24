@@ -80,8 +80,7 @@ func TestEffectiveCapsFill(t *testing.T) {
 	if want := []CapElem{{CapFixed, 98}, {CapFixed, 95}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
-	want := []string{"codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95"}
-	if !reflect.DeepEqual(warns, want) {
+	if len(warns) != 0 { // the missing positions use default_cap, as the page shows
 		t.Fatalf("warns %q", warns)
 	}
 }
@@ -91,8 +90,7 @@ func TestEffectiveCapsEmptyArray(t *testing.T) {
 	if want := []CapElem{{CapFixed, 95}, {CapFixed, 95}}; !reflect.DeepEqual(caps, want) {
 		t.Fatalf("caps %v", caps)
 	}
-	want := []string{"x: account reports 2 windows (5h, 7d), cap has 0 values; filled positions 1, 2 with default_cap 95"}
-	if !reflect.DeepEqual(warns, want) {
+	if len(warns) != 0 { // the missing positions use default_cap, as the page shows
 		t.Fatalf("warns %q", warns)
 	}
 }

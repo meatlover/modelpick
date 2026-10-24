@@ -96,14 +96,9 @@ func EffectiveCaps(account string, cap []CapElem, ordered []adapter.Window, defa
 	head := fmt.Sprintf("%s: account reports %d %s (%s), cap has %d %s",
 		account, n, plural(n, "window", "windows"), strings.Join(knownLabels, ", "),
 		m, plural(m, "value", "values"))
-	if m < n {
-		var pos []string
-		for i := m + 1; i <= n; i++ {
-			pos = append(pos, fmt.Sprint(i))
-		}
-		warnings = append(warnings, fmt.Sprintf("%s; filled %s %s with default_cap %g",
-			head, plural(len(pos), "position", "positions"), strings.Join(pos, ", "), defaultCap))
-	} else if m > n {
+	// Fewer values than windows is not a warning: the rest use default_cap,
+	// which is what the page shows (default boxes).
+	if m > n {
 		warnings = append(warnings, fmt.Sprintf("%s; ignored the last %d", head, m-n))
 	}
 

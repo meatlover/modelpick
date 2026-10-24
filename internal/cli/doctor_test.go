@@ -92,7 +92,9 @@ const twoWindowState = `{"last_good": {"taken_at": "2026-10-22T12:00:00Z", "wind
  {"label":"weekly","length":604800000000000,"used_pct":10,"resets_at":"2026-10-25T12:00:00Z"}],
  "notes": ["unrecognised window group \"x\""]}}`
 
-func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
+// A cap shorter than the account's windows is not a finding: the missing
+// positions use default_cap, and the page shows them as default boxes.
+func TestDoctorShortCapIsFine(t *testing.T) {
 	claude, codex := apptest.DoctorFakes()
 	d := apptest.NewDeps(t, doctorConfig, claude, codex)
 	apptest.WriteStored(t, d, "codex-main", twoWindowState)
@@ -101,13 +103,15 @@ func TestDoctorCapMismatchWarnsOnly(t *testing.T) {
 		t.Fatalf("exit %d, want 0:\n%s", code, stdout)
 	}
 	for _, want := range []string{
-		"WARN   profile p, choice 1: codex-main: account reports 2 windows (5h, 7d), cap has 1 value; filled position 2 with default_cap 95\n",
 		"WARN   codex-main: unrecognised window group \"x\"",
-		"0 error(s), 2 warning(s)",
+		"0 error(s), 1 warning(s)",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in:\n%s", want, stdout)
 		}
+	}
+	if strings.Contains(stdout, "filled position") {
+		t.Errorf("a short cap is reported:\n%s", stdout)
 	}
 }
 

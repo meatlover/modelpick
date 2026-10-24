@@ -1420,6 +1420,20 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   cursor: pointer;
 }
 
+/* caps.js's "No caps", after a card's boxes: a quiet button like Remove,
+   level with a closed box (52 px: 8 px above a 36 px button) even while an
+   editor is open beside it, which is taller. */
+.cap-nocaps {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* "(default)" after "Cap at 95%" on a box that uses the default cap. */
+.cap-edit-default {
+  font-weight: 500;
+  color: var(--text-3);
+}
+
 .sched-add:disabled {
   opacity: 0.55;
   cursor: default;

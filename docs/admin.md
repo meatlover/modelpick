@@ -248,7 +248,7 @@ shows `error` there, and its message is on a line below the table
 | `no usage reading; last call at ... failed: ...; next call allowed at ...` | The last call failed and the floor has not passed. | Wait, or use `--refresh` once. |
 | `profile <p>, choice <i>: never picked, choice <j> always wins first` | Choice j comes earlier and is usable whenever choice i is (uncapped, or the same account and model with caps at least as high), so i can never be picked. | Reorder or remove a choice, or narrow choice j's schedule. |
 | `schedule <name>: empty` | The schedule has no days and no hours (as the UI creates it), so it never matches. | Paint its hours in the UI, or fill in `days` and `utc`. |
-| `account reports N windows (...), cap has M values; filled/ignored ...` | The plan reports a different number of windows than your `cap` array has. | Make the array match the windows listed; positions are in [this order](configuration.md#caps). |
+| `account reports N windows (...), cap has M values; ignored the last K` | Your `cap` array has more values than the plan reports windows. A shorter array is fine: the missing positions use `default_cap`. | Drop the extra values; positions are in [this order](configuration.md#caps). |
 | `thinking "x" not supported by <model> (supported: ...)` | The thinking value is not one the model takes. | Use one of the listed values, or `null`. |
 | `model <m> not offered by <account>` | The model is not in the account's model list. | Check `modelpick ls models`. A warning only: the list may be out of date. |
 
