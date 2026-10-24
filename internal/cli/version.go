@@ -4,4 +4,4 @@ package cli
 // points at) holds that release's number; between releases it holds the
 // next number with -dev. -ldflags "-X github.com/meatlover/modelpick/internal/cli.Version=…"
 // still overrides it.
-var Version = "0.2.0"
+var Version = "0.3.0-dev"
