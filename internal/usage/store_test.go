@@ -758,3 +758,27 @@ func TestCallerCancelIsNotRecorded(t *testing.T) {
 		t.Fatalf("after the store's timeout: saved %+v; want the failed attempt recorded", saved)
 	}
 }
+
+// TestResultNamesTheCacheFailure checks that Result.CacheErr carries the
+// first lock or write failure, and is nil when the cache works.
+func TestResultNamesTheCacheFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a read-only directory")
+	}
+	s := newStore(t, newClock())
+	f := &fakeAdapter{reading: reading(20, t0)}
+	if r := s.Get(context.Background(), f, acct, false); r.CacheErr != nil {
+		t.Fatalf("working cache: CacheErr = %v, want nil", r.CacheErr)
+	}
+	if err := os.Chmod(s.Dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(s.Dir, 0o700) })
+	r := s.Get(context.Background(), f, acct, true)
+	if r.CacheErr == nil {
+		t.Fatalf("unwritable cache: CacheErr = nil, result %+v", r)
+	}
+	if !hasWarning(r, "cache unavailable: "+r.CacheErr.Error()) {
+		t.Errorf("warnings %q do not carry CacheErr %v", r.Warnings, r.CacheErr)
+	}
+}
