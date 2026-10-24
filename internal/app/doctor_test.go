@@ -1,10 +1,12 @@
 package app_test
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
 	"github.com/meatlover/modelpick/internal/core"
@@ -222,4 +224,70 @@ func TestConfigFindingForPaceBelowMinimum(t *testing.T) {
 		t.Fatalf("got %+v", f)
 	}
 	_ = core.MinPaceMargin
+}
+
+// goConfig has n opencode-go accounts go-1..go-n and one profile using go-1.
+func goConfig(n int) string {
+	var accts []string
+	for i := 1; i <= n; i++ {
+		accts = append(accts, fmt.Sprintf(`"go-%d":{"vendor":"opencode-go","key_file":"~/.ssh/k","key_line":%d}`, i, i))
+	}
+	return `{"version":1,"accounts":{` + strings.Join(accts, ",") + `},
+ "profiles":{"p":[{"account":"go-1","model":"m","thinking":null}]}}`
+}
+
+func goFindings(t *testing.T, n int, checks map[string]string) []app.Finding {
+	t.Helper()
+	fake := apptest.NewFake("opencode-go")
+	for name, msg := range checks {
+		fake.Checks[name] = []adapter.Finding{{Severity: adapter.SeverityError, Account: name, Message: msg}}
+	}
+	d := apptest.NewDeps(t, goConfig(n), fake)
+	cfg, err := app.LoadConfig(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app.Doctor(cfg, d, nil)
+}
+
+func TestDoctorGroupsMissingTool(t *testing.T) {
+	msg := "opencode not found on PATH"
+	got := goFindings(t, 3, map[string]string{"go-1": msg, "go-2": msg, "go-3": msg})
+	want := []app.Finding{{Severity: "error", Subject: "go-1, go-2, go-3", Message: msg,
+		Accounts: []string{"go-1", "go-2", "go-3"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings = %+v, want %+v", got, want)
+	}
+}
+
+func TestDoctorKeepsListingWarningWhenToolPresent(t *testing.T) {
+	got := goFindings(t, 2, nil)
+	if len(got) != 2 {
+		t.Fatalf("findings = %+v, want 2 listing warnings", got)
+	}
+	for i, f := range got {
+		if f.Accounts != nil || f.Subject != fmt.Sprintf("go-%d", i+1) ||
+			!strings.HasPrefix(f.Message, "cannot list models, thinking values not checked: ") {
+			t.Errorf("finding %d = %+v", i, f)
+		}
+	}
+}
+
+func TestDoctorDoesNotGroupDifferentMessages(t *testing.T) {
+	got := goFindings(t, 2, map[string]string{"go-1": "no credential: /a", "go-2": "no credential: /b"})
+	want := []app.Finding{
+		{Severity: "error", Subject: "go-1", Message: "no credential: /a"},
+		{Severity: "error", Subject: "go-2", Message: "no credential: /b"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings = %+v, want %+v", got, want)
+	}
+}
+
+func TestDoctorSingleAccountNotGrouped(t *testing.T) {
+	got := goFindings(t, 1, map[string]string{"go-1": "opencode not found on PATH"})
+	want := []app.Finding{{Severity: "error", Subject: "go-1", Message: "opencode not found on PATH"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("findings = %+v, want %+v", got, want)
+	}
 }

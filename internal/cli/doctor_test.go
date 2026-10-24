@@ -49,10 +49,9 @@ func TestDoctorMissingBinaryIsError(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	// Same message, different accounts: one line per subject.
-	if !strings.Contains(stdout, "ERROR  codex-main: codex not found on PATH\n") ||
-		!strings.Contains(stdout, "ERROR  codex-two: codex not found on PATH\n") ||
-		!strings.Contains(stdout, "2 error(s), 0 warning(s)\n") {
+	// Same message, different accounts: one grouped line.
+	if !strings.Contains(stdout, "ERROR  codex-main, codex-two: codex not found on PATH\n") ||
+		!strings.Contains(stdout, "1 error(s), 0 warning(s)\n") {
 		t.Errorf("unexpected output:\n%s", stdout)
 	}
 }
@@ -146,15 +145,15 @@ func TestDoctorSameFindingSameSubjectPrintsOnce(t *testing.T) {
 	}
 }
 
-func TestDoctorIdenticalMessageTwoAccountsTwoLines(t *testing.T) {
+func TestDoctorIdenticalCheckMessageTwoAccountsOneGroupedLine(t *testing.T) {
 	claude, codex := apptest.DoctorFakes()
 	msg := "token expired — open Claude Code with this account to refresh it"
 	for _, n := range []string{"codex-main", "codex-two"} {
 		codex.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityWarning, Account: n, Message: msg}}
 	}
 	stdout, _, _ := run(apptest.NewDeps(t, doctorConfig, claude, codex), "doctor")
-	if strings.Count(stdout, msg) != 2 || !strings.Contains(stdout, "codex-main: "+msg) || !strings.Contains(stdout, "codex-two: "+msg) {
-		t.Fatalf("want one line per account:\n%s", stdout)
+	if strings.Count(stdout, msg) != 1 || !strings.Contains(stdout, "WARN   codex-main, codex-two: "+msg+"\n") {
+		t.Fatalf("want one grouped line:\n%s", stdout)
 	}
 }
 

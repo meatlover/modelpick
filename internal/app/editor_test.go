@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -296,7 +297,7 @@ func TestApplyGateErrorMoves(t *testing.T) {
 		t.Fatal("not moved")
 	}
 	want := app.Finding{Severity: "error", Subject: "profile p, choice 2", Message: badThinkingErr}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
@@ -316,7 +317,7 @@ func TestApplyCheckFindingsDoNotGate(t *testing.T) {
 		t.Fatal("account not written")
 	}
 	want := app.Finding{Severity: "error", Subject: "claude-new", Message: "no credential in ~/.claude-new"}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
@@ -330,7 +331,7 @@ func TestApplyGateOldErrorTolerated(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := app.Finding{Severity: "error", Subject: "claude-main", Message: "claude not found on PATH"}
-	if len(fs) == 0 || fs[0] != want {
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 	if f.claude.CheckCalls["claude-main"] != 1 {
@@ -444,5 +445,26 @@ func TestApplyAccountOps(t *testing.T) {
 	}
 	if len(added) != 0 {
 		t.Fatal("OnAccountAdded called for an operation that is not account.add")
+	}
+}
+
+// A tool missing for several accounts is one grouped Check finding; the gate
+// still ignores it.
+func TestGateIgnoresGroupedCheckErrors(t *testing.T) {
+	cfg := strings.Replace(editorConfig(goodFirst), `"claude-main":{"vendor":"claude","config_dir":"~/.claude"}`,
+		`"claude-main":{"vendor":"claude","config_dir":"~/.claude"},
+  "claude-two":{"vendor":"claude","config_dir":"~/.claude2"}`, 1)
+	f := newEditorFx(t, cfg)
+	for _, n := range []string{"claude-main", "claude-two"} {
+		f.claude.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityError, Account: n, Message: "claude not found on PATH"}}
+	}
+	f.claude.ModelList["claude-two"] = f.claude.ModelList["claude-main"]
+	s := f.load(t)
+	_, fs, err := f.ed.Apply(s.SHA256, "choice.add", json.RawMessage(`{"profile":"p"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) == 0 || fs[0].Subject != "claude-main, claude-two" || len(fs[0].Accounts) != 2 {
+		t.Fatalf("findings = %+v, want the grouped finding first", fs)
 	}
 }
