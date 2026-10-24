@@ -16,12 +16,13 @@ import (
 // choice without a cap (per-window positions need readings, which `config`
 // never fetches).
 type configChoice struct {
-	Account    string          `json:"account"`
-	Model      string          `json:"model"`
-	Thinking   *string         `json:"thinking"`
-	Cap        *[]core.CapElem `json:"cap,omitempty"`
-	Uncapped   bool            `json:"uncapped,omitempty"`
-	SkipDuring []string        `json:"skip_during,omitempty"`
+	Account     string          `json:"account"`
+	Model       string          `json:"model"`
+	Thinking    *string         `json:"thinking"`
+	Cap         *[]core.CapElem `json:"cap,omitempty"`
+	Uncapped    bool            `json:"uncapped,omitempty"`
+	SkipDuring  []string        `json:"skip_during,omitempty"`
+	AllowDuring []string        `json:"allow_during,omitempty"`
 }
 
 type configSettings struct {
@@ -78,7 +79,7 @@ func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		cs := make([]configChoice, 0, len(choices))
 		for _, c := range choices {
 			cc := configChoice{Account: c.Account, Model: c.Model, Thinking: c.Thinking,
-				Uncapped: !c.Capped, SkipDuring: c.SkipDuring}
+				Uncapped: !c.Capped, SkipDuring: c.SkipDuring, AllowDuring: c.AllowDuring}
 			if c.Capped {
 				capCopy := append([]core.CapElem{}, c.Cap...)
 				cc.Cap = &capCopy

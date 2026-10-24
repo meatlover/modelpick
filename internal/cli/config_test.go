@@ -73,3 +73,67 @@ func TestConfigRejectsArgsAndBadConfig(t *testing.T) {
 		t.Errorf("bad config: code %d stderr %q", code, stderr)
 	}
 }
+
+// The whole output for a choice limited to a schedule (allow_during, which
+// the UI's Allow chip writes) and a pace cap: a golden, so a field the
+// output drops shows as a diff.
+func TestConfigOutputGoldenAllowDuring(t *testing.T) {
+	d := apptest.NewDeps(t, `{"version":1,
+ "accounts":{"codex-main":{"vendor":"codex","codex_home":"~/.codex"}},
+ "schedules":{"peak":{"days":["mon"],"utc":["06:00-10:00"]}},
+ "profiles":{"p":[
+  {"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":[90,"pace+10"],"allow_during":["peak"]},
+  {"account":"codex-main","model":"gpt-6.1-sol","thinking":null,"skip_during":["peak"]}]}}`)
+	const want = `{
+  "settings": {
+    "min_call_interval_minutes": 15,
+    "default_cap": 95
+  },
+  "accounts": {
+    "codex-main": {
+      "vendor": "codex",
+      "codex_home": "/home/u/.codex"
+    }
+  },
+  "schedules": {
+    "peak": {
+      "days": [
+        "mon"
+      ],
+      "utc": [
+        "06:00-10:00"
+      ]
+    }
+  },
+  "profiles": {
+    "p": [
+      {
+        "account": "codex-main",
+        "model": "gpt-6.1-sol",
+        "thinking": "high",
+        "cap": [
+          90,
+          "pace+10"
+        ],
+        "allow_during": [
+          "peak"
+        ]
+      },
+      {
+        "account": "codex-main",
+        "model": "gpt-6.1-sol",
+        "thinking": null,
+        "uncapped": true,
+        "skip_during": [
+          "peak"
+        ]
+      }
+    ]
+  }
+}
+`
+	stdout, stderr, code := run(d, "config")
+	if code != 0 || stdout != want {
+		t.Fatalf("exit %d, stderr %q; got\n%s\nwant\n%s", code, stderr, stdout, want)
+	}
+}
