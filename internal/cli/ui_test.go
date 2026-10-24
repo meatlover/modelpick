@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -285,5 +286,19 @@ func TestMainDispatchesUI(t *testing.T) {
 	}
 	if !strings.Contains(usageText, "modelpick ui [--port N] [--no-open]") {
 		t.Error("usage text does not list ui")
+	}
+}
+
+// HTTP_PROXY is set on the owner's machine: the ping must never go through
+// a proxy, so its transport names none rather than relying on Go's
+// loopback bypass.
+func TestPingClientHasNoProxy(t *testing.T) {
+	c := pingClient()
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok || tr.Proxy != nil {
+		t.Fatalf("ping transport %T (proxy set: %v), want an *http.Transport with Proxy nil", c.Transport, ok && tr.Proxy != nil)
+	}
+	if c.Timeout != time.Second {
+		t.Errorf("ping timeout %v, want 1s", c.Timeout)
 	}
 }

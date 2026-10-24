@@ -63,9 +63,16 @@ func pidAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
+// pingClient talks to 127.0.0.1 only. Proxy nil says so outright: the
+// default transport reads HTTP_PROXY, and only Go's loopback bypass would
+// keep the ping off a proxy.
+func pingClient() *http.Client {
+	return &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}}
+}
+
 // pingInstance asks the instance on port whether it takes token, within 1 s.
 func pingInstance(port int, token string) bool {
-	c := &http.Client{Timeout: time.Second}
+	c := pingClient()
 	resp, err := c.Get(fmt.Sprintf("http://127.0.0.1:%d/api/ping?t=%s", port, token))
 	if err != nil {
 		return false
