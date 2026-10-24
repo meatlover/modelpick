@@ -1,7 +1,8 @@
 // Opens every JS unit test page (internal/web/static/test/*.test.html) in
 // Chromium against the live server. A page passes when its #result reads
-// "PASS <n>"; a FAIL verdict, or a page that never leaves "running" (a
-// module that failed to load), fails its test.
+// "PASS <n>" with n > 0 (a page that ran no case proves nothing). A FAIL
+// verdict, "PASS 0", or a page that never leaves "running" (a module that
+// failed to load) fails its test.
 const fs = require("node:fs");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
@@ -54,6 +55,6 @@ for (const name of pages) {
     await login(page, server.url);
     await page.goto(new URL(`/test/${name}`, server.url).href);
     const verdict = await verdictOf(page, name, errors);
-    expect(verdict, name).toMatch(/^PASS \d+$/);
+    expect(verdict, name).toMatch(/^PASS [1-9]\d*$/);
   });
 }

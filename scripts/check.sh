@@ -15,6 +15,9 @@ go vet ./...
 # it never runs here; vetting it with the tag keeps it compiling.
 go vet -tags live ./...
 go test ./...
+# The e2e server's fakes are changed by stdin commands while handlers call
+# them; only the race detector sees an unguarded access.
+go test -race ./cmd/modelpick-e2e-server ./internal/app/apptest
 # The browser tests; a missing Node, package or Chromium fails here too.
 bash scripts/e2e.sh
 
