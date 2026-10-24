@@ -199,8 +199,22 @@ func TestLsStates(t *testing.T) {
 	}
 	// A second run inside the retry window is rate-limited via the store.
 	stdout, _, _ = run(d, "ls")
-	if !strings.Contains(stdout, "rate-limited until 2026-10-22T12:10:00Z") {
-		t.Errorf("second run lost the rate-limit state:\n%s", stdout)
+	// The rate limit stays in the STATE column (second); the stored failure of
+	// claude-main shows "error" there and its message in a line below.
+	for _, l := range strings.Split(stdout, "\n") {
+		f := strings.Fields(l)
+		if strings.HasPrefix(l, "claude-rec ") && strings.Join(f[1:3], " ") != "rate-limited until" {
+			t.Errorf("claude-rec STATE column wrong: %q", l)
+		}
+		if strings.HasPrefix(l, "claude-main ") && f[1] != "error" {
+			t.Errorf("claude-main STATE column wrong: %q", l)
+		}
+	}
+	if !strings.Contains(stdout, "\n\nclaude-main: no usage reading; last call at") {
+		t.Errorf("claude-main error line missing below the table:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "claude-rec:") {
+		t.Errorf("a rate limit produced an error line:\n%s", stdout)
 	}
 }
 
