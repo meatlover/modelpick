@@ -14,9 +14,13 @@ import (
 // roots) are unrestricted, and so is internal/app/apptest, the test fakes.
 // That exemption is removable by an entry for apptest naming what it
 // imports today (internal/app, internal/adapter), so a fake could not reach
-// web or cli; deferred because only _test.go files import apptest, so it
-// never ships in a binary, and its imports follow whatever the app, cli and
-// web/live suites need next.
+// web or cli; deferred because apptest is imported only by _test.go files
+// and by cmd/modelpick-e2e-server, the browser tests' server, which only
+// scripts/e2e.sh builds, into a temp dir: no release or install path does
+// (the README and docs/install.md build and install ./cmd/modelpick only,
+// and check.sh's `go build ./...` writes no binary), so it never ships, and
+// its imports follow whatever the app, cli, web/live and e2e suites need
+// next.
 var allowed = map[string][]string{
 	"internal/pathx":    {},
 	"internal/platform": {"internal/pathx"},
