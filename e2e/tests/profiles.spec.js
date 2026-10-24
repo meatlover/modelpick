@@ -59,6 +59,24 @@ test("change account, model and thinking", async ({ page }) => {
   await expect(c4.getByLabel("Account")).toHaveValue("claude-spare");
 });
 
+// The card is redrawn only when the reload after an edit returns. Held
+// back here, so a second edit is made on the card as drawn before the first:
+// it must still apply, on the choice as the first edit left it.
+test("a second edit before the redraw still applies", async ({ page }) => {
+  const c4 = card(page, 4);
+  let hold = true;
+  await page.route("**/api/state", async (route) => {
+    while (hold) await new Promise((ok) => setTimeout(ok, 50));
+    await route.continue();
+  });
+  await c4.getByLabel("Model").selectOption("claude-fable-5-1");
+  await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "model");
+  await c4.getByLabel("Thinking").selectOption("low");
+  hold = false;
+  await expectConfig(server.configPath, (c) => coder(c)[3].thinking, "low", "thinking, sent on the stale card");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
 // capBox is the closed box (or, once focused, the open frame's number box)
 // of a card's first window.
 const capBox = (card_) => card_.getByRole("textbox", { name: /cap$/ }).first();
