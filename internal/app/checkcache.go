@@ -23,12 +23,15 @@ type accountCheck struct {
 // so a slow Check does not hold up the model list and neither holds up
 // another account.
 type checkEntry struct {
+	acct adapter.Account // the account as configured when the entry was made
+
 	checkMu  sync.Mutex
 	checked  bool
 	stale    atomic.Bool // set by ForgetChecks: run Check again on next use
 	findings []adapter.Finding
 
 	modelsMu  sync.Mutex
+	relist    atomic.Bool // set by ForgetChecks: list again on next use if the listing failed
 	listed    bool
 	models    []adapter.Model
 	modelsErr error
@@ -43,16 +46,19 @@ type CheckCache struct {
 	m  map[string]*checkEntry
 }
 
-func (c *CheckCache) entry(name string) *checkEntry {
+// entry is the account's entry. One made for another vendor or locator
+// under the same name (a hand edit while the page is open) is replaced, so
+// it never answers for the account as it is now.
+func (c *CheckCache) entry(acct adapter.Account) *checkEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.m == nil {
 		c.m = map[string]*checkEntry{}
 	}
-	e, ok := c.m[name]
-	if !ok {
-		e = &checkEntry{}
-		c.m[name] = e
+	e, ok := c.m[acct.Name]
+	if !ok || e.acct != acct {
+		e = &checkEntry{acct: acct}
+		c.m[acct.Name] = e
 	}
 	return e
 }
@@ -64,25 +70,22 @@ func (c *CheckCache) Forget(account string) {
 	delete(c.m, account)
 }
 
-// ForgetAll drops every cached result.
-func (c *CheckCache) ForgetAll() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m = nil
-}
-
 // ForgetChecks makes the next use of each account run its Check again
 // (binary, credential: local state that changes while the page is open)
-// and keeps the model lists until an account is forgotten.
+// and list its models again if that listing failed (a timeout, opencode
+// not installed yet), like a cold listing. A listing that succeeded stays
+// until the account is forgotten.
 func (c *CheckCache) ForgetChecks() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, e := range c.m {
 		e.stale.Store(true)
+		e.relist.Store(true)
 	}
 }
 
-// Models returns the account's model list, listing it once until forgotten.
+// Models returns the account's model list, listing it once until forgotten
+// (or, for a failed listing, until ForgetChecks).
 func (c *CheckCache) Models(acct adapter.Account, a adapter.Adapter) ([]adapter.Model, error) {
 	return c.ModelsCtx(context.Background(), acct, a)
 }
@@ -90,10 +93,10 @@ func (c *CheckCache) Models(acct adapter.Account, a adapter.Adapter) ([]adapter.
 // ModelsCtx is Models that gives up when ctx ends. A listing cut short by
 // ctx is not cached, so the next use lists again.
 func (c *CheckCache) ModelsCtx(ctx context.Context, acct adapter.Account, a adapter.Adapter) ([]adapter.Model, error) {
-	e := c.entry(acct.Name)
+	e := c.entry(acct)
 	e.modelsMu.Lock()
 	defer e.modelsMu.Unlock()
-	if !e.listed {
+	if relist := e.relist.Swap(false); !e.listed || (relist && e.modelsErr != nil) {
 		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		ms, err, panicked := callModels(cctx, acct, a)
 		cancel()
@@ -129,7 +132,7 @@ func (c *CheckCache) WarmModels(ctx context.Context, d Deps, cfg *core.Config, n
 }
 
 func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []adapter.Finding {
-	e := c.entry(acct.Name)
+	e := c.entry(acct)
 	e.checkMu.Lock()
 	defer e.checkMu.Unlock()
 	if stale := e.stale.Swap(false); !e.checked || stale {

@@ -127,3 +127,52 @@ func TestModelsPanicIsContained(t *testing.T) {
 		t.Errorf("panic not logged: %q", log.String())
 	}
 }
+
+// A failed listing is retried after ForgetChecks (page load or focus), like
+// a cold listing; a listing that succeeded stays cached for the run.
+func TestForgetChecksRelistsFailedListing(t *testing.T) {
+	fk := apptest.NewFake("codex") // no ModelList entry: the listing fails
+	cache := &app.CheckCache{}
+	acct := adapter.Account{Name: "a", Vendor: "codex"}
+	if _, err := cache.Models(acct, fk); err == nil {
+		t.Fatal("listing with no models returned no error")
+	}
+	fk.ModelList["a"] = []adapter.Model{{ID: "m"}} // the user fixes the cause
+	if _, err := cache.Models(acct, fk); err == nil || fk.ModelCallCount("a") != 1 {
+		t.Fatalf("before ForgetChecks: err %v, calls %d (want the cached error, 1 call)", err, fk.ModelCallCount("a"))
+	}
+	cache.ForgetChecks()
+	ms, err := cache.Models(acct, fk)
+	if err != nil || len(ms) != 1 || ms[0].ID != "m" {
+		t.Fatalf("after ForgetChecks: %v, %v (want the fixed list)", ms, err)
+	}
+	cache.ForgetChecks()
+	cache.Models(acct, fk)
+	if fk.ModelCallCount("a") != 2 {
+		t.Errorf("Models calls %d, want 2 (a good listing stays cached)", fk.ModelCallCount("a"))
+	}
+}
+
+// A hand edit that changes an account's vendor (or locator) while the page
+// is open must not keep the old account's model list.
+func TestCheckCacheAccountChangeStartsOver(t *testing.T) {
+	const asCodex = `{"version":1,"accounts":{"x":{"vendor":"codex","codex_home":"~/.codex"}},
+ "profiles":{"p":[{"account":"x","model":"gpt-6.1-sol","thinking":"high","cap":[90]}]}}`
+	const asClaude = `{"version":1,"accounts":{"x":{"vendor":"claude","config_dir":"~/.claude"}},
+ "profiles":{"p":[{"account":"x","model":"claude-opus-5-5","thinking":"high","cap":[90]}]}}`
+	claude, codex := apptest.NewFake("claude"), apptest.NewFake("codex")
+	codex.ModelList["x"] = []adapter.Model{{ID: "gpt-6.1-sol", Thinking: []string{"high"}}}
+	claude.ModelList["x"] = []adapter.Model{{ID: "claude-opus-5-5", Thinking: []string{"high"}}}
+	cache := &app.CheckCache{}
+	if got := runDoctorWith(t, asCodex, claude, codex, cache); len(got) != 0 {
+		t.Fatalf("as codex: %v", got)
+	}
+	if got := runDoctorWith(t, asClaude, claude, codex, cache); len(got) != 0 {
+		t.Fatalf("after the vendor edit: %v (the codex model list was kept)", got)
+	}
+	moved := adapter.Account{Name: "x", Vendor: "claude", ConfigDir: "~/.claude-two"}
+	cache.Models(moved, claude)
+	if n := claude.ModelCallCount("x"); n != 2 {
+		t.Errorf("after a config_dir change: claude Models calls %d, want 2", n)
+	}
+}

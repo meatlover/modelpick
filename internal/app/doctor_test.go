@@ -200,11 +200,6 @@ func TestCheckCacheReused(t *testing.T) {
 		t.Fatalf("after Forget: codex %d (want 2), claude %d (want 1)",
 			codex.CheckCalls["codex-main"], claude.CheckCalls["claude-main"])
 	}
-	cache.ForgetAll()
-	runDoctorWith(t, cfg, claude, codex, cache)
-	if claude.CheckCalls["claude-main"] != 2 {
-		t.Fatalf("after ForgetAll: claude %d, want 2", claude.CheckCalls["claude-main"])
-	}
 }
 
 func TestDoctorSubjects(t *testing.T) {
