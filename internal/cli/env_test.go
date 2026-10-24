@@ -207,3 +207,19 @@ func TestEnvEvalInShell(t *testing.T) {
 		}
 	}
 }
+
+// TestEnvFailedWithErrors: the error echoes come first, then the unsets,
+// the reason and false (spec §4 order, steps 1 and 2).
+func TestEnvFailedWithErrors(t *testing.T) {
+	cfg := `{"version":1,
+	"accounts":{"codex-main":{"vendor":"codex","codex_home":"~/.codex"}},
+	"profiles":{"only-codex":[{"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":[98]}]}}`
+	codex := apptest.NewFake("codex")
+	codex.Errs["codex-main"] = adapter.ErrUnauthorized
+	out, _, code := run(apptest.NewDeps(t, cfg, codex), "env", "only-codex")
+	want := "echo 'modelpick: codex-main: usage endpoint returned HTTP 401; log in to Codex with this account' >&2\n" +
+		strings.Replace(wantEnvFailed, "same-account: no choice available", "only-codex: no choice available", 1)
+	if code != 1 || out != want {
+		t.Fatalf("exit %d, want 1; stdout\n%s\nwant\n%s", code, out, want)
+	}
+}
