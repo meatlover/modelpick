@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -649,6 +650,66 @@ func TestPluralAndCapital(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	if got := capital("profile"); got != "Profile" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// profileChoices maps each profile to the accounts of its choices.
+func profileChoices(d *Demo) map[string][]string {
+	out := map[string][]string{}
+	for _, p := range d.State().Profiles {
+		for _, c := range p.Choices {
+			out[p.Name] = append(out[p.Name], c.Account)
+		}
+	}
+	return out
+}
+
+func TestAccountRemoveWithChoices(t *testing.T) {
+	d := newDemo()
+	before := profileChoices(d)
+	must(t, d, "account.remove", map[string]any{"name": "claude-main", "with_choices": true})
+	after := profileChoices(d)
+	for p, accts := range before {
+		var want []string
+		for _, a := range accts {
+			if a != "claude-main" {
+				want = append(want, a)
+			}
+		}
+		if len(want) == 0 {
+			if _, ok := after[p]; ok {
+				t.Errorf("profile %s left empty but kept", p)
+			}
+		} else if !reflect.DeepEqual(after[p], want) {
+			t.Errorf("%s: got %v want %v", p, after[p], want)
+		}
+	}
+	for _, a := range d.State().Accounts {
+		if a.Name == "claude-main" {
+			t.Fatal("account kept")
+		}
+	}
+}
+
+func TestAccountRemoveWithChoicesDropsEmptyProfile(t *testing.T) {
+	d := newDemo()
+	must(t, d, "profile.add", map[string]any{"name": "solo"})
+	must(t, d, "choice.set", map[string]any{"profile": "solo", "index": 0, "field": "account", "value": "go-1",
+		"expect": choiceJSON(t, d, "solo", 0)})
+	must(t, d, "account.remove", map[string]any{"name": "go-1", "with_choices": true})
+	if _, ok := profileChoices(d)["solo"]; ok {
+		t.Fatal("solo kept with no choices")
+	}
+}
+
+func TestAccountRemoveWithChoicesUnknownAndFalse(t *testing.T) {
+	d := newDemo()
+	if got := refusal(t, d, "account.remove", map[string]any{"name": "nope", "with_choices": true}).Reason; got != "Unknown account nope" {
+		t.Fatalf("got %q", got)
+	}
+	got := refusal(t, d, "account.remove", map[string]any{"name": "claude-main", "with_choices": false}).Reason
+	if got != "Account claude-main is used by profile coder-difficult, choice 1" {
 		t.Fatalf("got %q", got)
 	}
 }

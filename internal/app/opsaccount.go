@@ -74,9 +74,14 @@ func setAccountField(acct *core.DocAccount, name string, f accountField, v any) 
 }
 
 // opAccountRemove refuses an account a choice still uses, naming the first.
+// With a.WithChoices it removes every choice that uses the account, any
+// profile left with no choice, and the account, in this one edit.
 func opAccountRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	if _, ok := doc.Accounts[a.Name]; !ok {
 		return refuse("Unknown account %s", a.Name)
+	}
+	if a.WithChoices {
+		dropChoicesOf(doc, a.Name)
 	}
 	for _, p := range sortedNames(doc.Profiles) {
 		for i, c := range doc.Profiles[p] {
@@ -87,4 +92,24 @@ func opAccountRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	}
 	delete(doc.Accounts, a.Name)
 	return nil
+}
+
+// dropChoicesOf removes the choices that use account, and the profiles that
+// had only such choices (a profile in the file keeps at least one choice).
+func dropChoicesOf(doc *core.Doc, account string) {
+	for p, choices := range doc.Profiles {
+		kept := choices[:0:0]
+		for _, c := range choices {
+			if c.Account != account {
+				kept = append(kept, c)
+			}
+		}
+		switch {
+		case len(kept) == len(choices):
+		case len(kept) == 0:
+			delete(doc.Profiles, p)
+		default:
+			doc.Profiles[p] = kept
+		}
+	}
 }

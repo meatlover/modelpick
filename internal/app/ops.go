@@ -46,6 +46,8 @@ type opArgs struct {
 	Force   bool            `json:"force"`
 	Cells   [][2]int        `json:"cells"`
 	On      bool            `json:"on"`
+	// WithChoices lets account.remove take the account's choices with it.
+	WithChoices bool `json:"with_choices"`
 }
 
 type opFunc func(doc *core.Doc, a opArgs, env OpEnv) error

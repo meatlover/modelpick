@@ -28,6 +28,8 @@ type opArgs struct {
 	Force   bool            `json:"force"`
 	Cells   [][2]int        `json:"cells"`
 	On      bool            `json:"on"`
+	// WithChoices lets account.remove take the account's choices with it.
+	WithChoices bool `json:"with_choices"`
 }
 
 type opFunc func(d *Demo, a opArgs) error
@@ -392,6 +394,9 @@ func (d *Demo) opAccountRemove(a opArgs) error {
 	if !d.hasAccount(a.Name) {
 		return refuse("Unknown account %s", a.Name)
 	}
+	if a.WithChoices {
+		d.dropChoicesOf(a.Name)
+	}
 	for _, p := range d.profiles {
 		for i, c := range p.Choices {
 			if c.Account == a.Name {
@@ -410,4 +415,25 @@ func (d *Demo) opAccountRemove(a opArgs) error {
 	delete(d.windows, a.Name)
 	delete(d.readings, a.Name)
 	return nil
+}
+
+// dropChoicesOf removes the choices that use account and the profiles left
+// with none, as the real back end does.
+func (d *Demo) dropChoicesOf(account string) {
+	var profiles []web.Profile
+	for _, p := range d.profiles {
+		var kept []web.Choice
+		for _, c := range p.Choices {
+			if c.Account != account {
+				kept = append(kept, c)
+			}
+		}
+		if len(kept) == len(p.Choices) {
+			profiles = append(profiles, p)
+		} else if len(kept) > 0 {
+			p.Choices = kept
+			profiles = append(profiles, p)
+		}
+	}
+	d.profiles = profiles
 }

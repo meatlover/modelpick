@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
-const { expectConfig, expectUnchanged } = require("./config");
+const { expectConfig, expectUnchanged, readConfig } = require("./config");
 
 let server;
 
@@ -41,11 +41,47 @@ test("remove an unused account", async ({ page }) => {
   await expect(rows(page).filter({ hasText: "claude-spare" })).toHaveCount(0);
 });
 
-test("removing a used account is refused", async ({ page }) => {
+const FIRST = "Remove account go-2 and the choices that use it?";
+const LINE = "tester: choice 2 (opencode-go/deepseek-v4.1)";
+
+async function openRemoveGo2(page) {
+  const btn = page.getByRole("button", { name: "Remove account go-2" });
+  await btn.click();
+  const dlg = page.getByRole("dialog", { name: FIRST });
+  await expect(dlg).toBeVisible();
+  await expect(dlg).toContainText(LINE);
+  await expect(dlg.getByRole("button", { name: "Remove account and 1 choice", exact: true })).toBeVisible();
+  return { btn, dlg };
+}
+
+test("removing a used account asks first; Cancel changes nothing", async ({ page }) => {
   const before = fs.readFileSync(server.configPath, "utf8");
-  // go-2 is used by the tester profile's second choice only.
-  await page.getByRole("button", { name: "Remove account go-2" }).click();
-  await expect(page.getByText("Account go-2 is used by profile tester, choice 2")).toBeVisible();
+  const { btn, dlg } = await openRemoveGo2(page);
+  await dlg.getByRole("button", { name: "Cancel" }).click();
+  await expect(dlg).toHaveCount(0);
+  await expect(btn).toBeFocused();
   await expect(rows(page).filter({ hasText: "go-2" })).toHaveCount(1);
   expectUnchanged(server.configPath, before);
+  await expectConfig(server.configPath, (c) => Object.keys(c.accounts).includes("go-2"), true, "go-2 stays");
+  await expectConfig(server.configPath, (c) => c.profiles.tester.length, 3, "tester is unchanged");
+});
+
+test("Escape cancels the remove dialog", async ({ page }) => {
+  const before = fs.readFileSync(server.configPath, "utf8");
+  const { btn, dlg } = await openRemoveGo2(page);
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(btn).toBeFocused();
+  expectUnchanged(server.configPath, before);
+});
+
+test("confirming removes the account and its choices", async ({ page }) => {
+  const { dlg } = await openRemoveGo2(page);
+  const tester = readConfig(server.configPath).profiles.tester;
+  await dlg.getByRole("button", { name: "Remove account and 1 choice", exact: true }).click();
+  await expectConfig(server.configPath, (c) => Object.keys(c.accounts).sort(),
+    ["claude-main", "claude-spare", "codex-main", "go-1"], "only go-2 is gone");
+  await expectConfig(server.configPath, (c) => c.profiles.tester, [tester[0], tester[2]],
+    "tester lost only its second choice");
+  await expect(rows(page).filter({ hasText: "go-2" })).toHaveCount(0);
 });

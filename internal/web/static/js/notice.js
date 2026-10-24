@@ -83,11 +83,13 @@ export function conflictDialog() {
   return conflictOpen;
 }
 
-// confirmDialog resolves true on okLabel, false on Cancel or Escape.
-export function confirmDialog(text, okLabel) {
+// confirmDialog resolves true on okLabel, false on Cancel or Escape. lines,
+// when given, are listed under the text, one item each.
+export function confirmDialog(text, okLabel, lines) {
   return new Promise((resolve) => {
     const dlg = h("dialog", { class: "dlg", "aria-label": text },
       h("p", { class: "dlg-text" }, text),
+      lines && lines.length ? h("ul", { class: "dlg-list" }, lines.map((l) => h("li", {}, l))) : null,
       h("div", { class: "dlg-actions" },
         h("button", { type: "button", class: "btn", onClick: () => dlg.close("") }, "Cancel"),
         h("button", { type: "button", class: "btn btn-primary", onClick: () => dlg.close("ok") }, okLabel)));
