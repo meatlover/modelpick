@@ -140,16 +140,18 @@ func goAll(t *testing.T) (*apptest.Fake, *core.Config, app.Deps) {
 	return fake, cfg, d
 }
 
+// TestDoctorAllConcurrent: the three calls are in progress at once. Each
+// fake call waits for the other two, so calls made one after another fail
+// with misses instead of a wall-clock bound a slow machine can break.
 func TestDoctorAllConcurrent(t *testing.T) {
 	fake, cfg, d := goAll(t)
-	fake.UsageDelay = 200 * time.Millisecond
-	start := time.Now()
+	fake.UsageTogether = 3
 	app.DoctorAll(context.Background(), cfg, d, nil)
-	if took := time.Since(start); took >= 450*time.Millisecond {
-		t.Fatalf("took %v, want < 450ms (three 200ms calls in parallel)", took)
-	}
 	if got := fake.TotalUsage(); got != 3 {
 		t.Fatalf("usage calls = %d, want 3", got)
+	}
+	if missed := fake.TogetherMissed(); missed != 0 {
+		t.Fatalf("%d of 3 usage calls never saw the other two in progress: the calls are not concurrent", missed)
 	}
 }
 

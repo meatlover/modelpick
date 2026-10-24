@@ -45,6 +45,14 @@ type Fake struct {
 	UsageDelay time.Duration                // each Usage call takes this long, or until its ctx ends
 	UsageSlow  time.Duration                // a Usage call its ctx ended takes this long more to return
 	usageEnded int                          // Usage calls that returned, cancelled or not
+	// UsageTogether makes each Usage call wait until that many are in
+	// progress at once, or togetherWait passes; a call that gave up is
+	// counted in TogetherMissed. Calls made one after another never meet,
+	// so a test of concurrency needs no wall-clock bound.
+	UsageTogether  int
+	inFlight       int
+	together       chan struct{} // closed when UsageTogether calls are in progress
+	togetherMissed int
 
 	// Renewable makes the vendor's adapter in NewDeps implement
 	// adapter.Renewer (any entry, so an empty map stays non-renewing); an
@@ -152,12 +160,35 @@ func (f *Fake) Credential(acct adapter.Account) adapter.CredStatus {
 func (f *Fake) Usage(ctx context.Context, acct adapter.Account) (adapter.Reading, error) {
 	f.mu.Lock()
 	f.Calls[acct.Name]++
+	f.inFlight++
+	var together chan struct{}
+	if f.UsageTogether > 0 {
+		if f.together == nil {
+			f.together = make(chan struct{})
+		}
+		if f.inFlight == f.UsageTogether {
+			close(f.together)
+		}
+		together = f.together
+	}
 	f.mu.Unlock()
 	defer func() {
 		f.mu.Lock()
 		f.usageEnded++
+		f.inFlight--
 		f.mu.Unlock()
 	}()
+	if together != nil {
+		select {
+		case <-together:
+		case <-time.After(togetherWait):
+			f.mu.Lock()
+			f.togetherMissed++
+			f.mu.Unlock()
+		case <-ctx.Done():
+			return adapter.Reading{}, ctx.Err()
+		}
+	}
 	if f.UsageDelay > 0 {
 		select {
 		case <-time.After(f.UsageDelay):
@@ -222,6 +253,17 @@ func (f *Fake) TotalUsage() int {
 		n += c
 	}
 	return n
+}
+
+// togetherWait bounds how long a Usage call waits for UsageTogether calls.
+const togetherWait = 5 * time.Second
+
+// TogetherMissed is the Usage calls that stopped waiting for UsageTogether
+// calls to be in progress at once; safe beside running calls.
+func (f *Fake) TogetherMissed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.togetherMissed
 }
 
 // UsageEnded is the Usage calls over all accounts that have returned,
