@@ -448,23 +448,26 @@ func TestApplyAccountOps(t *testing.T) {
 	}
 }
 
-// A tool missing for several accounts is one grouped Check finding; the gate
-// still ignores it.
+// A tool missing for one account is an ungrouped Check finding; adding a
+// second account with the same missing tool turns it into a grouped one. The
+// gate must not count the grouped finding as new.
 func TestGateIgnoresGroupedCheckErrors(t *testing.T) {
-	cfg := strings.Replace(editorConfig(goodFirst), `"claude-main":{"vendor":"claude","config_dir":"~/.claude"}`,
-		`"claude-main":{"vendor":"claude","config_dir":"~/.claude"},
-  "claude-two":{"vendor":"claude","config_dir":"~/.claude2"}`, 1)
-	f := newEditorFx(t, cfg)
-	for _, n := range []string{"claude-main", "claude-two"} {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	for _, n := range []string{"claude-main", "claude-new"} {
 		f.claude.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityError, Account: n, Message: "claude not found on PATH"}}
 	}
-	f.claude.ModelList["claude-two"] = f.claude.ModelList["claude-main"]
 	s := f.load(t)
-	_, fs, err := f.ed.Apply(s.SHA256, "choice.add", json.RawMessage(`{"profile":"p"}`))
+	s1, fs, err := f.ed.Apply(s.SHA256, "account.add",
+		json.RawMessage(`{"name":"claude-new","vendor":"claude","fields":{"config_dir":"~/.claude-new"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fs) == 0 || fs[0].Subject != "claude-main, claude-two" || len(fs[0].Accounts) != 2 {
-		t.Fatalf("findings = %+v, want the grouped finding first", fs)
+	if _, ok := s1.Config.Accounts["claude-new"]; !ok {
+		t.Fatal("account not written")
+	}
+	want := app.Finding{Severity: "error", Subject: "claude-main, claude-new", Message: "claude not found on PATH",
+		Accounts: []string{"claude-main", "claude-new"}}
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
+		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
