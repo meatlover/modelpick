@@ -22,7 +22,11 @@ type Harness struct {
 	HandEdit func(t *testing.T) // changes the config behind the backend's back
 	Break    func(t *testing.T) // makes it unparsable
 	Fix      func(t *testing.T)
-	Secrets  []string // must never appear in any response body
+	// BadThinking gives one choice a thinking level its model does not
+	// offer, behind the backend's back, and returns the choice's profile
+	// and 0-based position.
+	BadThinking func(t *testing.T) (profile string, index int)
+	Secrets     []string // must never appear in any response body
 	// Refreshable names an account whose refresh succeeds with a reading
 	// that has windows.
 	Refreshable string
@@ -40,6 +44,7 @@ func Run(t *testing.T, h Harness) {
 		{"SortedByName", sortedByName},
 		{"UsageRows", usageRows},
 		{"DoctorCountsAndSubjects", doctorShape},
+		{"ChoiceErrorSubject", choiceErrorSubject},
 		{"StaleBaseConflicts", staleBase},
 		{"RefusedOpKeepsSHA", refusedKeepsSHA},
 		{"ReadOnlyRefusesEveryOp", readOnly},
@@ -309,6 +314,22 @@ func doctorShape(t *testing.T, h Harness) {
 	if d.Errors != count["error"] || d.Warnings != count["warning"] {
 		t.Errorf("counts %d/%d, findings say %d/%d", d.Errors, d.Warnings, count["error"], count["warning"])
 	}
+}
+
+// choiceErrorSubject pins contract 6 for a choice: the page reddens a card
+// by exactly "profile <p>, choice <n>", n 1-based (js/subjects.js).
+func choiceErrorSubject(t *testing.T, h Harness) {
+	b := h.New(t)
+	p, i := h.BadThinking(t)
+	want := fmt.Sprintf("profile %s, choice %d", p, i+1)
+	var subjects []string
+	for _, f := range b.Doctor().Findings {
+		if f.Severity == "error" && f.Subject == want {
+			return
+		}
+		subjects = append(subjects, f.Subject)
+	}
+	t.Errorf("no error with subject %q; subjects %q", want, subjects)
 }
 
 func staleBase(t *testing.T, h Harness) {

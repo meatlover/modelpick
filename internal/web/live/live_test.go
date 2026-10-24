@@ -155,7 +155,16 @@ func TestConformance(t *testing.T) {
 			}
 			write(t, []byte(strings.Replace(string(b), `"default_cap": 90`, `"default_cap": 85`, 1)))
 		},
-		Break:       func(t *testing.T) { write(t, []byte(`{"version": 1, "accounts": `)) },
+		Break: func(t *testing.T) { write(t, []byte(`{"version": 1, "accounts": `)) },
+		BadThinking: func(t *testing.T) (string, int) {
+			b, err := os.ReadFile(f.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const ok = `"model": "gpt-6.1-sol", "thinking": "high"`
+			write(t, []byte(strings.Replace(string(b), ok, `"model": "gpt-6.1-sol", "thinking": "ultra"`, 1)))
+			return "coder", 2
+		},
 		Fix:         func(t *testing.T) { write(t, orig) },
 		Secrets:     []string{secretKey},
 		Refreshable: "claude-main",

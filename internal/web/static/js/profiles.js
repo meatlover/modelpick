@@ -10,6 +10,7 @@ import { currentTab } from "./header.js";
 import { renderCaps } from "./caps.js";
 import { renderChips } from "./chips.js";
 import { wireReorder, dragHandle } from "./reorder.js";
+import { choiceSubject, profileHasError } from "./subjects.js";
 
 export const uses = ["state", "doctor"];
 
@@ -51,8 +52,7 @@ function restoreFocus() {
   if (el && el !== a) el.focus();
 }
 
-// errorSubjects is the set of doctor error subjects ("profile p",
-// "profile p[i]", …).
+// errorSubjects is the set of doctor error subjects (subjects.js).
 function errorSubjects() {
   const found = store.doctor ? store.doctor.findings || [] : [];
   return new Set(found.filter((f) => f.severity === "error").map((f) => f.subject));
@@ -198,7 +198,7 @@ function openNew() {
 function listRow(p, sel, red) {
   return h("div", { class: "p-row" },
     h("a", { href: `#profiles/${encodeURIComponent(p.name)}`,
-      class: ["p-link", red.has(`profile ${p.name}`) && "is-error"],
+      class: ["p-link", profileHasError(red, p.name) && "is-error"],
       "aria-current": p === sel ? "true" : null, "data-key": `pl-${p.name}` }, p.name),
     h("button", { type: "button", class: "p-del", "data-key": `pl-del-${p.name}`,
       "aria-label": `Delete profile ${p.name}`, onClick: () => deleteProfile(p.name) }, trashIcon()));
@@ -294,7 +294,7 @@ function mount(cls, fill, ctx) {
 function card(st, profile, c, i, red) {
   const ctx = { profile, index: i, choice: c };
   const handle = h("span", { class: "p-handle", "aria-hidden": "true" }, dots());
-  const el = h("div", { class: ["p-card", red.has(`profile ${profile}[${i}]`) && "is-error"],
+  const el = h("div", { class: ["p-card", red.has(choiceSubject(profile, i)) && "is-error"],
     tabindex: "0", role: "group", "aria-label": `Choice ${i + 1}`, "data-key": `card-${i}`, "data-index": String(i) },
   h("div", { class: "p-pos" }, handle, h("span", { class: "mono p-n" }, String(i + 1))),
   h("div", { class: "p-card-main" }, selects(st, profile, c, i),

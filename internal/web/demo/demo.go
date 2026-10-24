@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -320,13 +321,29 @@ func (d *Demo) Refresh(account string) (web.UsageRow, error) {
 }
 
 func (d *Demo) findings() []web.Finding {
-	out := []web.Finding{}
+	out := d.thinkingErrors()
 	if d.hasError {
 		out = append(out, web.Finding{Severity: "error", Subject: "go-3",
 			Message: "key line 3 missing in ~/.ssh/opencode-go-api"})
 	}
 	return append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
 		Message: "token expired; open Claude Code with this account to refresh its login"})
+}
+
+// thinkingErrors flags each choice whose thinking level its model does
+// not offer, by the subject grammar of contract 6 (choices 1-based).
+func (d *Demo) thinkingErrors() []web.Finding {
+	out := []web.Finding{}
+	for _, p := range d.profiles {
+		for i, c := range p.Choices {
+			if c.Thinking != nil && !contains(d.modelThinking(c.Account, c.Model), *c.Thinking) {
+				out = append(out, web.Finding{Severity: "error",
+					Subject: fmt.Sprintf("profile %s, choice %d", p.Name, i+1),
+					Message: fmt.Sprintf("thinking %q not supported by %s", *c.Thinking, c.Model)})
+			}
+		}
+	}
+	return out
 }
 
 // Doctor returns the current findings.

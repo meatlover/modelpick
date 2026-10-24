@@ -20,6 +20,12 @@ func TestConformance(t *testing.T) {
 		HandEdit: func(*testing.T) { d.HandEdit() },
 		Break:    func(*testing.T) { d.SetBroken("config: version: must be 1") },
 		Fix:      func(*testing.T) { d.SetBroken("") },
+		BadThinking: func(*testing.T) (string, int) {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			d.profiles[0].Choices[0].Thinking = str("ultra")
+			return d.profiles[0].Name, 0
+		},
 		// The demo holds no credential; this stands for one.
 		Secrets:     []string{"sk-demo-never-held"},
 		Refreshable: "claude-main",
