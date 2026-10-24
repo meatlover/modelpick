@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultBaseURL   = "https://chatgpt.com"
-	defaultUserAgent = "modelpick/0.1.0-dev"
+	defaultUserAgent = "modelpick"
 	usagePath        = "/backend-api/wham/usage"
 	maxBody          = 1 << 20
 	expiredMessage   = "token expired — open Codex with this account to refresh it"
@@ -30,7 +30,7 @@ type Options struct {
 	HTTP      *http.Client
 	Now       func() time.Time
 	LookPath  platform.LookPathFunc
-	UserAgent string // default "modelpick/0.1.0-dev"
+	UserAgent string // default "modelpick"; the real version comes from app.DefaultDeps
 }
 
 // Adapter implements adapter.Adapter for Codex.

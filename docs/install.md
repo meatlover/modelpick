@@ -25,21 +25,22 @@ Linux and macOS, on amd64 and arm64. Windows is not supported.
 ```
 git clone git@github.com:meatlover/modelpick.git
 cd modelpick
-go build -ldflags "-X github.com/meatlover/modelpick/internal/cli.Version=0.1.0" \
-  -o ~/.local/bin/modelpick ./cmd/modelpick
+git checkout v0.2.0
+go build -o ~/.local/bin/modelpick ./cmd/modelpick
 ```
 
 Put the binary anywhere on your `PATH`; `~/.local/bin` is only an example.
-Without the `-ldflags` part the binary reports version `0.1.0-dev`. The version
-appears only in the `User-Agent` of usage calls.
+A build at a release tag reports that release's version; a build of `main`
+between releases reports the next version with `-dev`. The version appears only
+in the `User-Agent` of usage calls.
 
 ### With `go install`
 
 ```
-go install github.com/meatlover/modelpick/cmd/modelpick@v0.1.0
+go install github.com/meatlover/modelpick/cmd/modelpick@v0.2.0
 ```
 
-This needs the `v0.1.0` tag on GitHub. It installs into
+This needs the `v0.2.0` tag on GitHub. It installs into
 `$(go env GOPATH)/bin`. While the repository is private, Go
 must be told not to use the public module proxy for it, and git must be able
 to authenticate to GitHub:
@@ -47,9 +48,6 @@ to authenticate to GitHub:
 ```
 export GOPRIVATE=github.com/meatlover/modelpick
 ```
-
-`go install` does not set the version string, so the binary reports
-`0.1.0-dev`.
 
 ## First setup
 
