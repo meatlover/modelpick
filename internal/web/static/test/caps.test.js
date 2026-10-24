@@ -163,29 +163,30 @@ export const cases = [
   ["lineParts pace", () => json(lineParts("pace")), `["Cap at time elapsed + ","%"]`],
   ["capLine fixed 90", () => capLine({ kind: "fixed", n: 90 }), "Cap at 90%"],
   ["capLine pace 10", () => capLine({ kind: "pace", n: 10 }), "Cap at time elapsed + 10%"],
-  // The bar is 240 px; the range's thumb is 14 px, so the range sits 7 px
+  // The bar is 196 px, the editor's width for "Cap at time elapsed + 50%"
+  // (owner, 2026-10-24); the range's thumb is 14 px, so the range sits 7 px
   // out on each side and its thumb centre meets x at every value.
   ["barGeometry fixed 90", () => json(barGeometry({ kind: "fixed", n: 90 })),
-    `{"x":216,"left":-7,"width":254,"range":{"min":0,"max":100,"value":90}}`],
+    `{"x":176.4,"left":-7,"width":210,"range":{"min":0,"max":100,"value":90}}`],
   ["barGeometry fixed 0", () => json(barGeometry({ kind: "fixed", n: 0 })),
-    `{"x":0,"left":-7,"width":254,"range":{"min":0,"max":100,"value":0}}`],
+    `{"x":0,"left":-7,"width":210,"range":{"min":0,"max":100,"value":0}}`],
   ["barGeometry fixed 120 clamps to the end", () => json(barGeometry({ kind: "fixed", n: 120 })),
-    `{"x":240,"left":-7,"width":254,"range":{"min":0,"max":100,"value":100}}`],
+    `{"x":196,"left":-7,"width":210,"range":{"min":0,"max":100,"value":100}}`],
   // Pace (owner, rounds 3 and 6): N runs 5–50 and sits at elapsed + N
-  // (50% = 120 px), so the range starts at 55% (132 px) for pace+5 and
-  // ends at 100% for pace+50. The old pace+0-at-120 px case is that owner
+  // (50% = 98 px), so the range starts at 55% (107.8 px) for pace+5 and
+  // ends at 100% for pace+50. The old pace+0-at-50% case is that owner
   // spec change.
   ["barGeometry pace+10 at 60%", () => json(barGeometry({ kind: "pace", n: 10 })),
-    `{"x":144,"left":125,"width":122,"range":{"min":5,"max":50,"value":10}}`],
+    `{"x":117.6,"left":100.8,"width":102.2,"range":{"min":5,"max":50,"value":10}}`],
   ["barGeometry pace+5 at 55%", () => json(barGeometry({ kind: "pace", n: 5 })),
-    `{"x":132,"left":125,"width":122,"range":{"min":5,"max":50,"value":5}}`],
+    `{"x":107.8,"left":100.8,"width":102.2,"range":{"min":5,"max":50,"value":5}}`],
   ["barGeometry hand-written pace+2 drawn at pace+5",
     () => json([barGeometry({ kind: "pace", n: 2 }).x, barGeometry({ kind: "pace", n: 2 }).range.value]),
-    "[132,5]"],
-  ["barGeometry pace+50 at the end", () => barGeometry({ kind: "pace", n: 50 }).x, 240],
+    "[107.8,5]"],
+  ["barGeometry pace+50 at the end", () => barGeometry({ kind: "pace", n: 50 }).x, 196],
   ["barGeometry hand-written pace+60 drawn at the end, range at 50",
     () => json([barGeometry({ kind: "pace", n: 60 }).x, barGeometry({ kind: "pace", n: 60 }).range.value]),
-    "[240,50]"],
+    "[196,50]"],
   ["barGeometry pace thumb centre meets x at every N", () => {
     const off = [];
     for (let n = 5; n <= 50; n++) {

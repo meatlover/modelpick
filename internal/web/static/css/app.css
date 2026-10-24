@@ -795,10 +795,37 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 .p-card {
   display: flex;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 12px 18px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* The names of the card's dropdowns, once above the cards (owner,
+   2026-10-24): the card's columns, without its frame (the frame's 1 px
+   goes into the padding); the hidden Remove keeps the same width. */
+.p-cols {
+  display: flex;
+  gap: 16px;
+  margin-bottom: -10px;
+  padding: 0 19px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.p-cols-names {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 0.8fr);
+  gap: 12px;
+}
+
+.p-cols-side {
+  visibility: hidden;
+  min-height: 0;
+  height: 0;
 }
 
 /* The row above the cards: Global default cap, then the Example. It has
@@ -846,23 +873,20 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   gap: 10px;
 }
 
-/* An illustration, not an editable box. Its width is a card box's
-   (content-box 104 px), so a longer text cannot widen it. Both boxes
-   take the default box's background, so the solid one does not look
-   clickable (owner, round 5); only the border tells them apart. */
+/* An illustration, not an editable box: one line like a card's box, as
+   wide as its text. Both boxes take the default box's background, so the
+   solid one does not look clickable (owner, round 5); only the border
+   tells them apart. */
 .p-defcap .cap-box {
-  width: 104px;
   cursor: default;
   background: var(--default-bg);
 }
 
 /* .cap-val keeps its 15 px line, so the box is as tall as a card's; the
-   text inside is smaller so "customized cap" fits 104 px. */
+   text inside is smaller. */
 .p-defcap .cap-val {
   width: auto;
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .p-defcap-val {
@@ -1003,15 +1027,36 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   font-weight: 600;
 }
 
+/* Two rows (owner, 2026-10-24): the dropdowns, then the caps and the
+   schedules. The schedules sit at the right end of the caps line; when
+   they do not fit there they take their own line, from the left. The
+   spacer between them (::after, ordered between) grows on the caps line
+   and stays there when the schedules wrap. */
 .p-card-main {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.p-card-main::after {
+  content: "";
+  flex: 1 0 0;
+  order: 2;
+}
+
+.p-card-main > .p-caps {
+  order: 1;
+}
+
+.p-card-main > .p-chips {
+  order: 3;
 }
 
 .p-selects {
+  flex: 1 0 100%;
   display: grid;
   /* Account / Model / Thinking: the model ids are the longest values. */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 0.8fr);
@@ -1075,15 +1120,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   gap: 6px;
 }
 
-/* An empty line as tall as a field label (same font, same gap), so Remove
-   is centred on the row of selects; 2 px centres the 36 px button on the
-   40 px select. */
-.p-card-side::before {
-  content: "\200b";
-  font-size: 12px;
-  font-weight: 600;
-}
-
+/* 2 px centres the 36 px Remove on the 40 px dropdowns beside it. */
 .p-card-side .btn {
   margin-block: 2px;
 }
@@ -1103,13 +1140,13 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 /* content-box as in the mockup: 104 px inside the padding. A configured
    box (fixed or pace) has a solid neutral frame, a default one a dashed
    frame; blue is only the open editing frame (owner, 2026-10-23). */
+/* One line, "5h 90%", 32 px tall (owner, 2026-10-24). */
 .cap-box {
   box-sizing: content-box;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 104px;
-  padding: 8px 12px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid var(--input-border);
   background: var(--surface);
@@ -1139,7 +1176,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .cap-val,
 .cap-edit-val {
-  width: 80px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -1148,12 +1184,13 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 .cap-val {
+  width: 4.5ch;
   cursor: inherit;
 }
 
 /* "pace+10%" is wider than "90%". */
 .cap-box.is-wide .cap-val {
-  width: 88px;
+  width: 8.5ch;
 }
 
 .cap-box.is-default .cap-val {
@@ -1161,12 +1198,31 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--muted);
 }
 
+/* An open box keeps its place as a hidden ghost; the editor floats from
+   there over the rest of the card and what is below (owner, 2026-10-24),
+   so opening it moves nothing. */
+.cap-anchor {
+  position: relative;
+}
+
+.cap-ghost {
+  visibility: hidden;
+}
+
+.cap-anchor > .cap-edit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  box-shadow: 0 10px 28px var(--shadow-pop);
+}
+
 /* The open box: the frame itself shows focus. */
 .cap-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 272px;
+  width: 224px; /* the bar (caps.js BAR, 196 px) and 2 × (12 + 2) */
   padding: 8px 12px 10px;
   border-radius: 8px;
   border: 2px solid var(--accent);
@@ -1247,7 +1303,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .cap-bar {
   position: relative;
-  width: 240px;
+  width: 196px; /* caps.js BAR */
   height: 10px;
   margin: 10px 0 6px;
   border-radius: 5px;
@@ -1360,6 +1416,18 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .p-cols {
+    display: none;
+  }
+
+  .p-field .vh {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    clip: auto;
+  }
+
   .p-list {
     max-width: none;
   }
@@ -1407,7 +1475,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   position: relative;
 }
 
-/* caps.js's "+ caps" on an uncapped card is the same dashed pill. */
+/* caps.js's "+ caps" on an uncapped card is dashed too, but a rectangle:
+   caps are rectangles, schedules pills (owner, 2026-10-24). */
 .sched-add,
 .cap-addcaps {
   min-height: 32px;
@@ -1420,12 +1489,15 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   cursor: pointer;
 }
 
+.cap-addcaps {
+  border-radius: 8px;
+}
+
 /* caps.js's "No caps", after a card's boxes: a quiet button like Remove,
-   level with a closed box (52 px: 8 px above a 36 px button) even while an
-   editor is open beside it, which is taller. */
+   a 32 px rectangle like the boxes beside it. */
 .cap-nocaps {
-  align-self: flex-start;
-  margin-top: 8px;
+  min-height: 32px;
+  border-radius: 8px;
 }
 
 /* "(default)" after "Cap at 95%" on a box that uses the default cap. */

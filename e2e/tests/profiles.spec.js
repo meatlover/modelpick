@@ -190,6 +190,9 @@ test("a touched default box is saved as set, even at the default value", async (
   await expect(c4.locator(".cap-trash")).toBeVisible();
   await capBox(c4).press("Enter");
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [95], "95 typed is saved as 95");
+  // The open editor floats over the boxes to its right: leave it first.
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await expect(c4.locator(".cap-edit")).toHaveCount(0);
   const second = c4.getByRole("textbox", { name: /cap$/ }).nth(1);
   await second.click();
   await c4.getByRole("button", { name: "Time elapsed + N" }).click();
@@ -211,9 +214,9 @@ test("a drag on a default box saves it as set", async ({ page }) => {
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
   await capBox(c4).click();
   const r = await c4.getByRole("slider").boundingBox();
-  // The thumb's centre at 95: the range overhangs the 240 px bar by half
-  // a 14 px thumb on each side.
-  const at95 = r.x + 7 + (240 * 95) / 100;
+  // The thumb's centre at 95: the range overhangs the bar by half a 14 px
+  // thumb on each side.
+  const at95 = r.x + 7 + ((r.width - 14) * 95) / 100;
   const y = r.y + r.height / 2;
   await page.mouse.move(at95, y);
   await page.mouse.down();
