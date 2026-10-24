@@ -24,4 +24,12 @@ function expectUnchanged(configPath, before) {
   expect(fs.readFileSync(configPath, "utf8")).toBe(before);
 }
 
-module.exports = { readConfig, expectConfig, expectUnchanged };
+// handEdit rewrites the file the way a user's editor would: mutate gets the
+// parsed config and changes it in place.
+function handEdit(configPath, mutate) {
+  const cfg = readConfig(configPath);
+  mutate(cfg);
+  fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\n");
+}
+
+module.exports = { readConfig, expectConfig, expectUnchanged, handEdit };
