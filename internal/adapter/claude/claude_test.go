@@ -641,3 +641,17 @@ func TestUserAgentProbeNotCachedOnFailure(t *testing.T) {
 		t.Errorf("probe ran %d times, want 2 (success is cached)", calls)
 	}
 }
+
+func TestIsDefaultConfigDir(t *testing.T) {
+	for dir, want := range map[string]bool{
+		"/home/u/.claude":      true,
+		"/home/u/.claude/":     true,
+		"/home/u/x/../.claude": true,
+		"/home/u/.claude-rec":  false,
+		"/other/.claude":       false,
+	} {
+		if got := IsDefaultConfigDir(dir, "/home/u"); got != want {
+			t.Errorf("IsDefaultConfigDir(%q) = %v, want %v", dir, got, want)
+		}
+	}
+}

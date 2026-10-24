@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -13,7 +14,10 @@ import (
 // runPick is `modelpick pick <profile> [--refresh]`: the result JSON on
 // stdout, its exit code returned.
 func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
-	profile, refresh, err := parsePickArgs(args)
+	profile, refresh, err := parseProfileArgs("pick", args)
+	if err == nil && profile == "" {
+		err = errors.New("pick: missing <profile>") // Task 4 replaces this with the table
+	}
 	if err != nil {
 		// A launcher reads stdout: it gets a failed result, the user the usage.
 		res := core.Failed(profile, err.Error())
@@ -26,23 +30,21 @@ func runPick(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	return res.ExitCode()
 }
 
-// parsePickArgs returns the profile seen so far even on error, so the
-// failed result can name it.
-func parsePickArgs(args []string) (profile string, refresh bool, err error) {
+// parseProfileArgs parses `<cmd> <profile> [--refresh]`. It returns the
+// profile seen so far even on error, so a failed result can name it. A
+// missing profile is not an error here: callers report it.
+func parseProfileArgs(cmd string, args []string) (profile string, refresh bool, err error) {
 	for _, a := range args {
 		switch {
 		case a == "--refresh":
 			refresh = true
 		case strings.HasPrefix(a, "-"):
-			return profile, false, fmt.Errorf("pick: unknown flag %q", a)
+			return profile, false, fmt.Errorf("%s: unknown flag %q", cmd, a)
 		case profile != "":
-			return profile, false, fmt.Errorf("pick: unexpected argument %q", a)
+			return profile, false, fmt.Errorf("%s: unexpected argument %q", cmd, a)
 		default:
 			profile = a
 		}
-	}
-	if profile == "" {
-		return "", false, fmt.Errorf("pick: missing <profile>")
 	}
 	return profile, refresh, nil
 }

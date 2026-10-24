@@ -177,6 +177,18 @@ case "$(echo "$out" | jq -r .vendor)" in
 esac
 ```
 
+Or let the shell do the parsing: `modelpick env` prints the same decision as
+`sh` export lines (and `false` when there is no choice), so a launcher can be
+
+```bash
+eval "$(modelpick env coder-difficult)" || exit 1
+case "$MODELPICK_VENDOR" in
+  claude) exec claude --model "$MODELPICK_MODEL" ;;   # CLAUDE_CONFIG_DIR is set or unset for you
+  codex)  exec codex -m "$MODELPICK_MODEL" ;;         # CODEX_HOME is set
+  opencode-go) exec opencode -m "$MODELPICK_MODEL" ;; # MODELPICK_KEY_FILE / _LINE name the key
+esac
+```
+
 The flags each tool takes for model and thinking level are the tool's own;
 check them against your installed versions. modelpick does not switch the
 OpenCode key for you: `account_ref.key_line` says which key was picked, and
