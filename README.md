@@ -41,12 +41,15 @@ modelpick ui [--port N] [--no-open]    a local page to read usage and edit the c
 ```
 
 `modelpick ui` serves a page on `127.0.0.1`, prints its URL and opens it.
-The page shows saved readings and calls a vendor only from its Refresh
-buttons (plus one first reading per run for an account that has none). Every
-edit applies to the config file at once, and only if it adds no `doctor`
-error. The first edit rewrites a hand-written file in a canonical layout;
-before it, the file is copied to `~/.cache/modelpick/config.before-ui.json`.
-One instance runs per user: a second `modelpick ui` opens the running one.
+The page shows saved readings. It calls a vendor only from its Refresh
+buttons and its Check all button (`doctor all`), which skip the floor like
+`--refresh`, and for one background first reading per run of an account that
+has none, which keeps the floor. None of them passes a server `Retry-After`
+or an expired token. Every edit applies to the config file at once, and only
+if it adds no `doctor` error. The first edit rewrites a hand-written file in a
+canonical layout; before it, the file is copied to
+`~/.cache/modelpick/config.before-ui.json`. One instance runs per user: a
+second `modelpick ui` opens the running one.
 See the [admin guide](docs/admin.md#the-ui-modelpick-ui).
 
 `--refresh` forces a usage call even when the last reading is younger than the
@@ -131,6 +134,10 @@ need Node.js 18 or later. Install the locked packages and the browser once:
 ```sh
 cd e2e && npm ci && npx playwright install chromium
 ```
+
+On a fresh Linux machine Chromium also needs system libraries; install it with
+`npx playwright install --with-deps chromium` instead (it runs the system
+package manager, so it may ask for sudo).
 
 `bash scripts/e2e.sh` runs them alone. It builds the test server
 `cmd/modelpick-e2e-server` (the live back end over fake vendors, in a temp

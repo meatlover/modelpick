@@ -44,8 +44,8 @@ starts it with an empty state; the old file stays until you delete it.
 | `ls` | Every configured account, subject to the floor. | Same. |
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
-| `doctor` | None; `doctor all` makes one usage call per account without a fresh reading. | Runs `opencode models opencode-go`; reads the Keychain. |
-| `ui` | Only the page's Refresh buttons, and one first reading per run for an account with no saved reading. Both go through the floor. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
+| `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After`, an expired token, or a tool or credential error. | Runs `opencode models opencode-go`; reads the Keychain. |
+| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After` or an expired token. | Runs `opencode models opencode-go` once per run per account; reads the Keychain. |
 
 The endpoints are undocumented and may change:
 
@@ -108,15 +108,18 @@ page works only in a browser that opened that URL.
   reuse.
 
 **Usage.** Opening or reloading the page shows the saved readings only, as the
-last `pick`, `ls` or Refresh stored them; it calls no vendor. Only the Refresh buttons call out, like
-`ls --refresh` (a `Retry-After` still holds). One exception: an account with
-no saved reading gets one first reading in the background per run, when the
-server starts or the account is added. It is an ordinary read, so the floor,
-`Retry-After` and an expired token all apply.
+last `pick`, `ls` or Refresh stored them; it calls no vendor. Three things
+call out. The Refresh buttons, like `ls --refresh`, skip the floor; a
+`Retry-After` and an expired token still hold. Check all runs `doctor all`
+(below). And an account with no saved reading gets one first reading in the
+background per run, when the server starts or the account is added; it is an
+ordinary read, so the floor, `Retry-After` and an expired token all apply.
 
 **Doctor status.** The top-right status lists every `doctor` problem, and its
 Check all button runs `doctor all`, which calls the vendor once for each
-account with no fresh reading.
+account with no fresh reading. A Check all sent while one runs (from another
+tab) makes no calls of its own: it waits for the running one and shows its
+result.
 
 **Editing.** Every change applies to the file at once; there is no Save
 button and no undo. A change is refused, and the file left as it was, when it

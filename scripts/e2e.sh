@@ -8,6 +8,8 @@ fix="cd e2e && npm ci && npx playwright install chromium"
 missing() {
   echo "e2e: $1; install the browser tests' tools with:" >&2
   echo "  $fix" >&2
+  echo "(on a fresh Linux machine, which lacks Chromium's system libraries," >&2
+  echo "end with: npx playwright install --with-deps chromium)" >&2
   exit 1
 }
 
