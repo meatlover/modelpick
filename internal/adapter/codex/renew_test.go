@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestFakeAppServer(t *testing.T) {
 		os.Exit(2)
 	}
 	defer logf.Close()
-	rec := map[string]any{"codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY")}
+	rec := map[string]any{"codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY"), "pid": os.Getpid()}
 	var methods []string
 	save := func() {
 		rec["methods"] = methods
@@ -74,12 +75,16 @@ func TestFakeAppServer(t *testing.T) {
 			reply(`{"id":1,"result":{"account":{}}}`)
 		}
 	}
+	if mode == "lingers" {
+		time.Sleep(time.Minute) // ignores stdin EOF, as a server that never exits would
+	}
 }
 
 type fakeLog struct {
 	Methods     []string
 	CodexHome   string          `json:"codex_home"`
 	APIKey      string          `json:"openai_api_key"`
+	PID         int             `json:"pid"`
 	Initialize  json.RawMessage `json:"initialize"`
 	AccountRead json.RawMessage `json:"account_read"`
 }
@@ -123,6 +128,23 @@ func TestRenewProtocol(t *testing.T) {
 	}
 	if l.CodexHome != home {
 		t.Errorf("CODEX_HOME = %q, want %q", l.CodexHome, home)
+	}
+}
+
+func TestRenewServerLingers(t *testing.T) {
+	start := time.Now()
+	err, l, _ := fakeRenew(t, "lingers", context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 4*time.Second {
+		t.Errorf("took %v", d)
+	}
+	if l.PID == 0 {
+		t.Fatal("fake logged no pid")
+	}
+	if err := syscall.Kill(l.PID, 0); err == nil {
+		t.Errorf("child %d still running", l.PID)
 	}
 }
 

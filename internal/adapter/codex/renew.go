@@ -24,6 +24,10 @@ const maxReason = 200
 // maxLine bounds one JSON line from the app server.
 const maxLine = 1 << 20
 
+// exitGrace is how long a server that has answered gets to exit on stdin EOF
+// before it is killed.
+const exitGrace = 2 * time.Second
+
 // renewWaitDelay bounds how long Wait lingers on I/O after the process is killed.
 const renewWaitDelay = 2 * time.Second
 
@@ -70,10 +74,19 @@ func (a *Adapter) Renew(ctx context.Context, acct adapter.Account) error {
 
 	rerr := a.converse(ctx, stdin, bufio.NewScanner(stdout))
 	stdin.Close()
-	if rerr != nil {
-		cmd.Process.Kill()
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	if rerr == nil {
+		// The server should exit on stdin EOF; if it lingers, the answer is
+		// already in hand, so its exit status is not part of the result.
+		select {
+		case <-done:
+			return nil
+		case <-time.After(exitGrace):
+		}
 	}
-	cmd.Wait()
+	cmd.Process.Kill()
+	<-done
 	return rerr
 }
 
