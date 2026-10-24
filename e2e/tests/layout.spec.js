@@ -98,17 +98,28 @@ test("an editor opened near the window's bottom is scrolled into view", async ({
   expect(f.top).toBeGreaterThanOrEqual(0);
 });
 
+// Which card fits depends on the font (CI's Linux font is wider than
+// macOS's), so each case is far from the edge: card 1's two caps and one
+// short schedule fit with room to spare at 1280 px; card 3's three caps and
+// two schedules cannot fit at 900 px. The width check says when a case's
+// setup, not the layout, is what changed.
 test("schedules: right end of the caps line, else left of their own line", async ({ page }) => {
   await login(page, server.url);
-  handEdit(server.configPath, (c) => { c.profiles.coder[2].skip_during = ["deepseek-peak", "night"]; });
-  for (const [width, ownLine] of [[1600, false], [900, true]]) {
+  handEdit(server.configPath, (c) => {
+    c.profiles.coder[0].skip_during = ["night"];
+    c.profiles.coder[2].skip_during = ["deepseek-peak", "night"];
+  });
+  for (const [width, n, ownLine] of [[1280, 1, false], [900, 3, true]]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.reload();
     await page.getByRole("link", { name: "Profiles", exact: true }).click();
-    const c3 = card(page, 3);
-    const caps = await rect(c3.locator(".p-caps"));
-    const chips = await rect(c3.locator(".p-chips"));
-    const main = await rect(c3.locator(".p-card-main"));
+    const c = card(page, n);
+    const caps = await rect(c.locator(".p-caps"));
+    const chips = await rect(c.locator(".p-chips"));
+    const main = await rect(c.locator(".p-card-main"));
+    const fits = caps.width + 10 + chips.width <= main.width;
+    expect(fits, `${width}px, card ${n}: the setup ${ownLine ? "fits, so cannot test wrapping" : "no longer fits"}`)
+      .toBe(!ownLine);
     if (ownLine) {
       expect(chips.top, `${width}px: below the caps`).toBeGreaterThanOrEqual(caps.bottom);
       expect(Math.abs(chips.left - main.left), `${width}px: at the left`).toBeLessThanOrEqual(1);
