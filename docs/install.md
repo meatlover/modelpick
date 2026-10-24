@@ -34,6 +34,8 @@ A build at a release tag reports that release's version; a build of `main`
 between releases reports the next version with `-dev`. The version appears only
 in the `User-Agent` of usage calls.
 
+To keep a checkout's install current, set `git config modelpick.autodeploy true`; see the README's Development section.
+
 ### With `go install`
 
 ```
