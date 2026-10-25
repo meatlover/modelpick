@@ -49,19 +49,21 @@ function selectingBar(repaint) {
       } }, "Cancel"));
 }
 
-// lbBar is the row at the top of the choice list. repaint(key) redraws the
-// tab with focus on data-key key; first is the first checkbox's data-key.
-export function lbBar(profile, first, repaint) {
+// lbBar is the row at the top of the choice list, or null when fewer than
+// two plain cards could be grouped. plain is the profile's positions that
+// are not groups; repaint(key) redraws the tab with focus on data-key key.
+export function lbBar(profile, plain, repaint) {
   if (selection(profile)) return selectingBar(repaint);
+  if (plain.length < 2) return null;
   return h("div", { class: "p-lb" },
     h("button", { type: "button", class: "btn", "data-key": "lb-start",
       onClick: () => {
         sel = { profile, state: store.state, picked: new Map() };
-        repaint(first);
+        repaint(pickKey(plain[0].start));
       } }, "⇉ Load balance…"));
 }
 
-export function pickKey(index) {
+function pickKey(index) {
   return `c${index}-pick`;
 }
 

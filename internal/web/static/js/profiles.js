@@ -11,7 +11,7 @@ import { renderCaps } from "./caps.js";
 import { renderChips } from "./chips.js";
 import { wireReorder, dragHandle } from "./reorder.js";
 import { choiceLabels, choiceSubject, positions, profileHasError } from "./subjects.js";
-import { selection, endSelection, lbBar, lbCheck, isPicked, pickKey } from "./lbselect.js";
+import { selection, endSelection, lbBar, lbCheck, isPicked } from "./lbselect.js";
 
 export const uses = ["state", "doctor"];
 
@@ -527,18 +527,12 @@ function cards(v) {
   return ol;
 }
 
-// firstPick is the data-key of the first plain card's checkbox, or null.
-function firstPick(prof) {
-  const plain = positions(prof.choices).find((pos) => pos.group === 0);
-  return plain ? pickKey(plain.start) : null;
-}
-
 function profileMain(st, prof, red) {
   const v = hookCtxs({ st, prof, red, labels: choiceLabels(prof.choices), lb: selection(prof.name),
     ctxs: prof.choices.map((c, i) => ctxFor(prof.name, i, c)) });
   return h("div", { class: ["p-main", v.lb && "is-selecting"] },
     capRow(st, true),
-    lbBar(prof.name, firstPick(prof), repaint),
+    lbBar(prof.name, positions(prof.choices).filter((pos) => pos.group === 0), repaint),
     cols(),
     cards(v),
     h("button", { type: "button", class: "btn btn-lg btn-dashed p-add", "data-key": "add-choice", inert: Boolean(v.lb),

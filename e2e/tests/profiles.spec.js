@@ -863,6 +863,16 @@ test("Load balance: cards already in a group have no checkbox", async ({ page })
   await expect(card(page, 2).locator("input[type=checkbox]")).toHaveCount(0);
 });
 
+test("Load balance: the button shows only while two cards could be grouped", async ({ page }) => {
+  // Choice 1 and the group: one plain card, nothing to group it with.
+  await grouped(page, (c) => c.profiles.coder.splice(2, 2));
+  await expect(card(page, 1)).toBeVisible();
+  await expect(lbStart(page)).toHaveCount(0);
+  await card(page, 2).getByRole("button", { name: "Stop load balancing" }).click();
+  await expect(card(page, 3)).toBeVisible();
+  await expect(lbStart(page)).toBeVisible();
+});
+
 test("Load balance: the checkboxes work from the keyboard", async ({ page }) => {
   await lbStart(page).focus();
   await page.keyboard.press("Enter");
