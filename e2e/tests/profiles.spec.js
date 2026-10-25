@@ -386,9 +386,11 @@ test("Stop load balancing makes members plain choices in place", async ({ page }
   await card(page, 2).getByRole("button", { name: "Stop load balancing" }).click();
   await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "go-2", "codex-main", "claude-main"],
     "the members are plain, at the group's place");
+  // The file is written before the page redraws: until then choice 2 is
+  // still the frame, holding two Account fields.
+  await expect(page.getByRole("button", { name: "Stop load balancing" })).toHaveCount(0);
   await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
   await expect(card(page, 3).getByLabel("Account")).toHaveValue("go-2");
-  await expect(page.getByRole("button", { name: "Stop load balancing" })).toHaveCount(0);
 });
 
 test("+ Add Model inside a group adds a member", async ({ page }) => {
@@ -406,9 +408,10 @@ test("removing the last-but-one member dissolves the group", async ({ page }) =>
   await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();
   await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "codex-main", "claude-main"],
     "go-1 stays plain at the group's place");
-  await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
-  await expect(card(page, "2a")).toHaveCount(0);
+  // Wait for the redraw first, as above.
   await expect(page.getByRole("button", { name: "Stop load balancing" })).toHaveCount(0);
+  await expect(card(page, "2a")).toHaveCount(0);
+  await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
 });
 
 test("a doctor finding on choice 2b marks that member card", async ({ page }) => {
