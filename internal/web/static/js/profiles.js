@@ -12,6 +12,7 @@ import { renderChips } from "./chips.js";
 import { wireReorder, dragHandle } from "./reorder.js";
 import { choiceLabels, choiceSubject, positions, profileHasError } from "./subjects.js";
 import { selection, endSelection, lbBar, lbCheck, isPicked } from "./lbselect.js";
+import { locateChoice } from "./locate.js";
 
 export const uses = ["state", "doctor"];
 
@@ -250,23 +251,35 @@ function ctxFor(profile, index, choice) {
     ctxs = new Map();
   }
   const key = `${profile}\u0000${index}`;
-  if (!ctxs.has(key)) ctxs.set(key, { profile, index, key, base: choice, choice: shownChoice(key, choice), sha: ctxSha });
+  if (!ctxs.has(key)) ctxs.set(key, { profile, index, key, base: choice, choice: shownChoice(profile, index, choice), sha: ctxSha });
   return ctxs.get(key);
 }
 
 // pendingSets lists the choice.sets queued or in flight, oldest first, as
-// {key, sha, field, value}: the card's ctx key and sha when the edit was
-// made, and the value the card then showed.
+// {ctx, field, value, at}: the ctx of the card the edit was made on, the
+// value the card then showed, and, once the op is built, the index the
+// server applies it at.
 let pendingSets = [];
 
-// shownChoice is base with the pending edits of card key over it, those
-// still at this index (only this page's field edits came after the state
-// each was made on), so that a redraw from an earlier op's reload shows
-// what the user chose rather than the file before it.
-function shownChoice(key, base) {
+// pendingAt is the index of pending edit p's card in the state now: its
+// own index while only this page's field edits came after the state the
+// card was drawn from; else where the server will find the card
+// (locateChoice), so that an edit made before an op of this page moved the
+// card shows on the moved card and on no other; -1 for nowhere.
+function pendingAt(p) {
+  const { ctx } = p;
+  if (onlyFieldEdits(ctx.sha)) return ctx.index;
+  const prof = store.state && store.state.profiles.find((q) => q.name === ctx.profile);
+  return prof ? locateChoice(prof.choices, ctx.index, expectOf(ctx), ctx.memberOf ? ctx.memberOf() : null) : -1;
+}
+
+// shownChoice is base, the choice at index of profile, with the pending
+// edits of the card there over it, so that a redraw from an earlier op's
+// reload shows what the user chose rather than the file before it.
+function shownChoice(profile, index, base) {
   let c = base;
   for (const p of pendingSets) {
-    if (p.key === key && onlyFieldEdits(p.sha)) c = { ...c, [p.field]: p.value };
+    if (p.ctx.profile === profile && pendingAt(p) === index) c = { ...c, [p.field]: p.value };
   }
   return c;
 }
@@ -288,25 +301,36 @@ function expectOf(ctx) {
 // built when its turn comes, value being build(expect) when given, so that
 // it changes what earlier edits left. Answered, the ctx advances.
 function sendSet(ctx, field, value, build = () => value) {
-  const p = { key: ctx.key, sha: ctx.sha, field, value };
+  const p = { ctx, field, value, at: -1 };
   pendingSets.push(p);
-  ctx.choice = shownChoice(ctx.key, ctx.base);
+  ctx.choice = shownChoice(ctx.profile, ctx.index, ctx.base);
   return sendOp("choice.set", () => {
     const expect = expectOf(ctx);
-    return { profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field, value: build(expect) };
+    const memberOf = ctx.memberOf();
+    const prof = store.state.profiles.find((q) => q.name === ctx.profile);
+    p.at = prof ? locateChoice(prof.choices, ctx.index, expect, memberOf) : -1;
+    return { profile: ctx.profile, index: ctx.index, expect, member_of: memberOf, field, value: build(expect) };
   }, { done: (res) => settle(ctx, p, res) });
 }
 
 // settle drops the answered edit p: ctx's base moves to what the op left
-// (choice.set keeps the index, and no other op runs between the op and
-// done), and ctx and the card's ctx drawn since show what is still pending.
+// at the index the server applied it at (choice.set keeps every index, and
+// no other op runs between the op and done; unknown, base stays and the
+// card's next edit is refused rather than sent to another card). Every card
+// then shows what is still pending, redrawn if that changed.
 function settle(ctx, p, res) {
   pendingSets = pendingSets.filter((q) => q !== p);
-  if (res.ok && store.state) {
+  if (res.ok && store.state && p.at >= 0) {
     const prof = store.state.profiles.find((q) => q.name === ctx.profile);
-    if (prof && prof.choices[ctx.index]) ctx.base = prof.choices[ctx.index];
+    if (prof && prof.choices[p.at]) ctx.base = prof.choices[p.at];
   }
-  for (const c of new Set([ctx, ctxs.get(ctx.key)])) if (c) c.choice = shownChoice(c.key, c.base);
+  let changed = false;
+  for (const c of ctxs.values()) {
+    const shown = shownChoice(c.profile, c.index, c.base);
+    if (JSON.stringify(shown) !== JSON.stringify(c.choice)) changed = true;
+    c.choice = shown;
+  }
+  if (changed) paint();
 }
 
 async function setField(ctx, field, value) {

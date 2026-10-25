@@ -90,17 +90,13 @@ func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 // configItems is a profile's list in the file's shape: a plain choice, or a
 // group holding its members.
 func configItems(choices []core.Choice) []any {
-	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
-	for i, c := range choices {
-		groups[i], lbs[i] = c.Group, c.LoadBalance
-	}
 	var items []any
-	for _, pos := range core.Positions(groups, lbs) {
+	for _, pos := range core.Positions(core.ChoiceGroups(choices)) {
 		members := make([]configChoice, 0, pos.End-pos.Start)
 		for _, c := range choices[pos.Start:pos.End] {
 			members = append(members, newConfigChoice(c))
 		}
-		if groups[pos.Start] == 0 {
+		if choices[pos.Start].Group == 0 {
 			items = append(items, members[0])
 			continue
 		}

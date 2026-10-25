@@ -334,7 +334,7 @@ func (p parser) profiles(docs map[string][]DocChoice, cfg *Config) (map[string][
 // where each flat choice sits in the file: profiles.p[2] for a plain choice,
 // profiles.p[1].choices[0] for a group member.
 func (p parser) groupPaths(prefix string, ds []DocChoice) ([]string, error) {
-	groups, lbs := docGroups(ds)
+	groups, lbs := DocGroups(ds)
 	paths := make([]string, len(ds))
 	for k, pos := range Positions(groups, lbs) {
 		item := fmt.Sprintf("%s[%d]", prefix, k)

@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
-const { expectConfig, expectUnchanged, readConfig } = require("./config");
+const { expectConfig, expectUnchanged, readConfig, handEdit } = require("./config");
 
 let server;
 
@@ -84,4 +84,23 @@ test("confirming removes the account and its choices", async ({ page }) => {
   await expectConfig(server.configPath, (c) => c.profiles.tester, [tester[0], tester[2]],
     "tester lost only its second choice");
   await expect(rows(page).filter({ hasText: "go-2" })).toHaveCount(0);
+});
+
+test("a profile left with no choice is named in the dialog and removed too", async ({ page }) => {
+  handEdit(server.configPath, (c) => {
+    c.profiles.solo = [c.profiles.tester[1]];
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Remove account go-2" }).click();
+  const dlg = page.getByRole("dialog", { name: FIRST });
+  await expect(dlg).toContainText("solo: choice 1 (opencode-go/deepseek-v4.1)");
+  await expect(dlg).toContainText("solo has no other choice and is removed too");
+  await expect(dlg).toContainText(LINE);
+  const tester = readConfig(server.configPath).profiles.tester;
+  await dlg.getByRole("button", { name: "Remove account and 2 choices", exact: true }).click();
+  await expectConfig(server.configPath, (c) => Object.keys(c.profiles).sort(), ["coder", "tester"],
+    "solo is gone with its only choice");
+  await expectConfig(server.configPath, (c) => c.profiles.tester, [tester[0], tester[2]],
+    "tester lost only its second choice");
+  await expectConfig(server.configPath, (c) => Object.keys(c.accounts).includes("go-2"), false, "go-2 is gone");
 });

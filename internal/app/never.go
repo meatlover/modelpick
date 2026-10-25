@@ -19,20 +19,13 @@ func scheduleFindings(cfg *core.Config, add func(sev, subject, msg string)) {
 // profileLabels names each flat choice of a profile by its position ("1",
 // "2a", "2b", …): the form doctor subjects use.
 func profileLabels(choices []core.Choice) []string {
-	groups := make([]int, len(choices))
-	for i, c := range choices {
-		groups[i] = c.Group
-	}
+	groups, _ := core.ChoiceGroups(choices)
 	return core.Labels(groups)
 }
 
 // profilePositions folds a profile's choices into positions.
 func profilePositions(choices []core.Choice) []core.Position {
-	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
-	for i, c := range choices {
-		groups[i], lbs[i] = c.Group, c.LoadBalance
-	}
-	return core.Positions(groups, lbs)
+	return core.Positions(core.ChoiceGroups(choices))
 }
 
 // neverFindings warns about each position that an earlier position always

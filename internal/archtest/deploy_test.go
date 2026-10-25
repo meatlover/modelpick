@@ -11,7 +11,9 @@ import (
 )
 
 // TestDeployLocal runs the real scripts/deploy-local.sh, which builds three
-// binaries, into a temp install dir.
+// binaries, into a temp install dir. It runs it through a relative symlink
+// from another directory, so the script must find the repo from its real
+// path.
 func TestDeployLocal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds three binaries")
@@ -32,7 +34,22 @@ func TestDeployLocal(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "poisoned"))
 	t.Setenv("GIT_INDEX_FILE", filepath.Join(t.TempDir(), "poisoned-index"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
-	cmd := exec.Command("bash", "../../scripts/deploy-local.sh")
+	script, err := filepath.Abs("../../scripts/deploy-local.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := t.TempDir()
+	if err := os.Mkdir(filepath.Join(elsewhere, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(script, filepath.Join(elsewhere, "real")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../real", filepath.Join(elsewhere, "bin", "deploy")); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "bin/deploy")
+	cmd.Dir = elsewhere
 	cmd.Env = append(cleanEnv(), goEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -200,4 +217,69 @@ func TestPostRewriteGating(t *testing.T) {
 			t.Errorf("post-rewrite %s: ran = %v, want %v", tc.arg, ran(marker), tc.want)
 		}
 	}
+}
+
+// deployCommands is every command scripts/deploy-local.sh may run. The
+// script only installs: it never runs a binary it built and never starts,
+// stops or signals a process, so a command not on this list (a built
+// binary, kill, launchctl, …) fails TestDeployLocalRunsOnlyKnownCommands.
+var deployCommands = map[string]bool{
+	"set": true, "command": true, "echo": true, "exit": true, "cd": true, "dirname": true,
+	"readlink": true, "[": true, "trap": true, "local": true, "mktemp": true, "go": true,
+	"mv": true, "mkdir": true, "cp": true, "chmod": true, "sed": true, "git": true,
+	"build_to": true, "build_to()": true, "fi": true, "done": true, "for": true, "}": true,
+	"if": true, "then": true, "do": true, "else": true, "while": true, "!": true,
+}
+
+// TestDeployLocalRunsOnlyKnownCommands reads the word in command position
+// on every line and after each $( ; && || and |. It does not parse shell:
+// a command hidden in a string run by eval or trap is not seen, so the
+// script uses neither for anything but its cleanup trap.
+func TestDeployLocalRunsOnlyKnownCommands(t *testing.T) {
+	b, err := os.ReadFile("../../scripts/deploy-local.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range deployUnknownCommands(string(b)) {
+		t.Errorf("deploy-local.sh runs %s, which is not in deployCommands", bad)
+	}
+}
+
+func TestDeployCommandCheckCatches(t *testing.T) {
+	src := "set -e\nx=$(\"$dir/modelpick\" version)\ncmd/modelpick/modelpick ls\nif true; then pkill modelpick; fi\n"
+	got := deployUnknownCommands(src)
+	want := []string{"$dir/modelpick", "cmd/modelpick/modelpick", "true", "pkill"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("unknown commands %q, want %q", got, want)
+	}
+}
+
+var (
+	shellSeparators = regexp.MustCompile(`\$\(|;|&&|\|\||\|`)
+	shellAssignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\+)?=`)
+	shellKeywords   = map[string]bool{"if": true, "then": true, "do": true, "else": true, "while": true, "!": true}
+)
+
+func deployUnknownCommands(src string) []string {
+	var bad []string
+	for _, line := range strings.Split(src, "\n") {
+		if i := strings.Index(line, "#"); i >= 0 { // the script has no # inside ${…}
+			line = line[:i]
+		}
+		for _, seg := range shellSeparators.Split(line, -1) {
+			for _, w := range strings.Fields(seg) {
+				w = strings.Trim(w, `"'`)
+				if shellAssignment.MatchString(w) {
+					continue
+				}
+				if !deployCommands[w] {
+					bad = append(bad, w)
+				}
+				if !shellKeywords[w] {
+					break
+				}
+			}
+		}
+	}
+	return bad
 }

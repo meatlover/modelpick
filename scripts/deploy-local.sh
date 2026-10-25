@@ -2,6 +2,7 @@
 # Builds the three commands into cmd/<name>/<name> and installs modelpick.
 # Install only: it never runs a built binary and never starts, stops or
 # signals a process (a running `modelpick ui` keeps its old binary).
+# internal/archtest/deploy_test.go holds the list of commands it may run.
 #
 #   MODELPICK_INSTALL_DIR  install directory (default: $HOME/.local/bin)
 #
@@ -14,7 +15,17 @@ if ! command -v go >/dev/null 2>&1; then
   echo "modelpick: deploy-local: go is not on PATH" >&2
   exit 1
 fi
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# The repo is the parent of the script's real directory, so it also runs
+# through a symlink (macOS before 12.3 has no readlink -f).
+src=${BASH_SOURCE[0]}
+while [ -L "$src" ]; do
+  link=$(readlink "$src")
+  if [ "${link#/}" = "$link" ]; then
+    link=$(dirname "$src")/$link
+  fi
+  src=$link
+done
+cd "$(dirname "$src")/.."
 
 # Every temp file this run creates is removed on any exit; after the final mv
 # the removal is a no-op. The empty first element keeps "${tmps[@]}" valid

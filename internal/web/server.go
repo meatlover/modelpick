@@ -24,34 +24,38 @@ func NewServer(b Backend, port int, token string) http.Handler {
 		panic(err) // the embedded tree always has static/
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/ping", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/api/ping", only(http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, _ *http.Request) {
+	}))
+	mux.HandleFunc("/api/state", only(http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, normalState(b.State()))
-	})
-	mux.HandleFunc("GET /api/usage", func(w http.ResponseWriter, _ *http.Request) {
+	}))
+	mux.HandleFunc("/api/usage", only(http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, normalUsage(b.Usage()))
-	})
-	mux.HandleFunc("GET /api/doctor", func(w http.ResponseWriter, _ *http.Request) {
+	}))
+	mux.HandleFunc("/api/doctor", only(http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, normalDoctor(b.Doctor()))
-	})
-	mux.HandleFunc("/api/usage/{account}/refresh", postOnly(refreshHandler(b)))
-	mux.HandleFunc("/api/doctor/all", postOnly(func(w http.ResponseWriter, _ *http.Request) {
+	}))
+	mux.HandleFunc("/api/usage/{account}/refresh", only(http.MethodPost, refreshHandler(b)))
+	mux.HandleFunc("/api/doctor/all", only(http.MethodPost, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, normalDoctor(b.DoctorAll()))
 	}))
-	mux.HandleFunc("POST /api/op", opHandler(b))
+	mux.HandleFunc("/api/op", only(http.MethodPost, opHandler(b)))
 	mux.Handle("/", http.FileServerFS(sub))
 	return withHeaders(guard(mux, port, token))
 }
 
-// postOnly answers any other method 405 with Allow: POST. The routes it
-// wraps carry no method, because the catch-all "/" would otherwise turn a
-// wrong method into 404.
-func postOnly(next http.HandlerFunc) http.HandlerFunc {
+// only answers any method but method (and HEAD, for GET) 405 with Allow.
+// The routes it wraps carry no method, because the catch-all "/" would
+// otherwise turn a wrong method into 404.
+func only(method string, next http.HandlerFunc) http.HandlerFunc {
+	allow := method
+	if method == http.MethodGet {
+		allow = "GET, HEAD"
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", http.MethodPost)
+		if r.Method != method && (method != http.MethodGet || r.Method != http.MethodHead) {
+			w.Header().Set("Allow", allow)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -81,6 +85,11 @@ func opHandler(b Backend) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req OpRequest
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"reason": "request body too large"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"reason": "bad request body"})
 			return
 		}

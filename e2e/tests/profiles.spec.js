@@ -140,7 +140,7 @@ for (const [what, edit, shows] of [
 
 // An edit made on a card before a move's redraw is shown on that card only:
 // redrawn by the move, the card now at its old place does not show it.
-test("an edit made before a move's redraw is not shown on the card now in its place", async ({ page }) => {
+test("an edit made before a move's redraw shows on the moved card, not the one now in its place", async ({ page }) => {
   const mod = await modKey(page);
   const gate = await stateGate(page);
   await card(page, 4).focus();
@@ -151,9 +151,35 @@ test("an edit made before a move's redraw is not shown on the card now in its pl
   await expectConfig(server.configPath, (c) => coder(c)[2].model, "claude-fable-5-1", "the moved card's model");
   await expect.poll(() => gate.held(), { message: "the model edit answered, its reload held" }).toBe(1);
   await expect(card(page, 4).getByLabel("Model")).toHaveValue("opencode-go/deepseek-v4.1");
+  await expect(card(page, 3).getByLabel("Model")).toHaveValue("claude-fable-5-1");
   gate.open();
   await expect(card(page, 3).getByLabel("Model")).toHaveValue("claude-fable-5-1");
   await expect(card(page, 4).getByLabel("Model")).toHaveValue("opencode-go/deepseek-v4.1");
+});
+
+// Two edits on a card made before its move's redraw both reach that card,
+// not the card now at its old index (go-1, whose caps the second edit used
+// to replace).
+test("two edits made before a move's redraw both apply to the moved card", async ({ page }) => {
+  const mod = await modKey(page);
+  const gate = await stateGate(page);
+  const goBefore = coder(readConfig(server.configPath))[2];
+  await card(page, 4).focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, accountsOf, [ORIGINAL[0], ORIGINAL[1], ORIGINAL[3], ORIGINAL[2]], "sonnet third");
+  await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
+  await card(page, 4).getByRole("button", { name: "Add caps" }).click();
+  gate.pass(2); // the move's reload, then the model edit's
+  await expectConfig(server.configPath, (c) => Array.isArray(coder(c)[2].cap), true, "the moved card's caps");
+  await expect.poll(() => gate.held(), { message: "the caps edit answered, its reload held" }).toBe(1);
+  // Redrawn after the model edit, the moved card shows the caps in flight.
+  await expect(card(page, 3).getByLabel("Model")).toHaveValue("claude-fable-5-1");
+  await expect(card(page, 3).getByRole("button", { name: "Add caps" })).toHaveCount(0);
+  gate.open();
+  expect(coder(readConfig(server.configPath))[2].model).toBe("claude-fable-5-1");
+  expect(coder(readConfig(server.configPath))[3]).toEqual(goBefore);
+  await expect(card(page, 4).getByLabel("Model")).toHaveValue("opencode-go/deepseek-v4.1");
+  await expect(card(page, 3).getByRole("button", { name: "Add caps" })).toHaveCount(0);
 });
 
 // A refused edit stops showing: redrawn after another card's edit, the card

@@ -109,13 +109,14 @@ func TestPickGroupFallsThrough(t *testing.T) {
 	if r.LoadBalance != nil {
 		t.Errorf("LoadBalance = %+v, want nil for a plain choice", r.LoadBalance)
 	}
-	// The local check runs on every member first, in file order; then the
-	// shuffled walk (go-3, go-2) skips each with its own why.
+	// The shuffled walk reached go-3 before go-2, but every member's skip is
+	// listed in file order, each with its own why, so the output does not
+	// depend on the shuffle.
 	const m = "opencode-go/deepseek-v4.1"
 	want := []Skip{
 		{Account: "go-1", Model: m, Why: "credential missing (see errors)"},
-		{Account: "go-3", Model: m, Why: "5h window 96% >= cap 95"},
 		{Account: "go-2", Model: m, Why: "30d window 99.5% >= cap 98"},
+		{Account: "go-3", Model: m, Why: "5h window 96% >= cap 95"},
 	}
 	if !reflect.DeepEqual(r.Skipped, want) {
 		t.Errorf("skipped\n%v\nwant\n%v", r.Skipped, want)
