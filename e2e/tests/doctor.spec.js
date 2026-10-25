@@ -1,5 +1,5 @@
 // Doctor findings in a real browser: the status panel, the red states they
-// set on cards, links and rows, and each finding's Go to.
+// set on cards, links and rows, each finding's Go to, and Diagnose.
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
 const { handEdit } = require("./config");
@@ -64,7 +64,7 @@ async function flashed(loc) {
   await expect(loc).not.toHaveClass(/is-flash/, { timeout: 5000 });
 }
 
-test("the panel has a Go to per finding and no Check all", async ({ page }) => {
+test("the panel has a Go to per finding and no other button", async ({ page }) => {
   await server.send("tool opencode-go missing");
   await login(page, server.url);
   handEdit(server.configPath, (c) => { c.profiles.coder[0].thinking = "ultra"; });
@@ -74,7 +74,7 @@ test("the panel has a Go to per finding and no Check all", async ({ page }) => {
   for (const item of await panel(page).getByRole("listitem").all()) {
     await expect(item.getByRole("button", { name: /^Go to / })).toHaveCount(1);
   }
-  await expect(panel(page).getByRole("button", { name: /Check all/ })).toHaveCount(0);
+  await expect(panel(page).getByRole("button")).toHaveCount(2);
 });
 
 test("a finding about the whole file has no Go to", async ({ page }) => {
@@ -152,4 +152,63 @@ test("Go to from the keyboard moves the focus to the item", async ({ page }) => 
   await page.keyboard.press("Enter");
   await expect(page.getByRole("group", { name: "Choice 3", exact: true })).toBeFocused();
   await expect(panel(page)).toBeHidden();
+});
+
+// ---------- Diagnose (doctor all), in the header ----------
+
+const diagnose = (page) => page.getByRole("button", { name: /^(Diagnose|Diagnosing…)$/ });
+
+test("Diagnose sits between the time zone switch and the status, and says what it does", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, server.url);
+  const zoneBox = await page.getByRole("group", { name: "Time zone" }).boundingBox();
+  const btn = diagnose(page);
+  const box = await btn.boundingBox();
+  const statusBox = await page.getByRole("button", { name: "config ok" }).boundingBox();
+  expect(box.x).toBeGreaterThan(zoneBox.x + zoneBox.width);
+  expect(box.x + box.width).toBeLessThan(statusBox.x);
+  const mid = (b) => b.y + b.height / 2;
+  expect(Math.abs(mid(box) - mid(statusBox))).toBeLessThanOrEqual(1);
+  await expect(btn).toHaveAttribute("title", /doctor all/);
+  // Not in the status's panel.
+  await page.getByRole("button", { name: "config ok" }).click();
+  await expect(panel(page).getByRole("button")).toHaveCount(0);
+});
+
+test("Diagnose runs doctor all and updates the status", async ({ page }) => {
+  await login(page, server.url);
+  await expect(page.getByRole("button", { name: "config ok" })).toBeVisible();
+  await server.send("fail codex-main boom");
+  // The browser holds the request until the test lets it go, so the running
+  // state is seen, not raced.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/doctor/all", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  const btn = diagnose(page);
+  await btn.click();
+  await expect(btn).toHaveText("Diagnosing…");
+  await expect(btn).toHaveAttribute("aria-disabled", "true");
+  release();
+  await expect(btn).toHaveText("Diagnose");
+  await expect(btn).not.toHaveAttribute("aria-disabled", "true");
+  const status = page.getByRole("button", { name: "1 warning" });
+  await expect(status).toBeVisible();
+  await status.click();
+  await expect(panel(page)).toContainText("codex-main: last usage reading failed: boom");
+});
+
+test("Diagnose from the keyboard keeps the focus", async ({ page }) => {
+  await login(page, server.url);
+  await page.getByRole("button", { name: /^Local / }).focus();
+  await page.keyboard.press("Tab");
+  const btn = diagnose(page);
+  await expect(btn).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(btn).toHaveText("Diagnose");
+  await expect(btn).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "config ok" })).toBeFocused();
 });

@@ -1,7 +1,7 @@
 // Cases for js/api.js against a stubbed fetch: reload ordering, the op
-// queue and Refresh. In the browser, api.test.html writes the verdict into
+// queue, Refresh and Diagnose. In the browser, api.test.html writes the verdict into
 // <output id="result">; elsewhere run() resolves it.
-import { store, reload, sendOp, refresh } from "../js/api.js";
+import { store, reload, sendOp, refresh, doctorAll } from "../js/api.js";
 
 // ---------- the stub server ----------
 
@@ -26,6 +26,7 @@ function freshServer() {
     op: () => res(200, { sha256: "s1", findings: [] }),
     stateCalls: 0,
     pingDown: false,
+    doctorAll: () => Promise.resolve(res(200, { errors: 1, warnings: 0, findings: [] })),
     doctor: { errors: 0, warnings: 0, findings: [] }, // what GET /api/doctor answers
     refresh: (account) => res(200, { account, state: "ok", windows: [] }),
   };
@@ -45,6 +46,7 @@ function stubFetch(path, init = {}) {
   if (path === "/api/state") return stateReply();
   if (path === "/api/usage") return Promise.resolve(res(200, []));
   if (path === "/api/doctor") return Promise.resolve(res(200, server.doctor));
+  if (path === "/api/doctor/all") return server.doctorAll();
   if (path === "/api/ping") {
     return server.pingDown ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve(res(204));
   }
@@ -211,6 +213,44 @@ async function thrownOpKeepsQueue() {
   return rg.ok ? null : `next op result ${JSON.stringify(rg)}`;
 }
 
+async function doctorAllOK() {
+  const body = { errors: 1, warnings: 0, findings: [{ severity: "error", subject: "a", message: "m" }] };
+  server.doctorAll = () => Promise.resolve(res(200, body));
+  server.stateFail = [true]; // the reload fails, so only the 200's body can be in store.doctor
+  const r = await doctorAll();
+  if (!r.ok) return `result ${JSON.stringify(r)}`;
+  if (JSON.stringify(store.doctor) !== JSON.stringify(body)) return `store.doctor ${JSON.stringify(store.doctor)}`;
+  const posts = log.filter((e) => e.path === "/api/doctor/all" && e.method === "POST").length;
+  const usage = log.filter((e) => e.path === "/api/usage").length;
+  return posts === 1 && usage >= 1 ? null : `posts ${posts}, usage fetches ${usage}`;
+}
+
+async function doctorAllRefused() {
+  server.doctorAll = () => Promise.resolve(res(500, { reason: "x" }));
+  const r = await doctorAll();
+  if (r.ok !== false || r.reason !== "x") return `result ${JSON.stringify(r)}`;
+  const t = toastText();
+  if (!t.includes("Not checked.") || !t.includes("x")) return `toast ${t}`;
+  // Without a reason the result and the toast give the same fallback.
+  server.doctorAll = () => Promise.resolve(res(500, {}));
+  const bare = await doctorAll();
+  if (bare.reason !== "Diagnose failed") return `bare result ${JSON.stringify(bare)}`;
+  if (!toastText().includes("Diagnose failed")) return `bare toast ${toastText()}`;
+  return gets("/api/state") === 0 ? null : `${gets("/api/state")} reloads after a 500, want 0`;
+}
+
+async function doctorAllKeepsItsResult() {
+  // Diagnose's own findings (cannot update stored usage) are not in plain
+  // doctor: the reload after the POST must not replace them.
+  const body = { errors: 0, warnings: 1, findings: [{ severity: "warning", subject: "a", message: "cannot update stored usage: x" }] };
+  server.doctorAll = () => Promise.resolve(res(200, body));
+  server.doctor = { errors: 0, warnings: 0, findings: [] };
+  const r = await doctorAll();
+  if (!r.ok) return `result ${JSON.stringify(r)}`;
+  if (gets("/api/doctor") !== 1) return `${gets("/api/doctor")} doctor reloads, want 1`;
+  return JSON.stringify(store.doctor) === JSON.stringify(body) ? null : `store.doctor ${JSON.stringify(store.doctor)}`;
+}
+
 const failedReading = { errors: 0, warnings: 1,
   findings: [{ severity: "warning", subject: "a", message: "last usage reading failed: boom" }] };
 
@@ -240,6 +280,13 @@ async function batchedRefreshLeavesDoctor() {
   return gets("/api/doctor") === 0 ? null : `${gets("/api/doctor")} doctor reads, want 0`;
 }
 
+async function doctorAllDown() {
+  server.doctorAll = () => Promise.reject(new TypeError("Failed to fetch"));
+  const r = await doctorAll();
+  if (r.ok !== false) return `result ${JSON.stringify(r)}`;
+  return document.getElementById("notice-stopped") ? null : "no stopped banner";
+}
+
 export const cases = [
   ["an older reload's result is dropped", olderReloadDropped],
   ["a superseded reload's failure shows no banner", olderFailureNoBanner],
@@ -251,9 +298,13 @@ export const cases = [
   ["409 then apply resends on the new base", conflictApply],
   ["422 under quiet returns uses without a toast", refusalQuiet],
   ["a thrown op does not stall the queue", thrownOpKeepsQueue],
+  ["doctorAll on 200 sets the doctor and reloads usage", doctorAllOK],
+  ["doctorAll on 500 toasts the reason it returns and does not reload", doctorAllRefused],
+  ["doctorAll keeps its own result over the reload's doctor", doctorAllKeepsItsResult],
   ["a refresh re-reads the doctor", refreshRereadsDoctor],
   ["a refused refresh re-reads the doctor", failedRefreshRereadsDoctor],
   ["a refresh with reload: false leaves the doctor to its caller", batchedRefreshLeavesDoctor],
+  ["doctorAll with the server gone shows the stopped banner", doctorAllDown],
 ];
 
 async function check([name, fn]) {

@@ -1,6 +1,7 @@
-// The shared header: name, config path, tabs, UTC/Local switch, doctor status.
+// The shared header: name, config path, tabs, UTC/Local switch, Diagnose,
+// doctor status.
 import { h, clear } from "./dom.js";
-import { store } from "./api.js";
+import { store, doctorAll } from "./api.js";
 import { findingTarget, goTo } from "./goto.js";
 import { zone, setZone, onZone, localZoneName } from "./time.js";
 
@@ -113,6 +114,29 @@ function wirePopover(parts) {
   document.addEventListener("click", (e) => { if (!parts.wrap.contains(e.target)) close(); });
 }
 
+// diagnoseButton runs `doctor all` (owner, 2026-10-25: "Check all" read as
+// checking every finding). It is aria-disabled while that runs, so a
+// second click does nothing; not disabled, which would drop the focus.
+function diagnoseButton() {
+  const btn = h("button", { type: "button", class: "btn btn-quiet diagnose",
+    title: "Run doctor all: read every account without a fresh usage reading now, then check again" },
+  "Diagnose");
+  btn.addEventListener("click", async () => {
+    if (btn.getAttribute("aria-disabled") === "true") return;
+    btn.setAttribute("aria-disabled", "true");
+    btn.classList.add("is-busy");
+    btn.textContent = "Diagnosing…";
+    try {
+      await doctorAll();
+    } finally {
+      btn.removeAttribute("aria-disabled");
+      btn.classList.remove("is-busy");
+      btn.textContent = "Diagnose";
+    }
+  });
+  return btn;
+}
+
 function statusButton() {
   const parts = { label: h("span"), list: h("ul", { class: "pop-list" }), findings: [] };
   parts.none = h("p", { class: "pop-none" }, "No problems found");
@@ -135,7 +159,7 @@ export function renderHeader(root) {
   root.append(
     h("div", { class: "hdr-brand" }, h("span", { class: "hdr-name" }, "modelpick"), path),
     nav,
-    h("div", { class: "hdr-right" }, zoneSwitch(), status.wrap));
+    h("div", { class: "hdr-right" }, zoneSwitch(), diagnoseButton(), status.wrap));
   const update = () => {
     path.textContent = store.state ? store.state.path : "";
     fillStatus(status, store.doctor);
