@@ -596,6 +596,7 @@ test("keyboard: a focused group frame moves by a position", async ({ page }) => 
   await expect(card(page, 3)).toBeFocused();
   await page.keyboard.press(`${mod}+ArrowUp`);
   await expectConfig(server.configPath, shapeOf, GROUPED, "back");
+  await expect(card(page, 2)).toBeFocused(); // redrawn: the next key moves the group from 2
   await page.keyboard.press(`${mod}+ArrowUp`);
   await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "claude-main", "codex-main", "claude-main"],
     "to the top");
@@ -921,6 +922,9 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
   await card(page, "2a").getByRole("button", { name: "No caps" }).click();
   await expectConfig(server.configPath, (c) => "cap" in coder(c)[1].choices[0], false, "2a uncapped");
+  // A second edit on the same card before the redraw is refused as stale
+  // (chips.js takes expect when its own chain runs); wait for the redraw.
+  await expect(card(page, "2a").getByRole("button", { name: "No caps" })).toHaveCount(0);
   await attach(page, "2a", "Skip", "night");
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].skip_during, ["night"], "2a skips night");
   await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
