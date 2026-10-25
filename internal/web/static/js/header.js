@@ -1,6 +1,7 @@
 // The shared header: name, config path, tabs, UTC/Local switch, doctor status.
 import { h, clear } from "./dom.js";
-import { store, doctorAll } from "./api.js";
+import { store } from "./api.js";
+import { findingTarget, goTo } from "./goto.js";
 import { zone, setZone, onZone, localZoneName } from "./time.js";
 
 export const TABS = [["usage", "Usage"], ["profiles", "Profiles"], ["schedules", "Schedules"], ["accounts", "Accounts"]];
@@ -42,11 +43,21 @@ function level(doctor) {
   return ["ok", "config ok"];
 }
 
-function findingItem(f) {
+// findingItem is one finding with its Go to, which closes the panel and
+// shows the finding's item (goto.js); a finding about the whole file has
+// none.
+function findingItem(f, close) {
   const err = f.severity === "error";
+  const go = findingTarget(f) && h("button", { type: "button", class: "btn btn-md btn-quiet pop-go",
+    "aria-label": `Go to ${f.subject}`, onClick: () => {
+      close();
+      goTo(f);
+    } }, "Go to");
   return h("li", {},
-    h("strong", { class: err ? "sev sev-error" : "sev sev-warn" }, err ? "ERROR" : "WARNING"),
-    ` ${f.subject}: ${f.message}`);
+    h("span", { class: "pop-text" },
+      h("strong", { class: err ? "sev sev-error" : "sev sev-warn" }, err ? "ERROR" : "WARNING"),
+      ` ${f.subject}: ${f.message}`),
+    go);
 }
 
 function fillStatus(parts, doctor) {
@@ -58,13 +69,13 @@ function fillStatus(parts, doctor) {
   const all = doctor.findings || [];
   parts.findings = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity !== "error")];
   clear(parts.list);
-  parts.list.append(...parts.findings.map(findingItem));
+  parts.list.append(...parts.findings.map((f) => findingItem(f, parts.close)));
   parts.none.hidden = parts.findings.length > 0;
   parts.sync();
 }
 
 // wirePopover: hovering the status, or keyboard focus anywhere in it (the
-// button or the panel's Check all), shows the panel while there are
+// button or a finding's Go to), shows the panel while there are
 // findings. A click pins it open even with none (it then says so), or
 // unpins it: it then stays only while hovered. Escape or a click outside
 // unpins and hides it; Escape from inside the panel puts focus back on the
@@ -84,6 +95,7 @@ function wirePopover(parts) {
     on.focus = false;
     set("pinned", false);
   };
+  parts.close = close;
   parts.wrap.addEventListener("pointerdown", () => { pressing = true; });
   for (const type of ["pointerup", "pointercancel"]) {
     document.addEventListener(type, () => { pressing = false; }, true);
@@ -101,34 +113,13 @@ function wirePopover(parts) {
   document.addEventListener("click", (e) => { if (!parts.wrap.contains(e.target)) close(); });
 }
 
-// checkAllButton runs `doctor all`; it is aria-disabled while that runs, so
-// a second click does nothing. Not disabled: that would drop the keyboard
-// focus, and with it the panel the focus holds open.
-function checkAllButton() {
-  const btn = h("button", { type: "button", class: "btn btn-md btn-quiet check-all" }, "Check all");
-  btn.addEventListener("click", async () => {
-    if (btn.getAttribute("aria-disabled") === "true") return;
-    btn.setAttribute("aria-disabled", "true");
-    btn.classList.add("is-busy");
-    btn.textContent = "Checking…";
-    try {
-      await doctorAll();
-    } finally {
-      btn.removeAttribute("aria-disabled");
-      btn.classList.remove("is-busy");
-      btn.textContent = "Check all";
-    }
-  });
-  return btn;
-}
-
 function statusButton() {
   const parts = { label: h("span"), list: h("ul", { class: "pop-list" }), findings: [] };
   parts.none = h("p", { class: "pop-none" }, "No problems found");
   parts.btn = h("button", { type: "button", class: "status", "aria-controls": "doctor-pop" },
     h("span", { class: "dot", "aria-hidden": "true" }), parts.label);
   parts.pop = h("div", { id: "doctor-pop", class: "pop", role: "region", "aria-label": "Doctor findings", hidden: true },
-    parts.none, parts.list, checkAllButton());
+    parts.none, parts.list);
   parts.wrap = h("div", { class: "status-wrap", hidden: true }, parts.btn, parts.pop);
   wirePopover(parts);
   return parts;

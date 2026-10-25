@@ -380,7 +380,8 @@ function listRow(s, sel, red) {
   return h("div", { class: "s-row" },
     h("a", { href: `#schedules/${encodeURIComponent(s.name)}`,
       class: ["p-link", red.has(`schedule ${s.name}`) && "is-error"],
-      "aria-current": s === sel ? "true" : null, "data-key": `sl-${s.name}` }, s.name),
+      "aria-current": s === sel ? "true" : null, "data-key": `sl-${s.name}`, "data-subject": `schedule ${s.name}` },
+    s.name),
     h("button", { type: "button", class: "s-del", "data-key": `sl-del-${s.name}`,
       "aria-label": `Delete schedule ${s.name}`, onClick: () => deleteSchedule(s.name) }, trashIcon()));
 }

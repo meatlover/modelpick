@@ -206,7 +206,8 @@ function listRow(p, sel, red) {
   return h("div", { class: "p-row" },
     h("a", { href: `#profiles/${encodeURIComponent(p.name)}`,
       class: ["p-link", profileHasError(red, p.name) && "is-error"],
-      "aria-current": p === sel ? "true" : null, "data-key": `pl-${p.name}` }, p.name),
+      "aria-current": p === sel ? "true" : null, "data-key": `pl-${p.name}`, "data-subject": `profile ${p.name}` },
+    p.name),
     h("button", { type: "button", class: "p-del", "data-key": `pl-del-${p.name}`,
       "aria-label": `Delete profile ${p.name}`, onClick: () => deleteProfile(p.name) }, trashIcon()));
 }
@@ -462,7 +463,7 @@ function card(v, i, member) {
   const pos = cardPos(v, ctx, member);
   const el = h("div", { class: ["p-card", v.red.has(choiceSubject(ctx.profile, label)) && "is-error",
     isPicked(i) && "is-picked"], tabindex: v.lb ? null : "0", role: "group", "aria-label": `Choice ${label}`,
-  "data-key": `card-${i}`, "data-index": String(i) },
+  "data-key": `card-${i}`, "data-index": String(i), "data-subject": choiceSubject(ctx.profile, label) },
   pos,
   h("div", { class: "p-card-main", inert: Boolean(v.lb) }, selects(v.st, ctx)),
   h("div", { class: "p-card-foot", inert: Boolean(v.lb) },
@@ -503,7 +504,8 @@ function groupFrame(v, pos, n) {
   const expect = () => groupExpect(v, pos.start);
   const head = groupHead(v, pos, n, expect);
   const frame = h("div", { class: ["p-group", v.red.has(choiceSubject(v.prof.name, String(n))) && "is-error"],
-    tabindex: v.lb ? null : "0", role: "group", "aria-label": `Choice ${n}`, "data-key": `group-${pos.start}` },
+    tabindex: v.lb ? null : "0", role: "group", "aria-label": `Choice ${n}`, "data-key": `group-${pos.start}`,
+    "data-subject": choiceSubject(v.prof.name, String(n)) },
   head,
   h("ol", { class: "p-members" }, members.map((i) => h("li", { class: "p-member" }, card(v, i, true)))),
   h("button", { type: "button", class: "btn btn-dashed p-group-add", "data-key": `group-${pos.start}-add`,

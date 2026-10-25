@@ -218,8 +218,44 @@ a:hover {
   margin: 0;
 }
 
-.pop .check-all {
-  margin-top: 12px;
+/* A finding, then its Go to at the right. */
+.pop-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pop-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pop-go {
+  flex: 0 0 auto;
+}
+
+/* Go to's item lights up and fades back (goto.js removes the class). */
+@keyframes go-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--accent);
+    background-color: var(--accent-soft);
+  }
+
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+.is-flash {
+  animation: go-flash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--accent);
+  }
 }
 
 .sev {
