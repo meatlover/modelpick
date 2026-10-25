@@ -171,6 +171,12 @@ directory) and the demo, and opens every JS unit test page
 (`internal/web/static/test/*.test.html`). Without Node, the packages or
 Chromium, it and `check.sh` fail and print the command above.
 
+CI runs them a second time with `E2E_OP_DELAY_MS=400`, which answers every
+UI op 400 ms late: a test that acts again before the page has redrawn after
+an op, or an edit the page builds on a card drawn before an earlier op was
+answered, fails there. `E2E_OP_DELAY_MS=400 bash scripts/e2e.sh` runs that
+pass locally; `check.sh` does not.
+
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):
 `go test -tags live ./internal/live/ -v`.

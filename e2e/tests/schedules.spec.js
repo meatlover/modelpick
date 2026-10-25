@@ -63,6 +63,8 @@ test("paint and erase a cell", async ({ page }) => {
   await cellAt(page, "night", 1, 10).click();
   await expectConfig(server.configPath, cellsIn("night"), ["mon 10", ...NIGHT], "Mon 10:00 UTC is on");
   await expect(page.getByText("Mon 10:00–11:00")).toBeVisible();
+  // The grid takes no click while a paint is pending: wait for it to settle.
+  await expect(cellAt(page, "night", 1, 10)).not.toHaveClass(/is-preview/);
   await cellAt(page, "night", 1, 10).click();
   await expectConfig(server.configPath, cellsIn("night"), NIGHT, "Mon 10:00 UTC is off again");
 });

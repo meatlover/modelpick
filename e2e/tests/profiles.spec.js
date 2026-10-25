@@ -3,7 +3,7 @@
 // way a user does and then reads config.json from disk.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, stateGate, holdState } = require("./helpers");
 const { readConfig, expectConfig, expectUnchanged, handEdit, loadBalanceGo } = require("./config");
 
 let server;
@@ -91,6 +91,47 @@ test("a second edit before the redraw still applies", async ({ page }) => {
   await expectConfig(server.configPath, (c) => coder(c)[3].thinking, "low", "thinking, sent on the stale card");
   await expect(page.getByText("changed outside the UI")).toHaveCount(0);
 });
+
+// The first edit's redraw comes while the second is in flight: a third edit
+// made on that redrawn card is built on what the second left.
+test("an edit on a card redrawn while an earlier edit is in flight still applies", async ({ page }) => {
+  const c4 = card(page, 4);
+  const gate = await stateGate(page);
+  await c4.getByLabel("Account").selectOption("claude-spare");
+  await expectConfig(server.configPath, (c) => coder(c)[3].account, "claude-spare", "account");
+  await c4.getByLabel("Model").selectOption("claude-fable-5-1");
+  const drawn = await c4.getByLabel("Thinking").elementHandle();
+  gate.pass(1);
+  await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "model");
+  await expect.poll(() => drawn.evaluate((el) => el.isConnected), { message: "the account's redraw" }).toBe(false);
+  await expect.poll(() => gate.held(), { message: "the model's reload, held" }).toBe(1);
+  await c4.getByLabel("Thinking").selectOption("low");
+  gate.open();
+  await expectConfig(server.configPath, (c) => [coder(c)[3].account, coder(c)[3].model, coder(c)[3].thinking],
+    ["claude-spare", "claude-fable-5-1", "low"], "all three");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
+// A cap and a schedule edit on one card go through different editors; the
+// second, made before the first's redraw, is built on what the first left.
+for (const [what, first, second] of [
+  ["a schedule after a cap", (page) => card(page, 4).getByRole("button", { name: "Add caps" }).click(),
+    (page) => attach(page, 4, "Skip", "night")],
+  ["a cap after a schedule", (page) => attach(page, 4, "Skip", "night"),
+    (page) => card(page, 4).getByRole("button", { name: "Add caps" }).click()],
+]) {
+  test(`${what} on one card before the redraw both apply`, async ({ page }) => {
+    const before = coder(readConfig(server.configPath))[3];
+    const release = await holdState(page);
+    await first(page);
+    await expect.poll(() => coder(readConfig(server.configPath))[3], { message: "the first edit" }).not.toEqual(before);
+    await second(page);
+    release();
+    await expectConfig(server.configPath, (c) => [coder(c)[3].cap, coder(c)[3].skip_during], [[], ["night"]],
+      "both edits");
+    await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+  });
+}
 
 // capBox is the closed box (or, once focused, the open frame's number box)
 // of a card's first window.
@@ -694,17 +735,6 @@ const lbConfirm = (page) => page.getByRole("button", { name: /^Load balance \d+ 
 const lbCancel = (page) => page.getByRole("button", { name: "Cancel", exact: true });
 const pick = (page, n) => page.getByRole("checkbox", { name: `Select choice ${n}`, exact: true });
 
-// holdState holds back every /api/state answer until the returned release()
-// is called, so the page is not redrawn after an op (as in "a second edit
-// before the redraw still applies").
-async function holdState(page) {
-  let hold = true;
-  await page.route("**/api/state", async (route) => {
-    while (hold) await new Promise((ok) => setTimeout(ok, 50));
-    await route.continue();
-  });
-  return () => { hold = false; };
-}
 
 test("Load balance: selected cards become one group at the first one's place", async ({ page }) => {
   // Five plain choices: opus, codex, go-1, go-2, sonnet.
@@ -922,9 +952,6 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
   await card(page, "2a").getByRole("button", { name: "No caps" }).click();
   await expectConfig(server.configPath, (c) => "cap" in coder(c)[1].choices[0], false, "2a uncapped");
-  // A second edit on the same card before the redraw is refused as stale
-  // (chips.js takes expect when its own chain runs); wait for the redraw.
-  await expect(card(page, "2a").getByRole("button", { name: "No caps" })).toHaveCount(0);
   await attach(page, "2a", "Skip", "night");
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].skip_during, ["night"], "2a skips night");
   await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
@@ -932,6 +959,7 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   await card(page, "2b").focus();
   await page.keyboard.press(`${mod}+ArrowUp`);
   await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1]", "codex-main", "claude-main"], "2b first");
+  await expect(card(page, "2a")).toBeFocused(); // redrawn: 2b is go-1 now
   await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();
   await expectConfig(server.configPath, shapeOf, ["claude-main", "go-2", "codex-main", "claude-main"], "2b removed");
   const go1 = "go-1/opencode-go/deepseek-v4.1";

@@ -285,13 +285,12 @@ function liveCtx(key) {
   return m ? m.ctx : null;
 }
 
-// setCap sends choice.set of the card's cap: expect is the choice now,
-// member_of (profiles.js) is built when the op's turn comes, and the ctx
-// advances to what the op left, for the ops queued behind it.
+// setCap sends choice.set of the card's cap: expect and member_of
+// (profiles.js) are built when the op's turn comes, on what earlier ops
+// left, and the ctx advances to what the op left, for the ops queued behind it.
 function setCap(ctx, value) {
-  const expect = ctx.choice;
   return sendOp("choice.set",
-    () => ({ profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field: "cap", value }),
+    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.expect(), member_of: ctx.memberOf(), field: "cap", value }),
     { done: (res) => ctx.advance(res) });
 }
 

@@ -4,7 +4,7 @@
 // Example. Every edit is one op; a refusal re-renders from the store, which
 // reverts the control.
 import { h, clear, trashIcon } from "./dom.js";
-import { store, sendOp } from "./api.js";
+import { store, sendOp, onlyFieldEdits } from "./api.js";
 import { confirmDialog } from "./notice.js";
 import { currentTab } from "./header.js";
 import { renderCaps } from "./caps.js";
@@ -234,18 +234,34 @@ async function deleteProfile(name) {
 
 // ctxs keeps each card's ctx for as long as the state it was drawn from is
 // the store's: a repaint that brings no new state (a selection, a doctor
-// reload) draws the card with the ctx its pending edits will advance.
+// reload) draws the card with the ctx its pending edits will advance. A
+// ctx's sha is that state's (taken when it arrives: an op patches the
+// store's sha256 before its reload brings the new state).
 let ctxState = null;
+let ctxSha = "";
 let ctxs = new Map();
 
 function ctxFor(profile, index, choice) {
   if (ctxState !== store.state) {
     ctxState = store.state;
+    ctxSha = store.state.sha256;
     ctxs = new Map();
   }
   const key = `${profile}\u0000${index}`;
-  if (!ctxs.has(key)) ctxs.set(key, { profile, index, choice });
+  if (!ctxs.has(key)) ctxs.set(key, { profile, index, choice, sha: ctxSha });
   return ctxs.get(key);
+}
+
+// expectOf is an op's expect for the card of ctx, built when the op's turn
+// comes. When only this page's field edits came after the card was drawn,
+// it is the choice at the card's index now: the card was redrawn from an
+// earlier of those edits while a later one was in flight, so ctx.choice,
+// advanced only by its own ops, may miss one. Otherwise it is ctx.choice,
+// and the server finds the card if it moved.
+function expectOf(ctx) {
+  if (!onlyFieldEdits(ctx.sha)) return ctx.choice;
+  const prof = store.state.profiles.find((p) => p.name === ctx.profile);
+  return prof && prof.choices[ctx.index] ? prof.choices[ctx.index] : ctx.choice;
 }
 
 // ctx.choice is the choice as this card's own edits left it. A second edit
@@ -253,7 +269,7 @@ function ctxFor(profile, index, choice) {
 // what the first left, not from the choice the card was drawn with.
 async function setField(ctx, field, value) {
   const r = await sendOp("choice.set",
-    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.choice, member_of: ctx.memberOf(), field, value }),
+    () => ({ profile: ctx.profile, index: ctx.index, expect: expectOf(ctx), member_of: ctx.memberOf(), field, value }),
     { done: (res) => advance(ctx, res) });
   if (!r.ok) paint();
 }
@@ -346,11 +362,11 @@ function mount(cls, fill, ctx) {
 // progress (lbselect.js) or null, and ctxs, each card's ctx by flat index.
 
 // groupExpect is the group holding flat index i as the file holds it,
-// {load_balance, choices}, from its members' ctxs: called when an op's
-// turn comes, it is the group as their own edits left it.
+// {load_balance, choices}, from its members' expectOf: called when an op's
+// turn comes, it is the group as earlier edits left it.
 function groupExpect(v, i) {
   const pos = positions(v.prof.choices).find((p) => i >= p.start && i < p.end);
-  return { load_balance: pos.load_balance, choices: v.ctxs.slice(pos.start, pos.end).map((c) => c.choice) };
+  return { load_balance: pos.load_balance, choices: v.ctxs.slice(pos.start, pos.end).map(expectOf) };
 }
 
 // memberOf is the member_of of an op on the card at flat index i: the
@@ -361,11 +377,12 @@ function memberOf(v, i) {
 }
 
 // hookCtxs gives each card's ctx what its ops need from the view, for
-// caps.js and chips.js too: memberOf() builds the op's member_of, and
-// advance(res) moves ctx.choice to what a choice.set left, so a later op's
-// member_of sees the edit before the redraw does.
+// caps.js and chips.js too: expect() and memberOf() build the op's expect
+// and member_of, and advance(res) moves ctx.choice to what a choice.set
+// left, so a later op's member_of sees the edit before the redraw does.
 function hookCtxs(v) {
   v.ctxs.forEach((ctx, i) => {
+    ctx.expect = () => expectOf(ctx);
     ctx.memberOf = () => memberOf(v, i);
     ctx.advance = (res) => advance(ctx, res);
   });
@@ -399,7 +416,7 @@ function card(v, i, member) {
     h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${label}`,
       "data-key": `c${i}-remove`,
       onClick: () => sendOp("choice.remove",
-        () => ({ profile: ctx.profile, index: i, expect: ctx.choice, member_of: memberOf(v, i) })) },
+        () => ({ profile: ctx.profile, index: i, expect: expectOf(ctx), member_of: memberOf(v, i) })) },
     "Remove")));
   if (!v.lb) dragHandle(el, pos.firstChild);
   return el;
@@ -449,7 +466,7 @@ function groupFrame(v, pos, n) {
 // and also when the move dissolved its group; a refusal puts it back.
 async function move(v, from, to, group) {
   focusKey = `card-${to}`;
-  const r = await sendOp("choice.move", () => ({ profile: v.prof.name, from, to, expect: v.ctxs[from].choice,
+  const r = await sendOp("choice.move", () => ({ profile: v.prof.name, from, to, expect: expectOf(v.ctxs[from]),
     member_of: memberOf(v, from), group, group_expect: group === null ? null : groupExpect(v, group) }));
   if (r.ok) return;
   focusKey = `card-${from}`;
