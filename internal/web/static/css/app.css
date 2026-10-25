@@ -1157,6 +1157,29 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--text);
 }
 
+/* The frame's own handle drags the whole group. It sits in the members'
+   handle column; while selecting, an empty box of its width holds it. */
+.p-group-head .p-handle {
+  margin-right: 4px;
+}
+
+.p-group-grip {
+  flex: 0 0 26px;
+  margin-right: 4px;
+}
+
+/* A focused frame: ⌘↑/⌘↓ move the whole group, as on a card. */
+.p-group:focus {
+  outline: none;
+  border-color: var(--accent-mid);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.p-group.is-dragging {
+  border-color: var(--accent-mid);
+  box-shadow: 0 10px 28px var(--shadow-drag);
+}
+
 .p-group-stop {
   margin-left: auto;
 }

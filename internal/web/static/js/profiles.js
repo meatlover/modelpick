@@ -342,8 +342,16 @@ function mount(cls, fill, ctx) {
 }
 
 // view is what every card of the shown profile is drawn from: st, prof,
-// red (errorSubjects), labels (choiceLabels) and lb, the selection in
-// progress (lbselect.js) or null.
+// red (errorSubjects), labels (choiceLabels), lb, the selection in
+// progress (lbselect.js) or null, and ctxs, each card's ctx by flat index.
+
+// groupExpect is the group holding flat index i as the file holds it,
+// {load_balance, choices}, from its members' ctxs: called when an op's
+// turn comes, it is the group as their own edits left it.
+function groupExpect(v, i) {
+  const pos = positions(v.prof.choices).find((p) => i >= p.start && i < p.end);
+  return { load_balance: pos.load_balance, choices: v.ctxs.slice(pos.start, pos.end).map((c) => c.choice) };
+}
 
 // cardPos is a card's position column: its drag handle over its label.
 // While selecting, the handle's place holds the checkbox, or stays empty on
@@ -359,7 +367,7 @@ function cardPos(v, ctx, member) {
 // of a load balancing group. While selecting, everything but the checkbox
 // is inert and the card does not drag.
 function card(v, i, member) {
-  const ctx = ctxFor(v.prof.name, i, v.prof.choices[i]);
+  const ctx = v.ctxs[i];
   const label = v.labels[i];
   const pos = cardPos(v, ctx, member);
   const el = h("div", { class: ["p-card", v.red.has(choiceSubject(ctx.profile, label)) && "is-error",
@@ -379,10 +387,12 @@ function card(v, i, member) {
 
 // groupHead is a group's header: what it is, its algorithm (as text while
 // there is one algorithm; spec §8 makes it a menu once there are two), and
-// Stop load balancing, which dissolves it.
+// Stop load balancing, which dissolves it. Its handle, first, drags the
+// whole group; while selecting an empty box keeps its place.
 function groupHead(v, pos, n, expect) {
   const k = pos.end - pos.start;
   return h("div", { class: "p-group-head" },
+    h("span", { class: v.lb ? "p-group-grip" : "p-handle", "aria-hidden": "true" }, v.lb ? null : dots()),
     h("span", { class: "p-group-title" }, `${n} · Load balancing ${k} models`),
     h("span", { class: "p-group-how" }, `· algorithm: ${pos.load_balance}`),
     h("button", { type: "button", class: "btn btn-quiet p-group-stop", "data-key": `group-${pos.start}-stop`,
@@ -393,31 +403,46 @@ function groupHead(v, pos, n, expect) {
 
 // groupFrame draws the load balancing group at position n (pos from
 // positions()): a frame named Choice n holding its member cards, with
-// + Add Model at the bottom. Its ops' expect is the group as the file
-// holds it, {load_balance, choices}, built when the op's turn comes from
-// the members' ctxs, so it is the group as their own edits left it.
+// + Add Model at the bottom. Its ops' expect is groupExpect. Focused, the
+// frame moves the whole group by ⌘↑/⌘↓, as its handle drags it.
 function groupFrame(v, pos, n) {
   const members = [];
   for (let i = pos.start; i < pos.end; i++) members.push(i);
-  const mctx = members.map((i) => ctxFor(v.prof.name, i, v.prof.choices[i]));
-  const expect = () => ({ load_balance: pos.load_balance, choices: mctx.map((c) => c.choice) });
-  return h("div", { class: ["p-group", v.red.has(choiceSubject(v.prof.name, String(n))) && "is-error"],
-    role: "group", "aria-label": `Choice ${n}`, "data-key": `group-${pos.start}` },
-  groupHead(v, pos, n, expect),
+  const expect = () => groupExpect(v, pos.start);
+  const head = groupHead(v, pos, n, expect);
+  const frame = h("div", { class: ["p-group", v.red.has(choiceSubject(v.prof.name, String(n))) && "is-error"],
+    tabindex: v.lb ? null : "0", role: "group", "aria-label": `Choice ${n}`, "data-key": `group-${pos.start}` },
+  head,
   h("ol", { class: "p-members" }, members.map((i) => h("li", { class: "p-member" }, card(v, i, true)))),
   h("button", { type: "button", class: "btn btn-dashed p-group-add", "data-key": `group-${pos.start}-add`,
     inert: Boolean(v.lb),
     onClick: () => sendOp("choice.add", () => ({ profile: v.prof.name, group: pos.start, group_expect: expect() })) },
   "+ Add Model"));
+  if (!v.lb) dragHandle(frame, head.firstChild);
+  return frame;
 }
 
-// move keeps focus (and the selected style) on the moved card, whether it
-// was dragged or moved with the keyboard; a refusal puts it back.
-async function move(prof, from, to) {
+// move sends choice.move; group is null (the card lands plain) or the flat
+// index of a member of the group it lands in. Its expects are built when
+// the op's turn comes, from the ctxs. Focus (and the selected style) stays
+// on the moved card, whether it was dragged or moved with the keyboard,
+// and also when the move dissolved its group; a refusal puts it back.
+async function move(v, from, to, group) {
   focusKey = `card-${to}`;
-  const r = await sendOp("choice.move", { profile: prof.name, from, to, expect: prof.choices[from] });
+  const r = await sendOp("choice.move", () => ({ profile: v.prof.name, from, to, expect: v.ctxs[from].choice,
+    group, group_expect: group === null ? null : groupExpect(v, group) }));
   if (r.ok) return;
   focusKey = `card-${from}`;
+  paint();
+}
+
+// moveGroup sends group.move for the group whose first member is index;
+// focus stays on its frame, whose first member will be at start.
+async function moveGroup(v, index, to, start) {
+  focusKey = `group-${start}`;
+  const r = await sendOp("group.move", () => ({ profile: v.prof.name, index, expect: groupExpect(v, index), to }));
+  if (r.ok) return;
+  focusKey = `group-${index}`;
   paint();
 }
 
@@ -428,7 +453,10 @@ function cards(v) {
   const ol = h("ol", { class: "p-cards" }, positions(v.prof.choices).map((pos, n) => (pos.group > 0
     ? h("li", { class: "p-item p-group-item" }, groupFrame(v, pos, n + 1))
     : h("li", { class: "p-item" }, card(v, pos.start, false)))));
-  if (!v.lb) wireReorder(ol, (from, to) => move(v.prof, from, to));
+  if (!v.lb) {
+    wireReorder(ol, { card: (from, to, group) => move(v, from, to, group),
+      group: (index, to, start) => moveGroup(v, index, to, start) });
+  }
   return ol;
 }
 
@@ -439,7 +467,8 @@ function firstPick(prof) {
 }
 
 function profileMain(st, prof, red) {
-  const v = { st, prof, red, labels: choiceLabels(prof.choices), lb: selection(prof.name) };
+  const v = { st, prof, red, labels: choiceLabels(prof.choices), lb: selection(prof.name),
+    ctxs: prof.choices.map((c, i) => ctxFor(prof.name, i, c)) };
   return h("div", { class: ["p-main", v.lb && "is-selecting"] },
     capRow(st, true),
     lbBar(prof.name, firstPick(prof), repaint),

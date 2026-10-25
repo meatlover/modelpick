@@ -226,25 +226,31 @@ test("a drag on a default box saves it as set", async ({ page }) => {
   await expectConfig(server.configPath, (c) => typeof coder(c)[3].cap[0], "number", "the dragged box is set");
 });
 
-// dragCard presses card from's handle and drops it on the lower part of card
-// to, in steps so the browser sees the pointer travel (a real drag). The
-// "Drop here" slot shifts the cards while the pointer moves, so the drop
-// point is read again once the pointer is over the target.
-async function dragCard(page, from, to) {
-  // All four cards must be inside the viewport: a pointer outside it sends
-  // no drag events.
+// dragTo presses grip (a drag handle) and drops it on target at the height
+// at(box) gives (default: the lower part of target), in steps so the browser
+// sees the pointer travel (a real drag). The "Drop here" slot shifts the
+// cards while the pointer moves, so the drop point is read again once the
+// pointer is over the target.
+async function dragTo(page, grip, target, at = (b) => b.y + b.height - 8) {
+  // Every card must be inside the viewport: a pointer outside it sends no
+  // drag events.
   await page.setViewportSize({ width: 1280, height: 1400 });
-  const handle = await card(page, from).locator(".p-handle").boundingBox();
+  const handle = await grip.boundingBox();
   const hx = handle.x + handle.width / 2;
   const hy = handle.y + handle.height / 2;
   await page.mouse.move(hx, hy);
   await page.mouse.down();
   await page.mouse.move(hx, hy + 12, { steps: 4 });
-  const near = await card(page, to).boundingBox();
+  const near = await target.boundingBox();
   await page.mouse.move(near.x + 40, near.y + near.height / 2, { steps: 12 });
-  const now = await card(page, to).boundingBox();
-  await page.mouse.move(now.x + 40, now.y + now.height - 8, { steps: 4 });
+  const now = await target.boundingBox();
+  await page.mouse.move(now.x + 40, at(now), { steps: 4 });
   await page.mouse.up();
+}
+
+// dragCard drags card from by its handle onto the lower part of card to.
+async function dragCard(page, from, to) {
+  await dragTo(page, card(page, from).locator(".p-handle"), card(page, to));
 }
 
 test("reorder by mouse drag", async ({ page }) => {
@@ -424,6 +430,228 @@ test("a plain card dragged past a group lands where it was dropped", async ({ pa
   await expectConfig(server.configPath, (c) => coder(c)[2].model, "claude-opus-5-5", "the moved card");
 });
 
+// ---------- moving into, out of and with groups ----------
+
+const modKey = async (page) => ((await page.evaluate(() => navigator.platform)).startsWith("Mac") ? "Meta" : "Control");
+// frameGrip is a group's own drag handle, in its header.
+const frameGrip = (page, n) => card(page, n).locator(".p-group-head .p-handle");
+const top8 = (b) => b.y + 8;
+const middle = (b) => b.y + b.height / 2;
+
+// spare is a third member for coder's group: opus on claude-spare.
+const spare = (c) => ({ ...c.profiles.coder[0], account: "claude-spare" });
+const withThird = (c) => c.profiles.coder[1].choices.push(spare(c));
+// twoGroups makes coder 1 opus, 2a go-1, 2b go-2, 3a codex-main,
+// 3b claude-spare, 4 sonnet.
+const twoGroups = (c) => {
+  const [opus, g, codex, sonnet] = c.profiles.coder;
+  c.profiles.coder = [opus, g, { load_balance: "random", choices: [codex, { ...opus, account: "claude-spare" }] }, sonnet];
+};
+const TWO_GROUPS = ["claude-main", "random[go-1 go-2]", "random[codex-main claude-spare]", "claude-main"];
+
+test("drag: a plain card dropped between two members joins the group there", async ({ page }) => {
+  await grouped(page);
+  const opus = coder(readConfig(server.configPath))[0];
+  await dragTo(page, card(page, 1).locator(".p-handle"), card(page, "2a"));
+  await expectConfig(server.configPath, shapeOf, ["random[go-1 claude-main go-2]", "codex-main", "claude-main"],
+    "opus is the group's second member");
+  expect(coder(readConfig(server.configPath))[0].choices[1]).toEqual(opus);
+  await expect(card(page, "1b")).toBeFocused();
+});
+
+test("drag: a plain card dropped at the end of the group just above it joins it", async ({ page }) => {
+  await grouped(page);
+  await dragTo(page, card(page, 3).locator(".p-handle"), card(page, "2b"));
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-1 go-2 codex-main]", "claude-main"],
+    "codex-main joined at the end, from just below the frame");
+  await expect(card(page, "2c")).toBeFocused();
+});
+
+test("drag: a member dragged out of a group of two lands plain and dissolves it", async ({ page }) => {
+  await grouped(page);
+  await dragCard(page, "2b", 3);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "codex-main", "go-2", "claude-main"],
+    "go-1 plain at the group's place, go-2 where it was dropped");
+  await expect(card(page, 4)).toBeFocused();
+  await expect(card(page, 4).getByLabel("Account")).toHaveValue("go-2");
+});
+
+test("drag: a member dropped on its own frame's header leaves the group, above it", async ({ page }) => {
+  await grouped(page, withThird);
+  await dragTo(page, card(page, "2a").locator(".p-handle"), card(page, 2).locator(".p-group-head"), middle);
+  await expectConfig(server.configPath, shapeOf,
+    ["claude-main", "go-1", "random[go-2 claude-spare]", "codex-main", "claude-main"], "go-1 plain, just above");
+  await expect(card(page, 2)).toBeFocused();
+});
+
+test("drag: a member dropped between members of its group reorders it", async ({ page }) => {
+  await grouped(page, withThird);
+  await dragTo(page, card(page, "2a").locator(".p-handle"), card(page, "2b"));
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1 claude-spare]", "codex-main",
+    "claude-main"], "go-1 second, still a member");
+});
+
+test("drag: a whole group moves as one position", async ({ page }) => {
+  await grouped(page);
+  await dragTo(page, frameGrip(page, 2), card(page, 3));
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "codex-main", "random[go-1 go-2]", "claude-main"],
+    "the group after codex-main");
+  await expect(card(page, 3)).toBeFocused();
+  await expect(card(page, 3)).toContainText("3 · Load balancing 2 models");
+});
+
+test("drag: a group dropped on another group's members never joins it", async ({ page }) => {
+  await grouped(page, twoGroups);
+  await dragTo(page, frameGrip(page, 2), card(page, "3b"));
+  await expectConfig(server.configPath, shapeOf,
+    ["claude-main", "random[codex-main claude-spare]", "random[go-1 go-2]", "claude-main"],
+    "both groups whole, the dragged one after the other");
+});
+
+test("drag: between two adjacent groups, the slot dropped on decides", async ({ page }) => {
+  const cases = [
+    [(p) => card(p, "2b"), undefined,
+      ["random[go-1 go-2 claude-main]", "random[codex-main claude-spare]", "claude-main"], "inside the first's end"],
+    [(p) => card(p, "3a"), top8,
+      ["random[go-1 go-2]", "random[claude-main codex-main claude-spare]", "claude-main"], "inside the second's start"],
+    [(p) => card(p, 2).getByRole("button", { name: "+ Add Model" }), middle,
+      ["random[go-1 go-2]", "claude-main", "random[codex-main claude-spare]", "claude-main"], "between them"],
+  ];
+  const original = fs.readFileSync(server.configPath, "utf8");
+  for (const [target, at, want, what] of cases) {
+    fs.writeFileSync(server.configPath, original);
+    await grouped(page, twoGroups);
+    await expectConfig(server.configPath, shapeOf, TWO_GROUPS, "the two groups");
+    await dragTo(page, card(page, 1).locator(".p-handle"), target(page), at);
+    await expectConfig(server.configPath, shapeOf, want, what);
+  }
+});
+
+test("keyboard: a member at the frame's edge moves out; a group of two dissolves", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  await card(page, "2b").focus();
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "go-2", "codex-main", "claude-main"],
+    "go-2 plain just below, go-1 plain at the group's place");
+  await expect(card(page, 3)).toBeFocused();
+  await expect(card(page, 3).getByLabel("Account")).toHaveValue("go-2");
+});
+
+test("keyboard: the first member moves out above; a group of three stays", async ({ page }) => {
+  await grouped(page, withThird);
+  const mod = await modKey(page);
+  await card(page, "2a").focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf,
+    ["claude-main", "go-1", "random[go-2 claude-spare]", "codex-main", "claude-main"], "go-1 plain just above");
+  await expect(card(page, 2)).toBeFocused();
+  await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
+});
+
+test("keyboard: a member not at an edge moves within its group", async ({ page }) => {
+  await grouped(page, withThird);
+  const mod = await modKey(page);
+  await card(page, "2a").focus();
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1 claude-spare]", "codex-main",
+    "claude-main"], "go-1 second, still a member");
+  await expect(card(page, "2b")).toBeFocused();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-1 go-2 claude-spare]", "codex-main",
+    "claude-main"], "back first");
+  await expect(card(page, "2a")).toBeFocused();
+});
+
+test("keyboard: a plain card moves past a whole group, never into it", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  await card(page, 1).focus();
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "claude-main", "codex-main", "claude-main"],
+    "opus past the group");
+  await expect(card(page, 2)).toBeFocused();
+  await expect(card(page, 2).getByLabel("Model")).toHaveValue("claude-opus-5-5");
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, GROUPED, "back above it");
+  await expect(card(page, 1)).toBeFocused();
+  await card(page, 3).focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "codex-main", "random[go-1 go-2]", "claude-main"],
+    "codex-main up past the group");
+  await expect(card(page, 2)).toBeFocused();
+});
+
+test("keyboard: a focused group frame moves by a position", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  await card(page, 2).focus();
+  await expect(card(page, 2)).toBeFocused();
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "codex-main", "random[go-1 go-2]", "claude-main"],
+    "the group down one");
+  await expect(card(page, 3)).toBeFocused();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, GROUPED, "back");
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "claude-main", "codex-main", "claude-main"],
+    "to the top");
+  await expect(card(page, 1)).toBeFocused();
+});
+
+test("keyboard: ↑/↓ reach a group's frame between cards", async ({ page }) => {
+  await grouped(page);
+  await card(page, 1).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(card(page, 2)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(card(page, "2a")).toBeFocused();
+});
+
+// Moves sent before the redraw of an edit carry the choices as the edit
+// left them, not as they were drawn.
+test("a move right after an edit still applies", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  const release = await holdState(page);
+  await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
+  await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "choice 4's model");
+  await card(page, 4).focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  release();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-1 go-2]", "claude-main", "codex-main"],
+    "moved, sent on the stale card");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
+test("a move within a group right after another member's edit still applies", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  const release = await holdState(page);
+  await card(page, "2a").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].model, "opencode-go/kimi-k3", "2a's model");
+  await card(page, "2b").focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  release();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1]", "codex-main", "claude-main"],
+    "go-2 first, the group_expect as the edit left it");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
+test("a group move right after a member's edit still applies", async ({ page }) => {
+  await grouped(page);
+  const mod = await modKey(page);
+  const release = await holdState(page);
+  await card(page, "2a").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].model, "opencode-go/kimi-k3", "2a's model");
+  await card(page, 2).focus();
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  release();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "codex-main", "random[go-1 go-2]", "claude-main"],
+    "moved, with the expect as the edit left it");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
 // ---------- creating a group: selection mode ----------
 
 const lbStart = (page) => page.getByRole("button", { name: "⇉ Load balance…", exact: true });
@@ -533,10 +761,18 @@ test("Load balance: Remove, Stop, + Add Model, fields and moves are inert while 
   await account.focus();
   await expect(account).not.toBeFocused();
   await expect(page.locator(".p-handle")).toHaveCount(0);
-  await page.locator('[data-key="card-0"]').focus();
-  const mod = (await page.evaluate(() => navigator.platform)).startsWith("Mac") ? "Meta" : "Control";
-  await page.keyboard.press(`${mod}+ArrowDown`);
+  // A card cannot take focus, so no ⌘/Ctrl+arrow reaches it, and a drag
+  // from its number column (where the handle was) moves nothing.
+  const card0 = page.locator('[data-key="card-0"]');
+  await expect(card0).not.toHaveAttribute("tabindex", /.*/);
+  await card0.focus();
+  await expect(card0).not.toBeFocused();
+  await expect(card(page, 2)).not.toHaveAttribute("tabindex", /.*/);
+  const before = fs.readFileSync(server.configPath, "utf8");
+  await dragTo(page, card(page, 1).locator(".p-n"), card(page, 3));
+  await dragTo(page, card(page, 2).locator(".p-group-head"), card(page, 4));
   await expect(pick(page, 1)).toBeVisible();
+  expectUnchanged(server.configPath, before);
   await lbCancel(page).click();
   await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
   await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "the edit after Cancel");
