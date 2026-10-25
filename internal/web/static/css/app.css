@@ -1177,6 +1177,45 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   padding-left: 60px;
 }
 
+/* ---------- creating a group: selection mode (lbselect.js) ---------- */
+
+/* ⇉ Load balance…, or while selecting Load balance N models and Cancel,
+   at the top of the choice list, from the cards' left edge. */
+.p-lb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The checkbox in the handle's place, as large as the handle (14 × 20 px
+   dots + 6 px padding), so the label below it does not move. */
+.p-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 32px;
+}
+
+.p-pick input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-mid);
+  cursor: pointer;
+}
+
+.p-card.is-picked {
+  border-color: var(--accent-mid);
+  background: var(--accent-soft);
+}
+
+/* What does not act while selecting is dimmed (the controls are inert). */
+.p-main.is-selecting [inert] {
+  opacity: 0.5;
+}
+
 /* ---------- caps on a card (caps.js, CapsEditor.dc.html) ---------- */
 
 .p-caps.is-uncapped {

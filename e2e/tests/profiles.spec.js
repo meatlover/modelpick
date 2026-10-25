@@ -424,6 +424,182 @@ test("a plain card dragged past a group lands where it was dropped", async ({ pa
   await expectConfig(server.configPath, (c) => coder(c)[2].model, "claude-opus-5-5", "the moved card");
 });
 
+// ---------- creating a group: selection mode ----------
+
+const lbStart = (page) => page.getByRole("button", { name: "⇉ Load balance…", exact: true });
+const lbConfirm = (page) => page.getByRole("button", { name: /^Load balance \d+ models$/ });
+const lbCancel = (page) => page.getByRole("button", { name: "Cancel", exact: true });
+const pick = (page, n) => page.getByRole("checkbox", { name: `Select choice ${n}`, exact: true });
+
+// holdState holds back every /api/state answer until the returned release()
+// is called, so the page is not redrawn after an op (as in "a second edit
+// before the redraw still applies").
+async function holdState(page) {
+  let hold = true;
+  await page.route("**/api/state", async (route) => {
+    while (hold) await new Promise((ok) => setTimeout(ok, 50));
+    await route.continue();
+  });
+  return () => { hold = false; };
+}
+
+test("Load balance: selected cards become one group at the first one's place", async ({ page }) => {
+  // Five plain choices: opus, codex, go-1, go-2, sonnet.
+  handEdit(server.configPath, (c) => c.profiles.coder.splice(3, 0, { ...c.profiles.coder[2], account: "go-2" }));
+  await page.reload();
+  await expect(card(page, 5)).toBeVisible();
+  const before = coder(readConfig(server.configPath));
+  await lbStart(page).click();
+  for (const n of [4, 1, 3]) await pick(page, n).check();
+  await expect(lbConfirm(page)).toHaveText("Load balance 3 models");
+  await lbConfirm(page).click();
+  await expectConfig(server.configPath, shapeOf, ["random[claude-main go-1 go-2]", "codex-main", "claude-main"],
+    "one group at choice 1's place, members in file order, codex-main after it");
+  expect(coder(readConfig(server.configPath))[0].choices).toEqual([before[0], before[2], before[3]]);
+  await expect(card(page, 1)).toContainText("1 · Load balancing 3 models");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(lbStart(page)).toBeVisible();
+});
+
+test("Load balance: confirm is disabled below 2 selected", async ({ page }) => {
+  await lbStart(page).click();
+  await expect(lbConfirm(page)).toHaveText("Load balance 0 models");
+  await expect(lbConfirm(page)).toBeDisabled();
+  await pick(page, 2).check();
+  await expect(lbConfirm(page)).toHaveText("Load balance 1 models");
+  await expect(lbConfirm(page)).toBeDisabled();
+  await pick(page, 3).check();
+  await expect(lbConfirm(page)).toHaveText("Load balance 2 models");
+  await expect(lbConfirm(page)).toBeEnabled();
+  await pick(page, 3).uncheck();
+  await expect(lbConfirm(page)).toBeDisabled();
+});
+
+test("Load balance: Cancel and Esc leave the profile unchanged", async ({ page }) => {
+  const before = fs.readFileSync(server.configPath, "utf8");
+  await lbStart(page).click();
+  await pick(page, 1).check();
+  await pick(page, 2).check();
+  await lbCancel(page).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(lbStart(page)).toBeVisible();
+  await lbStart(page).click();
+  await expect(pick(page, 1)).not.toBeChecked();
+  await pick(page, 3).check();
+  await pick(page, 4).check();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(lbStart(page)).toBeVisible();
+  expectUnchanged(server.configPath, before);
+});
+
+test("Load balance: cards already in a group have no checkbox", async ({ page }) => {
+  await grouped(page);
+  await lbStart(page).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(3);
+  for (const n of [1, 3, 4]) await expect(pick(page, n)).toBeVisible();
+  await expect(card(page, 2).getByRole("checkbox")).toHaveCount(0);
+  await expect(card(page, 2).locator("input[type=checkbox]")).toHaveCount(0);
+});
+
+test("Load balance: the checkboxes work from the keyboard", async ({ page }) => {
+  await lbStart(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(pick(page, 1)).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(pick(page, 1)).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(pick(page, 2)).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(lbConfirm(page)).toHaveText("Load balance 2 models");
+  await lbConfirm(page).click();
+  await expectConfig(server.configPath, shapeOf, ["random[claude-main codex-main]", "go-1", "claude-main"],
+    "the two checked from the keyboard");
+});
+
+// Every inert control is pressed the way a user would (the mouse, or a key
+// on the focused card); then one ordinary edit is sent. Ops run in order, so
+// once that edit is in the file anything the inert controls sent would be too.
+test("Load balance: Remove, Stop, + Add Model, fields and moves are inert while selecting", async ({ page }) => {
+  await grouped(page);
+  // Every control pressed below must be inside the viewport.
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await lbStart(page).click();
+  for (const key of ["c0-remove", "c1-remove", "group-1-stop", "group-1-add", "add-choice"]) {
+    const box = await page.locator(`[data-key="${key}"]`).boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
+  const account = page.locator('[data-key="c0-account"]');
+  await account.focus();
+  await expect(account).not.toBeFocused();
+  await expect(page.locator(".p-handle")).toHaveCount(0);
+  await page.locator('[data-key="card-0"]').focus();
+  const mod = (await page.evaluate(() => navigator.platform)).startsWith("Mac") ? "Meta" : "Control";
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  await expect(pick(page, 1)).toBeVisible();
+  await lbCancel(page).click();
+  await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
+  await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "the edit after Cancel");
+  await expectConfig(server.configPath, shapeOf, GROUPED, "nothing pressed while selecting was sent");
+});
+
+test("Load balance: the selection resets on another profile and on new state", async ({ page }) => {
+  await lbStart(page).click();
+  await pick(page, 1).check();
+  await page.getByRole("link", { name: "tester", exact: true }).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.getByRole("link", { name: "coder", exact: true }).click();
+  await expect(lbStart(page)).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await lbStart(page).click();
+  await pick(page, 1).check();
+  handEdit(server.configPath, (c) => { c.settings.default_cap = 80; });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByLabel("Global default cap")).toHaveValue("80%");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(lbStart(page)).toBeVisible();
+});
+
+// Group ops sent before the redraw of a member's edit carry the members as
+// that edit left them, not as they were drawn.
+test("Stop load balancing right after a member's edit still applies", async ({ page }) => {
+  await grouped(page);
+  const release = await holdState(page);
+  await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
+  await card(page, 2).getByRole("button", { name: "Stop load balancing" }).click();
+  release();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "go-2", "codex-main", "claude-main"],
+    "dissolved, sent on the stale frame");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
+test("+ Add Model in a group right after a member's edit still applies", async ({ page }) => {
+  await grouped(page);
+  const release = await holdState(page);
+  await card(page, "2a").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].model, "opencode-go/kimi-k3", "2a's model");
+  await card(page, 2).getByRole("button", { name: "+ Add Model" }).click();
+  release();
+  await expectConfig(server.configPath, shapeOf,
+    ["claude-main", "random[go-1 go-2 claude-main]", "codex-main", "claude-main"], "a third member");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
+test("Load balance right after an edit still applies", async ({ page }) => {
+  const release = await holdState(page);
+  await card(page, 3).getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[2].model, "opencode-go/kimi-k3", "choice 3's model");
+  await lbStart(page).click();
+  await pick(page, 2).check();
+  await pick(page, 3).check();
+  await lbConfirm(page).click();
+  release();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[codex-main go-1]", "claude-main"],
+    "grouped, with choice 3 as the edit left it");
+  await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+});
+
 // This test is its own setup: its page registers the listeners before the
 // login, so the first load and the first render of each tab are watched too.
 test("no console errors on any tab", async ({ context }) => {
