@@ -63,6 +63,25 @@ func Positions(groups []int, lbs []string) []Position {
 	return out
 }
 
+// ChoiceGroups returns each choice's Group and LoadBalance, the input of
+// Positions and Labels.
+func ChoiceGroups(cs []Choice) ([]int, []string) {
+	groups, lbs := make([]int, len(cs)), make([]string, len(cs))
+	for i, c := range cs {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	return groups, lbs
+}
+
+// DocGroups is ChoiceGroups for the file's choices.
+func DocGroups(cs []DocChoice) ([]int, []string) {
+	groups, lbs := make([]int, len(cs)), make([]string, len(cs))
+	for i, c := range cs {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	return groups, lbs
+}
+
 // Labels names each flat choice by its position: "1" for a plain choice,
 // "2a", "2b", … for the members of a group at position 2.
 func Labels(groups []int) []string {

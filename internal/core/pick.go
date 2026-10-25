@@ -51,10 +51,7 @@ func Pick(cfg *Config, profile string, now time.Time, env Env, shuffle Shuffle) 
 	}
 	p := picker{cfg: cfg, now: now, env: env, shuffle: shuffle, states: map[string]AccountState{}}
 	p.res.Profile = profile
-	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
-	for i, c := range choices {
-		groups[i], lbs[i] = c.Group, c.LoadBalance
-	}
+	groups, lbs := ChoiceGroups(choices)
 	labels := Labels(groups)
 	for n, pos := range Positions(groups, lbs) {
 		if groups[pos.Start] == 0 {

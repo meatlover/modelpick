@@ -446,7 +446,7 @@ func encodeRule(lv int, r DocRule) string {
 // encodeProfile writes each group as one item, its members in the choice
 // layout one level deeper.
 func encodeProfile(lv int, choices []DocChoice) string {
-	groups, lbs := docGroups(choices)
+	groups, lbs := DocGroups(choices)
 	var items []string
 	for _, pos := range Positions(groups, lbs) {
 		if groups[pos.Start] == 0 {
@@ -460,16 +460,6 @@ func encodeProfile(lv int, choices []DocChoice) string {
 		items = append(items, obj(lv+1, []member{{"load_balance", quote(pos.LoadBalance)}, {"choices", arrayLines(lv+2, members)}}))
 	}
 	return arrayLines(lv, items)
-}
-
-// docGroups returns each choice's Group and LoadBalance, the input of
-// Positions.
-func docGroups(choices []DocChoice) ([]int, []string) {
-	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
-	for i, c := range choices {
-		groups[i], lbs[i] = c.Group, c.LoadBalance
-	}
-	return groups, lbs
 }
 
 func encodeChoice(lv int, c DocChoice) string {

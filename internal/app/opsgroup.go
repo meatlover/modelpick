@@ -12,24 +12,14 @@ import (
 // once a second one exists (load balancing spec §8).
 const newGroupAlgorithm = "random"
 
-// groupsOf returns each choice's Group and LoadBalance, the input of
-// core.Positions and core.Labels.
-func groupsOf(cs []core.DocChoice) ([]int, []string) {
-	groups, lbs := make([]int, len(cs)), make([]string, len(cs))
-	for i, c := range cs {
-		groups[i], lbs[i] = c.Group, c.LoadBalance
-	}
-	return groups, lbs
-}
-
 func positionsOf(cs []core.DocChoice) []core.Position {
-	return core.Positions(groupsOf(cs))
+	return core.Positions(core.DocGroups(cs))
 }
 
 // label names flat choice i as doctor and the ui do: "2", or "2b" for a
 // member of the group at position 2.
 func label(cs []core.DocChoice, i int) string {
-	groups, _ := groupsOf(cs)
+	groups, _ := core.DocGroups(cs)
 	return core.Labels(groups)[i]
 }
 
