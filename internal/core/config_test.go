@@ -36,8 +36,11 @@ func TestExampleConfigParses(t *testing.T) {
 	if cfg.Settings.MinCallInterval != 15*time.Minute || cfg.Settings.DefaultCap != 95 {
 		t.Errorf("Settings = %+v", cfg.Settings)
 	}
-	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "tester"}) {
+	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "reviewer", "tester"}) {
 		t.Errorf("ProfileNames = %v", got)
+	}
+	if r := cfg.Profiles["reviewer"]; len(r) != 4 || r[0].Group == 0 || r[0].Group != r[2].Group || r[3].Group != 0 || r[0].LoadBalance != "random" {
+		t.Errorf("reviewer = %+v, want a random group of go-1..go-3 then a plain choice", r)
 	}
 	if len(cfg.Schedules["deepseek-peak"].Rules[0].Ranges) != 2 {
 		t.Errorf("schedule = %+v", cfg.Schedules["deepseek-peak"])

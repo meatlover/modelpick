@@ -7,7 +7,7 @@
   "thinking": null,
   "account_ref": null,
   "load_balance": null,
-  "reason": "unknown profile \"coder-hard\"; configured: coder-difficult, tester",
+  "reason": "unknown profile \"coder-hard\"; configured: coder-difficult, reviewer, tester",
   "skipped": [],
   "errors": [],
   "warnings": []

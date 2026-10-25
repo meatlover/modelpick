@@ -28,7 +28,8 @@ identical. Model names and numbers are illustrative.
     "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" },
     "codex-main":  { "vendor": "codex", "codex_home": "~/.codex" },
     "go-1": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1 },
-    "go-2": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 2 }
+    "go-2": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 2 },
+    "go-3": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 3 }
   },
   "schedules": {
     "deepseek-peak": {
@@ -48,6 +49,17 @@ identical. Model names and numbers are illustrative.
         "cap": [95, 95, 98], "skip_during": ["deepseek-peak"] },
       { "account": "go-2", "model": "opencode-go/deepseek-v4.1", "thinking": null,
         "cap": [95, 95, 98], "skip_during": ["deepseek-peak"] },
+      { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" }
+    ],
+    "reviewer": [
+      {
+        "load_balance": "random",
+        "choices": [
+          { "account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] },
+          { "account": "go-2", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] },
+          { "account": "go-3", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] }
+        ]
+      },
       { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" }
     ]
   }
@@ -149,7 +161,8 @@ each day have its own hours (the UI writes this form when the days differ).
 ## `profiles`
 
 A map of profile name (the kind of work: `coder-difficult`, `tester`, ...) to
-a non-empty, ordered list of choices. `pick` returns the first usable one.
+a non-empty, ordered list of choices and [load balancing groups](#load-balancing-groups).
+`pick` returns the first usable one.
 
 | Key | Required | Meaning |
 |---|---|---|
@@ -162,6 +175,26 @@ a non-empty, ordered list of choices. `pick` returns the first usable one.
 
 A choice has `skip_during` or `allow_during`, never both
 (`use skip_during or allow_during, not both`).
+
+### Load balancing groups
+
+A list item with `load_balance` instead of `account` is a group: several
+choices that share one position, so consecutive picks spread across them (say
+three OpenCode Go keys) instead of draining the first. The `reviewer` profile
+in the example is one.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `load_balance` | yes | The algorithm. Only `"random"` exists. It is required, not defaulted, so a later algorithm cannot change what an existing file means. |
+| `choices` | yes | At least 2 members, each a choice as in the table above, with its own `cap` and schedules. A member cannot be a group. |
+
+A group has exactly these two keys; caps and schedules belong to the members.
+Both `account` and `load_balance` on one item, or neither, is an error, as is
+an unknown algorithm (the message lists the known ones). Errors locate the
+member, for example `profiles.reviewer[0].choices[1].cap`.
+
+Numbers count positions: in `reviewer` the group is 1 and the Claude choice
+is 2. Members are `1a`, `1b`, `1c`; that is how `doctor` and the UI name them.
 
 ### Thinking
 
@@ -237,11 +270,24 @@ not skip here); pick it if it has no `cap`; otherwise read the account's
 usage, skip if unknown, skip if any window is at or over its cap, else pick it.
 Accounts are only read when a choice reaches that step.
 
+At a group, `pick` first runs the schedule and credential checks on every
+member, in file order; a member that fails goes to `skipped` (a credential
+failure also to `errors`). The rest are shuffled and tried in that order with
+the cap and usage steps above, and the first usable one is picked, so only the
+accounts the walk reaches are read. If none is usable, every member is in
+`skipped` with its own reason and the walk goes on to the next position. The
+checks before the shuffle keep the status stable: a broken credential gives
+`ok_with_errors` on every run, not only on the runs that happen to try that
+member first. A profile without groups picks exactly as before.
+
 ## `pick` status and exit code
 
 The output is always JSON on stdout, with the same fields in the same order:
-`status, profile, vendor, account, model, thinking, account_ref, reason,
-skipped, errors, warnings`.
+`status, profile, vendor, account, model, thinking, account_ref, load_balance,
+reason, skipped, errors, warnings`. `load_balance` is `null` unless the pick
+came from a group, where it says how:
+`{"algorithm": "random", "choice": 2, "member": "2b"}` (the group's position,
+and the member's label).
 
 | `status` | Exit | Meaning |
 |---|---|---|
