@@ -275,7 +275,8 @@ member, in file order; a member that fails goes to `skipped` (a credential
 failure also to `errors`). The rest are shuffled and tried in that order with
 the cap and usage steps above, and the first usable one is picked, so only the
 accounts the walk reaches are read. If none is usable, every member is in
-`skipped` with its own reason and the walk goes on to the next position. The
+`skipped` with its own reason and the walk goes on to the next position. A
+group's entries in `skipped` are listed in file order, whatever the shuffle. The
 checks before the shuffle keep the status stable: a broken credential gives
 `ok_with_errors` on every run, not only on the runs that happen to try that
 member first. A profile without groups picks exactly as before.

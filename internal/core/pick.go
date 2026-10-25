@@ -96,17 +96,33 @@ func (p *picker) try(c Choice, check func(Choice) (string, bool)) bool {
 // spec §5): the local checks run on every member in file order, so a
 // credential error does not depend on the shuffle; then the algorithm walks
 // the survivors, which it is given, reading usage only for the members it
-// asks about. It returns the picked member's index in members.
+// asks about. The members it skipped are recorded in file order, so the
+// output does not depend on the shuffle either. It returns the picked
+// member's index in members.
 func (p *picker) group(members []Choice, algorithm string) (int, bool) {
+	whys := make([]string, len(members)) // non-empty: skipped, and why
 	var survivors []int
 	var alive []Choice
 	for i, c := range members {
-		if p.try(c, p.local) {
+		if why, ok := p.local(c); ok {
 			survivors, alive = append(survivors, i), append(alive, c)
+		} else {
+			whys[i] = why
 		}
 	}
-	usable := func(i int) bool { return p.try(alive[i], p.usageAllows) }
+	usable := func(i int) bool {
+		why, ok := p.usageAllows(alive[i])
+		if !ok {
+			whys[survivors[i]] = why
+		}
+		return ok
+	}
 	i, ok := Algorithms[algorithm].Pick(alive, usable, p.shuffle)
+	for j, why := range whys {
+		if why != "" {
+			p.res.Skipped = append(p.res.Skipped, Skip{Account: members[j].Account, Model: members[j].Model, Why: why})
+		}
+	}
 	if !ok {
 		return 0, false
 	}
