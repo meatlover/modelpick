@@ -2,12 +2,14 @@ package core
 
 import "strconv"
 
-// Algorithm chooses one member of a load balancing group. usable is lazy:
-// it is asked about one member at a time, and asking may read usage, so an
-// algorithm asks only as far as it must. Pick returns the index of the
+// Algorithm chooses one member of a load balancing group. members are the
+// group's members still in play (those that passed the checks that read no
+// usage), and i in usable and in the result indexes that slice. usable is
+// lazy: it is asked about one member at a time, and asking may read usage, so
+// an algorithm asks only as far as it must. Pick returns the index of the
 // chosen member, or false when no member is usable.
 type Algorithm interface {
-	Pick(n int, usable func(i int) bool, shuffle func(n int, swap func(i, j int))) (int, bool)
+	Pick(members []Choice, usable func(i int) bool, shuffle func(n int, swap func(i, j int))) (int, bool)
 }
 
 // Algorithms is the one list of load balancing algorithms: validation, pick
@@ -21,12 +23,12 @@ func AlgorithmNames() []string { return sortedKeys(Algorithms) }
 // usable one.
 type randomAlgorithm struct{}
 
-func (randomAlgorithm) Pick(n int, usable func(i int) bool, shuffle func(n int, swap func(i, j int))) (int, bool) {
-	order := make([]int, n)
+func (randomAlgorithm) Pick(members []Choice, usable func(i int) bool, shuffle func(n int, swap func(i, j int))) (int, bool) {
+	order := make([]int, len(members))
 	for i := range order {
 		order[i] = i
 	}
-	shuffle(n, func(i, j int) { order[i], order[j] = order[j], order[i] })
+	shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 	for _, i := range order {
 		if usable(i) {
 			return i, true

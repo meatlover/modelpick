@@ -95,17 +95,18 @@ func (p *picker) try(c Choice, check func(Choice) (string, bool)) bool {
 // group picks a usable member of a load balancing group (load balancing
 // spec §5): the local checks run on every member in file order, so a
 // credential error does not depend on the shuffle; then the algorithm walks
-// the survivors, reading usage only for the members it asks about. It
-// returns the picked member's index in members.
+// the survivors, which it is given, reading usage only for the members it
+// asks about. It returns the picked member's index in members.
 func (p *picker) group(members []Choice, algorithm string) (int, bool) {
 	var survivors []int
+	var alive []Choice
 	for i, c := range members {
 		if p.try(c, p.local) {
-			survivors = append(survivors, i)
+			survivors, alive = append(survivors, i), append(alive, c)
 		}
 	}
-	usable := func(i int) bool { return p.try(members[survivors[i]], p.usageAllows) }
-	i, ok := Algorithms[algorithm].Pick(len(survivors), usable, p.shuffle)
+	usable := func(i int) bool { return p.try(alive[i], p.usageAllows) }
+	i, ok := Algorithms[algorithm].Pick(alive, usable, p.shuffle)
 	if !ok {
 		return 0, false
 	}

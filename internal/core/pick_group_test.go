@@ -175,11 +175,16 @@ func TestPickPlainHasNullLoadBalance(t *testing.T) {
 	}
 }
 
-// lastAlgorithm picks the last usable member, ignoring the shuffle.
-type lastAlgorithm struct{}
+// lastAlgorithm picks the last usable member, ignoring the shuffle, and
+// records the accounts of the members it was given.
+type lastAlgorithm struct{ given *[]string }
 
-func (lastAlgorithm) Pick(n int, usable func(int) bool, _ func(int, func(int, int))) (int, bool) {
-	for i := n - 1; i >= 0; i-- {
+func (a lastAlgorithm) Pick(members []Choice, usable func(int) bool, _ func(int, func(int, int))) (int, bool) {
+	*a.given = nil
+	for _, m := range members {
+		*a.given = append(*a.given, m.Account)
+	}
+	for i := len(members) - 1; i >= 0; i-- {
 		if usable(i) {
 			return i, true
 		}
@@ -188,9 +193,11 @@ func (lastAlgorithm) Pick(n int, usable func(int) bool, _ func(int, func(int, in
 }
 
 // TestPickUsesAlgorithmTable shows the table is pick's only source of
-// algorithms (spec §10). It mutates Algorithms, so no t.Parallel.
+// algorithms (spec §10), and that an algorithm is given the members that
+// passed the local checks (spec §5). It mutates Algorithms, so no t.Parallel.
 func TestPickUsesAlgorithmTable(t *testing.T) {
-	Algorithms["test-last"] = lastAlgorithm{}
+	var given []string
+	Algorithms["test-last"] = lastAlgorithm{&given}
 	defer delete(Algorithms, "test-last")
 	cfg := groupPickConfig(t, goGroupProfile("test-last", "go-1", "go-2", "go-3"))
 	// With the members in file order, random would pick go-1.
@@ -201,6 +208,21 @@ func TestPickUsesAlgorithmTable(t *testing.T) {
 	want := &LBPick{Algorithm: "test-last", Choice: 1, Member: "1c"}
 	if !reflect.DeepEqual(r.LoadBalance, want) {
 		t.Errorf("LoadBalance = %+v, want %+v", r.LoadBalance, want)
+	}
+	if !reflect.DeepEqual(given, []string{"go-1", "go-2", "go-3"}) {
+		t.Errorf("algorithm was given %q, want all three members", given)
+	}
+	// go-3 has no credential: it fails the local checks, so the algorithm
+	// is given go-1 and go-2 only, and its index 1 is member 1b.
+	env := usableGo("go-1", "go-2", "go-3")
+	env.creds = map[string]adapter.CredStatus{"go-3": {Source: "test: go-3"}}
+	r = Pick(cfg, "p", noon, env, noShuffle)
+	if !reflect.DeepEqual(given, []string{"go-1", "go-2"}) {
+		t.Errorf("algorithm was given %q, want the survivors go-1, go-2", given)
+	}
+	want = &LBPick{Algorithm: "test-last", Choice: 1, Member: "1b"}
+	if pickedAccount(r) != "go-2" || !reflect.DeepEqual(r.LoadBalance, want) {
+		t.Errorf("picked %s %+v, want go-2 %+v", pickedAccount(r), r.LoadBalance, want)
 	}
 }
 

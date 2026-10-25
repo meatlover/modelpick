@@ -56,14 +56,14 @@ func TestRandomAlgorithm(t *testing.T) {
 		}
 	}
 	// Shuffled order is 3 2 1 0: 3 is unusable, 2 is the first usable.
-	i, ok := alg.Pick(4, usable(0, 2), reverse)
+	i, ok := alg.Pick(make([]Choice, 4), usable(0, 2), reverse)
 	if !ok || i != 2 {
 		t.Errorf("Pick = %d, %v; want 2, true", i, ok)
 	}
 	if !reflect.DeepEqual(asked, []int{3, 2}) {
 		t.Errorf("usable asked %v, want [3 2] (lazy, in shuffled order)", asked)
 	}
-	if i, ok := alg.Pick(3, usable(), reverse); ok || i != 0 {
+	if i, ok := alg.Pick(make([]Choice, 3), usable(), reverse); ok || i != 0 {
 		t.Errorf("none usable: Pick = %d, %v; want 0, false", i, ok)
 	}
 	if !reflect.DeepEqual(asked, []int{2, 1, 0}) {
@@ -73,8 +73,8 @@ func TestRandomAlgorithm(t *testing.T) {
 
 type firstAlgorithm struct{}
 
-func (firstAlgorithm) Pick(n int, usable func(int) bool, _ func(int, func(int, int))) (int, bool) {
-	for i := 0; i < n; i++ {
+func (firstAlgorithm) Pick(members []Choice, usable func(int) bool, _ func(int, func(int, int))) (int, bool) {
+	for i := range members {
 		if usable(i) {
 			return i, true
 		}
