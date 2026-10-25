@@ -205,26 +205,39 @@ func gatedErrors(fs findings) []Finding {
 }
 
 // docLess orders findings as the file lists them: by subject without the
-// choice position, then by choice number (so choice 9 precedes choice 10),
-// then by message.
+// choice position, then by choice position (so choice 9 precedes choice 10,
+// and member 2b falls between choice 1 and choice 3, after 2a), then by
+// message.
 func docLess(a, b Finding) bool {
 	sa, sb := gateSubject(a.Subject), gateSubject(b.Subject)
 	if sa != sb {
 		return sa < sb
 	}
-	if na, nb := choiceNumber(a.Subject), choiceNumber(b.Subject); na != nb {
+	na, la := choiceLabel(a.Subject)
+	nb, lb := choiceLabel(b.Subject)
+	if na != nb {
 		return na < nb
+	}
+	if len(la) != len(lb) { // member letters run a … z, aa, ab, …
+		return len(la) < len(lb)
+	}
+	if la != lb {
+		return la < lb
 	}
 	return a.Message < b.Message
 }
 
-// choiceNumber is n of "profile p, choice n"; 0 for any other subject.
-func choiceNumber(subject string) int {
-	if i := strings.Index(subject, choiceSep); strings.HasPrefix(subject, "profile ") && i >= 0 {
-		n, _ := strconv.Atoi(subject[i+len(choiceSep):])
-		return n
+// choiceLabel splits the label of "profile p, choice 2b" into its position
+// number and member letters (2, "b"); 0, "" for any other subject.
+func choiceLabel(subject string) (int, string) {
+	i := strings.Index(subject, choiceSep)
+	if !strings.HasPrefix(subject, "profile ") || i < 0 {
+		return 0, ""
 	}
-	return 0
+	label := subject[i+len(choiceSep):]
+	digits := len(label) - len(strings.TrimLeft(label, "0123456789"))
+	n, _ := strconv.Atoi(label[:digits])
+	return n, label[digits:]
 }
 
 const choiceSep = ", choice "

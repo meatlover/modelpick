@@ -244,6 +244,56 @@ func TestApplyGateQuotesFirstInDocumentOrder(t *testing.T) {
 	}
 }
 
+// A group member's label reads as its position: the gate orders choice 2b
+// after choice 1 and member 2a, and before choice 3.
+func TestApplyGateOrdersMemberLabels(t *testing.T) {
+	group := `{"load_balance":"random","choices":[` + goodFirst + `,` + goodFirst + `]}`
+	cfg := profileConfig(goodFirst, group, goodFirst, uncappedCodex)
+	ultraErr := strings.Replace(badThinkingErr, `"max"`, `"ultra"`, 1)
+	cases := []struct {
+		name string
+		bad  map[int]string // flat index -> unsupported thinking
+		want string
+	}{
+		{"choice 1 and member 2b", map[int]string{2: "max", 0: "max"}, "Profile p, choice 1: " + badThinkingErr},
+		{"member 2b and choice 3", map[int]string{3: "max", 2: "max"}, "Profile p, choice 2b: " + badThinkingErr},
+		// "max" sorts before "ultra": only the label puts 2a first.
+		{"member 2a and member 2b", map[int]string{1: "ultra", 2: "max"}, "Profile p, choice 2a: " + ultraErr},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			app.SetTestOp(t, "test.bad", func(doc *core.Doc) {
+				for i, th := range c.bad {
+					doc.Profiles["p"][i].Thinking = &th
+				}
+			})
+			f := newEditorFx(t, cfg)
+			s := f.load(t)
+			_, _, err := f.ed.Apply(s.SHA256, "test.bad", nil)
+			wantRefused(t, err, c.want)
+		})
+	}
+}
+
+// Member letters run z, aa: member 2z precedes member 2aa.
+func TestApplyGateOrdersLongMemberLabels(t *testing.T) {
+	members := make([]string, 27)
+	for i := range members {
+		members[i] = goodFirst
+	}
+	group := `{"load_balance":"random","choices":[` + strings.Join(members, ",") + `]}`
+	cfg := profileConfig(goodFirst, group, uncappedCodex)
+	ultra, maxT := "ultra", "max"
+	app.SetTestOp(t, "test.bad", func(doc *core.Doc) {
+		doc.Profiles["p"][26].Thinking = &ultra // 2z
+		doc.Profiles["p"][27].Thinking = &maxT  // 2aa
+	})
+	f := newEditorFx(t, cfg)
+	s := f.load(t)
+	_, _, err := f.ed.Apply(s.SHA256, "test.bad", nil)
+	wantRefused(t, err, "Profile p, choice 2z: "+strings.Replace(badThinkingErr, `"max"`, `"ultra"`, 1))
+}
+
 // checkHook runs onCheck inside the adapter's Check, i.e. mid-gate.
 type checkHook struct {
 	*apptest.Fake
