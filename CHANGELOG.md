@@ -25,6 +25,10 @@
 
 ### Changed
 
+- The UI's doctor status lists each problem with a Go to that opens the tab
+  holding its item, scrolls to it and lights it up for a moment. Its Check
+  all button is gone; run `modelpick doctor all` instead.
+- A choice card's schedules end under Remove's right edge.
 - `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which cancels a renewal.
 - The UI no longer refuses an edit as "changed outside the UI" when it was
   made on a card before the page had redrawn after the card's previous edit

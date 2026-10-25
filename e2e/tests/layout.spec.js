@@ -1,8 +1,9 @@
 // The compact Profiles card (owner, 2026-10-24), measured in a real
 // browser: two rows (dropdowns; caps and schedules), the field labels once
 // above the list, Remove level with the dropdowns, the cap editor floating
-// over the card, and the schedules at the right end of the caps line or,
-// when they do not fit there, at the left of their own line.
+// over the card, and the schedules at the right end of the caps line,
+// right-aligned with Remove (owner, 2026-10-25), or, when they do not fit
+// there, at the left of their own line.
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
 const { handEdit, loadBalanceGo } = require("./config");
@@ -62,6 +63,8 @@ test("a card is two rows: dropdowns, then caps and schedules on one line", async
   const nocaps = await rect(c2.getByRole("button", { name: "No caps" }));
   expect(box.height).toBeLessThanOrEqual(32); // the box's value line, inside a 32 px box
   expect(Math.abs(mid(add) - mid(nocaps))).toBeLessThanOrEqual(1);
+  const remove = await rect(c2.getByRole("button", { name: "Remove choice 2" }));
+  expect(Math.abs(add.right - remove.right), "+ schedule right-aligned with Remove").toBeLessThanOrEqual(1);
   expect((await rect(c2)).height).toBeLessThanOrEqual(110);
 });
 
@@ -101,7 +104,8 @@ test("an editor opened near the window's bottom is scrolled into view", async ({
 // Which card fits depends on the font (CI's Linux font is wider than
 // macOS's), so each case is far from the edge: card 1's two caps and one
 // short schedule fit with room to spare at 1280 px; card 3's three caps and
-// two schedules cannot fit at 900 px. The width check says when a case's
+// two schedules cannot fit at 760 px (since the line reaches under Remove,
+// they fit at 900 px by 16 px on macOS). The width check says when a case's
 // setup, not the layout, is what changed.
 test("schedules: right end of the caps line, else left of their own line", async ({ page }) => {
   await login(page, server.url);
@@ -109,23 +113,24 @@ test("schedules: right end of the caps line, else left of their own line", async
     c.profiles.coder[0].skip_during = ["night"];
     c.profiles.coder[2].skip_during = ["deepseek-peak", "night"];
   });
-  for (const [width, n, ownLine] of [[1280, 1, false], [900, 3, true]]) {
+  for (const [width, n, ownLine] of [[1280, 1, false], [760, 3, true]]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.reload();
     await page.getByRole("link", { name: "Profiles", exact: true }).click();
     const c = card(page, n);
     const caps = await rect(c.locator(".p-caps"));
     const chips = await rect(c.locator(".p-chips"));
-    const main = await rect(c.locator(".p-card-main"));
-    const fits = caps.width + 10 + chips.width <= main.width;
+    const foot = await rect(c.locator(".p-card-foot"));
+    const remove = await rect(c.getByRole("button", { name: `Remove choice ${n}` }));
+    const fits = caps.width + 10 + chips.width <= foot.width;
     expect(fits, `${width}px, card ${n}: the setup ${ownLine ? "fits, so cannot test wrapping" : "no longer fits"}`)
       .toBe(!ownLine);
     if (ownLine) {
       expect(chips.top, `${width}px: below the caps`).toBeGreaterThanOrEqual(caps.bottom);
-      expect(Math.abs(chips.left - main.left), `${width}px: at the left`).toBeLessThanOrEqual(1);
+      expect(Math.abs(chips.left - foot.left), `${width}px: at the left`).toBeLessThanOrEqual(1);
     } else {
       expect(Math.abs(chips.top - caps.top), `${width}px: on the caps line`).toBeLessThanOrEqual(1);
-      expect(Math.abs(chips.right - main.right), `${width}px: at the right`).toBeLessThanOrEqual(1);
+      expect(Math.abs(chips.right - remove.right), `${width}px: right-aligned with Remove`).toBeLessThanOrEqual(1);
     }
   }
 });
@@ -150,6 +155,7 @@ test("member cards keep the single-card layout rules", async ({ page }) => {
   const add = await rect(m.getByRole("button", { name: "+ schedule" }));
   const nocaps = await rect(m.getByRole("button", { name: "No caps" }));
   expect(Math.abs(mid(add) - mid(nocaps))).toBeLessThanOrEqual(1);
+  expect(Math.abs(add.right - remove.right), "+ schedule right-aligned with Remove").toBeLessThanOrEqual(1);
   expect((await rect(m)).height).toBeLessThanOrEqual(110);
   // The member's edges are a plain card's: the frame sits around them.
   const plain = await rect(card(page, 1));

@@ -45,9 +45,8 @@ modelpick version                                 the build: its tag (v0.2.0), e
 
 `modelpick ui` serves a page on `127.0.0.1`, prints its URL and opens it.
 The page shows saved readings. It calls a vendor only from its Refresh
-buttons and its Check all button (`doctor all`), which skip the floor like
-`--refresh`, and for one background first reading per run of an account that
-has none, which keeps the floor. None of them passes a server `Retry-After`.
+buttons, which skip the floor like `--refresh`, and for one background first
+reading per run of an account that has none, which keeps the floor. None of them passes a server `Retry-After`.
 When the login has expired, each asks Claude Code or Codex to renew it first.
 Refresh is enabled for an expired account that can be renewed. Every edit applies to the config file at once, and only
 if it adds no `doctor` error. The first edit rewrites a hand-written file in a

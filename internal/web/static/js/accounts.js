@@ -173,7 +173,7 @@ async function remove(accounts, i) {
 
 function row(accounts, i, red) {
   const a = accounts[i];
-  return h("li", { class: ["a-row", red.has(a.name) && "is-error"] },
+  return h("li", { class: ["a-row", red.has(a.name) && "is-error"], "data-subject": a.name },
     h("span", { class: "a-name-cell" }, a.name),
     h("span", { class: "mono a-vendor" }, a.vendor),
     h("div", { class: "a-where" },

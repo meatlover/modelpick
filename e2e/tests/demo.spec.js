@@ -1,6 +1,6 @@
 // A smoke set against the in-memory demo (cmd/modelpick-ui-demo). The demo
 // keeps its config in memory, so every case asserts visible text. Its
-// Refresh and Check all pretend to wait 600 ms for the vendor.
+// Refresh pretends to wait 600 ms for the vendor.
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
 
@@ -71,36 +71,6 @@ test("refresh shows a new age", async ({ page }) => {
   await expect(age).toHaveText("4 mins ago");
   await usageRow(page, "claude-main").getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(age).toHaveText("just now");
-});
-
-test("Check all adds the failed reading", async ({ page }) => {
-  const failed = "codex-main: last usage reading failed: usage endpoint returned HTTP 503";
-  await page.getByRole("button", { name: "1 warning" }).click();
-  await expect(panel(page)).not.toContainText(failed);
-  // The browser holds the request until the running state is seen; it then
-  // reaches the demo, which still waits its 600 ms.
-  let release;
-  const gate = new Promise((resolve) => { release = resolve; });
-  await page.route("**/api/doctor/all", async (route) => {
-    await gate;
-    await route.continue();
-  });
-  const check = panel(page).getByRole("button", { name: /^(Check all|Checking…)$/ });
-  await check.click();
-  await expect(check).toHaveText("Checking…");
-  release();
-  await expect(check).toHaveText("Check all");
-  await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toBeVisible();
-  await expect(panel(page)).toContainText(failed);
-  await expect(page.getByRole("button", { name: "2 warnings" })).toBeVisible();
-  // A good Refresh of codex-main clears the row and the warning.
-  await usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toHaveCount(0);
-  // The Refresh re-reads the doctor, so the status follows without a reload.
-  // (The click on Refresh, outside the panel, closed it.)
-  await page.getByRole("button", { name: "1 warning" }).click();
-  await expect(panel(page)).toBeVisible();
-  await expect(panel(page)).not.toContainText(failed);
 });
 
 test("conflict strip after edit", async ({ page }) => {

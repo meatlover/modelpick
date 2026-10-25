@@ -49,7 +49,7 @@ starts it with an empty state; the old file stays until you delete it.
 | `ls models` | None. | Runs `opencode models opencode-go`, which may contact OpenCode. |
 | `config` | None. | None. |
 | `doctor` | None; `doctor all` makes one usage call per account without a fresh reading, except an account with an unexpired `Retry-After` or a tool or credential error. An expired login is renewed first. | Runs `opencode models opencode-go`; reads the Keychain; may run `claude -p` or `codex app-server` to renew a login. |
-| `ui` | Only the page's Refresh buttons and Check all (`doctor all`), which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After`. An expired login is renewed first. | Runs `opencode models opencode-go` once per run per account; reads the Keychain; may run `claude -p` (a few tokens) or `codex app-server` (no quota) to renew an expired login. |
+| `ui` | Only the page's Refresh buttons, which skip the floor, and one background first reading per run for an account with no saved reading, which goes through it. None passes an unexpired `Retry-After`. An expired login is renewed first. | Runs `opencode models opencode-go` once per run per account; reads the Keychain; may run `claude -p` (a few tokens) or `codex app-server` (no quota) to renew an expired login. |
 
 The endpoints are undocumented and may change:
 
@@ -112,18 +112,20 @@ page works only in a browser that opened that URL.
   reuse.
 
 **Usage.** Opening or reloading the page shows the saved readings only, as the
-last `pick`, `ls` or Refresh stored them; it calls no vendor. Three things
+last `pick`, `ls` or Refresh stored them; it calls no vendor. Two things
 call out. The Refresh buttons, like `ls --refresh`, skip the floor; a
-`Retry-After` still holds. Check all runs `doctor all`
-(below). And an account with no saved reading gets one first reading in the
-background per run, when the server starts or the account is added; it is an
-ordinary read, so the floor and `Retry-After` apply.
+`Retry-After` still holds. And an account with no saved reading gets one
+first reading in the background per run, when the server starts or the
+account is added; it is an ordinary read, so the floor and `Retry-After`
+apply.
 
-**Doctor status.** The top-right status lists every `doctor` problem, and its
-Check all button runs `doctor all`, which calls the vendor once for each
-account with no fresh reading. A Check all sent while one runs (from another
-tab) makes no calls of its own: it waits for the running one and shows its
-result.
+**Doctor status.** The top-right status lists every `doctor` problem. Each
+one has **Go to**, which opens the tab that holds its item, scrolls to it,
+moves the focus there and lights it up for a moment: an account's row on
+Accounts (each account's, for a problem shared by several), a choice's card
+or a group's frame on its profile, a schedule in the Schedules list. A
+problem with the whole file has no Go to. `doctor all` runs from the command
+line only.
 
 **Editing.** Every change applies to the file at once; there is no Save
 button and no undo. A change is refused, and the file left as it was, when it

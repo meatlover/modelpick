@@ -218,8 +218,44 @@ a:hover {
   margin: 0;
 }
 
-.pop .check-all {
-  margin-top: 12px;
+/* A finding, then its Go to at the right. */
+.pop-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pop-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pop-go {
+  flex: 0 0 auto;
+}
+
+/* Go to's item lights up and fades back (goto.js removes the class). */
+@keyframes go-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--accent);
+    background-color: var(--accent-soft);
+  }
+
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+.is-flash {
+  animation: go-flash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--accent);
+  }
 }
 
 .sev {
@@ -792,9 +828,14 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   gap: 12px;
 }
 
+/* Three columns: position, dropdowns, Remove. The caps and schedules line
+   (.p-card-foot) spans the last two, so the schedules end under Remove's
+   right edge (owner, 2026-10-25). */
 .p-card {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 10px;
   padding: 12px 18px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -1032,8 +1073,20 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
    they do not fit there they take their own line, from the left. The
    spacer between them (::after, ordered between) grows on the caps line
    and stays there when the schedules wrap. */
+.p-card > .p-pos {
+  grid-row: 1 / span 2;
+}
+
 .p-card-main {
-  flex: 1 1 auto;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.p-card-foot {
+  grid-column: 2 / span 2;
+  grid-row: 2;
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
@@ -1041,17 +1094,17 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   gap: 10px;
 }
 
-.p-card-main::after {
+.p-card-foot::after {
   content: "";
   flex: 1 0 0;
   order: 2;
 }
 
-.p-card-main > .p-caps {
+.p-card-foot > .p-caps {
   order: 1;
 }
 
-.p-card-main > .p-chips {
+.p-card-foot > .p-chips {
   order: 3;
 }
 
@@ -1113,7 +1166,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 }
 
 .p-card-side {
-  flex: 0 0 auto;
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
