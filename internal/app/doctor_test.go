@@ -439,3 +439,39 @@ func TestDoctorSubjectsUseLabels(t *testing.T) {
 		t.Fatalf("error subjects = %q, want %q (all: %v)", subjects, want, got)
 	}
 }
+
+// A choice that can never run (allow_during naming only empty schedules) is
+// covered only by a position with a member that outranks it: an empty run time
+// alone does not make it lose to anything.
+func TestNeverPickedChoiceThatNeverRuns(t *testing.T) {
+	sch := `"s":{"days":[],"utc":[]}`
+	got := onlyNever(runDoctor(t, docConfig(sch, codexA+`,"cap":[90]}`, claudeA+`,"cap":[90],"allow_during":["s"]}`)))
+	if len(got) != 0 {
+		t.Errorf("nothing outranks choice 2: got %v", got)
+	}
+	got = onlyNever(runDoctor(t, docConfig(sch, codexA+`}`, claudeA+`,"cap":[90],"allow_during":["s"]}`)))
+	if want := []app.Finding{never("2", "1")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("an uncapped choice 1 outranks it: got %v, want %v", got, want)
+	}
+}
+
+// Two members that each skip a different day jointly run every minute: the
+// group covers a later choice that neither member covers alone.
+func TestNeverPickedGroupMembersUnionCovers(t *testing.T) {
+	sch := `"mon":` + mon + `,"tue":` + tue
+	later := codexA + `,"cap":[50]}`
+	a, b := choice(codexA, `"skip_during":["mon"]`), choice(claudeA, `"skip_during":["tue"]`)
+	got := onlyNever(runDoctor(t, docConfig(sch, grp(a, b), later)))
+	if want := []app.Finding{neverAt("2", "1")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("together: got %v, want %v", got, want)
+	}
+	capped := func(base, skip string) string { return choice(base, `"cap":[90],"skip_during":["`+skip+`"]`) }
+	for name, g := range map[string]string{
+		"only the mon-skipping member outranks": grp(a, capped(claudeA, "tue")),
+		"only the tue-skipping member outranks": grp(capped(claudeA, "mon"), b),
+	} {
+		if got := onlyNever(runDoctor(t, docConfig(sch, g, later))); len(got) != 0 {
+			t.Errorf("%s: got %v", name, got)
+		}
+	}
+}

@@ -66,17 +66,20 @@ func neverFindings(cfg *core.Config, profile string, add func(sev, subject, msg 
 	}
 }
 
-// coveringPosition is the lowest of the earlier positions whose outranking
-// members together run at every minute choice i can, or -1.
+// coveringPosition is the lowest of the earlier positions that has at least
+// one member outranking choice i and whose outranking members together run at
+// every minute choice i can, or -1. A position with no outranking member
+// covers nothing, even a choice that never runs.
 func coveringPosition(cfg *core.Config, choices []core.Choice, runs []core.Week, earlier []core.Position, i int) int {
 	for p, pos := range earlier {
 		var covered core.Week
+		outranked := false
 		for j := pos.Start; j < pos.End; j++ {
 			if outranks(cfg, choices[j], choices[i]) {
-				covered = union(covered, runs[j])
+				covered, outranked = union(covered, runs[j]), true
 			}
 		}
-		if subset(runs[i], covered) {
+		if outranked && subset(runs[i], covered) {
 			return p
 		}
 	}
