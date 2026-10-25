@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "profile": "tester",
+  "vendor": "opencode-go",
+  "account": "go-1",
+  "model": "opencode-go/deepseek-v4.1",
+  "thinking": null,
+  "account_ref": {"vendor": "opencode-go", "key_file": "/home/u/.ssh/opencode-go-api", "key_line": 1},
+  "load_balance": {"algorithm": "random", "choice": 1, "member": "1a"},
+  "reason": null,
+  "skipped": [
+    {"account": "go-2", "model": "opencode-go/deepseek-v4.1", "why": "30d window 98% >= cap 98"}
+  ],
+  "errors": [],
+  "warnings": []
+}

@@ -25,17 +25,18 @@ func run(d app.Deps, args ...string) (stdout, stderr string, code int) {
 
 // pickOutput is the parsed pick JSON.
 type pickOutput struct {
-	Status     string          `json:"status"`
-	Profile    string          `json:"profile"`
-	Vendor     *string         `json:"vendor"`
-	Account    *string         `json:"account"`
-	Model      *string         `json:"model"`
-	Thinking   *string         `json:"thinking"`
-	AccountRef map[string]any  `json:"account_ref"`
-	Reason     *string         `json:"reason"`
-	Skipped    []core.Skip     `json:"skipped"`
-	Errors     []core.RunError `json:"errors"`
-	Warnings   []string        `json:"warnings"`
+	Status      string          `json:"status"`
+	Profile     string          `json:"profile"`
+	Vendor      *string         `json:"vendor"`
+	Account     *string         `json:"account"`
+	Model       *string         `json:"model"`
+	Thinking    *string         `json:"thinking"`
+	AccountRef  map[string]any  `json:"account_ref"`
+	LoadBalance *core.LBPick    `json:"load_balance"`
+	Reason      *string         `json:"reason"`
+	Skipped     []core.Skip     `json:"skipped"`
+	Errors      []core.RunError `json:"errors"`
+	Warnings    []string        `json:"warnings"`
 }
 
 func parsePick(t *testing.T, stdout string) pickOutput {
@@ -78,7 +79,7 @@ func TestPickEndToEnd(t *testing.T) {
 	}
 
 	keys := []string{"status", "profile", "vendor", "account", "model", "thinking",
-		"account_ref", "reason", "skipped", "errors", "warnings"}
+		"account_ref", "load_balance", "reason", "skipped", "errors", "warnings"}
 	prev := -1
 	for _, k := range keys {
 		// Top-level keys are the only ones at a 2-space indent.
@@ -93,6 +94,58 @@ func TestPickEndToEnd(t *testing.T) {
 	}
 	if n := strings.Count(stdout, "\n  \""); n != len(keys) {
 		t.Fatalf("%d top-level keys, want %d:\n%s", n, len(keys), stdout)
+	}
+}
+
+// lbConfig has profile lb: claude-main and claude-rec in one group.
+const lbConfig = `{
+  "version": 1,
+  "accounts": {
+    "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
+    "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" }
+  },
+  "profiles": {
+    "lb": [
+      { "load_balance": "random", "choices": [
+        { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" },
+        { "account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium" }
+      ] }
+    ]
+  }
+}`
+
+// TestPickCLIUsesDepsShuffle: the group's random source is Deps.Shuffle.
+func TestPickCLIUsesDepsShuffle(t *testing.T) {
+	reverse := func(n int, swap func(i, j int)) {
+		for i := 0; i < n/2; i++ {
+			swap(i, n-1-i)
+		}
+	}
+	cases := []struct {
+		name    string
+		shuffle func(int, func(i, j int))
+		account string
+		member  string
+	}{
+		{"fake deps keep file order", nil, "claude-main", "1a"},
+		{"reversed", reverse, "claude-rec", "1b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := apptest.NewDeps(t, lbConfig, apptest.NewFake("claude"))
+			if tc.shuffle != nil {
+				d.Shuffle = tc.shuffle
+			}
+			stdout, _, code := run(d, "pick", "lb")
+			p := parsePick(t, stdout)
+			if code != 0 || p.Account == nil || *p.Account != tc.account {
+				t.Fatalf("exit %d, want 0 and account %s:\n%s", code, tc.account, stdout)
+			}
+			want := core.LBPick{Algorithm: "random", Choice: 1, Member: tc.member}
+			if p.LoadBalance == nil || *p.LoadBalance != want {
+				t.Fatalf("load_balance = %+v, want %+v:\n%s", p.LoadBalance, want, stdout)
+			}
+		})
 	}
 }
 

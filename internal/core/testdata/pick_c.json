@@ -6,6 +6,7 @@
   "model": "claude-sonnet-5-5",
   "thinking": "medium",
   "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude-rec"},
+  "load_balance": null,
   "reason": null,
   "skipped": [
     {"account": "claude-main", "model": "claude-opus-5-5", "why": "7d window 98% >= cap 98"},

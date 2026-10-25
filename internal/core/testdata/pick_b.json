@@ -6,6 +6,7 @@
   "model": "gpt-6.1-sol",
   "thinking": "high",
   "account_ref": {"vendor": "codex", "codex_home": "/home/u/.codex"},
+  "load_balance": null,
   "reason": null,
   "skipped": [
     {"account": "claude-main", "model": "claude-opus-5-5", "why": "5h window 92% >= cap 90"},

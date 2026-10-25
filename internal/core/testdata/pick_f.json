@@ -6,6 +6,7 @@
   "model": null,
   "thinking": null,
   "account_ref": null,
+  "load_balance": null,
   "reason": "no choice available",
   "skipped": [
     {"account": "claude-main", "model": "claude-opus-5-5", "why": "5h window 92% >= cap 90"}

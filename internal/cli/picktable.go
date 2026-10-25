@@ -24,7 +24,7 @@ func runPickAll(refresh bool, stdout, stderr io.Writer, d app.Deps) int {
 	seen := map[core.RunError]bool{}
 	code := 0
 	for _, p := range cfg.ProfileNames() {
-		res := core.Pick(cfg, p, d.Now(), env)
+		res := core.Pick(cfg, p, d.Now(), env, d.Shuffle)
 		rows = append(rows, pickAllRow(res))
 		for _, e := range res.Errors {
 			if !seen[e] {

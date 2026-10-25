@@ -6,6 +6,7 @@
   "model": null,
   "thinking": null,
   "account_ref": null,
+  "load_balance": null,
   "reason": "unknown profile \"coder-hard\"; configured: coder-difficult, tester",
   "skipped": [],
   "errors": [],

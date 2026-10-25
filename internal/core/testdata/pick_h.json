@@ -6,6 +6,7 @@
   "model": null,
   "thinking": null,
   "account_ref": null,
+  "load_balance": null,
   "reason": "config ~/.config/modelpick/config.json: profiles.tester[1].skip_during: unknown schedule \"deepseek-peek\"",
   "skipped": [],
   "errors": [],

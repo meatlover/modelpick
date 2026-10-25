@@ -65,5 +65,5 @@ func pick(profile string, refresh bool, d app.Deps) core.Result {
 	if err != nil {
 		return core.Failed(profile, err.Error())
 	}
-	return core.Pick(cfg, profile, d.Now(), app.NewEnv(d, cfg, refresh))
+	return core.Pick(cfg, profile, d.Now(), app.NewEnv(d, cfg, refresh), d.Shuffle)
 }

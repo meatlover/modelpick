@@ -6,6 +6,7 @@
   "model": "opencode-go/deepseek-v4.1",
   "thinking": null,
   "account_ref": {"vendor": "opencode-go", "key_file": "/home/u/.ssh/opencode-go-api", "key_line": 2},
+  "load_balance": null,
   "reason": null,
   "skipped": [
     {"account": "go-1", "model": "opencode-go/deepseek-v4.1", "why": "30d window 98% >= cap 98"}
