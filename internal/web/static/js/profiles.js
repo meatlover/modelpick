@@ -236,7 +236,9 @@ async function deleteProfile(name) {
 // the store's: a repaint that brings no new state (a selection, a doctor
 // reload) draws the card with the ctx its pending edits will advance. A
 // ctx's sha is that state's (taken when it arrives: an op patches the
-// store's sha256 before its reload brings the new state).
+// store's sha256 before its reload brings the new state). ctx.base is the
+// choice as the file holds it after this card's own answered edits;
+// ctx.choice, which the card is drawn from, is base with its pending ones.
 let ctxState = null;
 let ctxSha = "";
 let ctxs = new Map();
@@ -248,38 +250,68 @@ function ctxFor(profile, index, choice) {
     ctxs = new Map();
   }
   const key = `${profile}\u0000${index}`;
-  if (!ctxs.has(key)) ctxs.set(key, { profile, index, choice, sha: ctxSha });
+  if (!ctxs.has(key)) ctxs.set(key, { profile, index, key, base: choice, choice: shownChoice(key, choice), sha: ctxSha });
   return ctxs.get(key);
+}
+
+// pendingSets lists the choice.sets queued or in flight, oldest first, as
+// {key, sha, field, value}: the card's ctx key and sha when the edit was
+// made, and the value the card then showed.
+let pendingSets = [];
+
+// shownChoice is base with the pending edits of card key over it, those
+// still at this index (only this page's field edits came after the state
+// each was made on), so that a redraw from an earlier op's reload shows
+// what the user chose rather than the file before it.
+function shownChoice(key, base) {
+  let c = base;
+  for (const p of pendingSets) {
+    if (p.key === key && onlyFieldEdits(p.sha)) c = { ...c, [p.field]: p.value };
+  }
+  return c;
 }
 
 // expectOf is an op's expect for the card of ctx, built when the op's turn
 // comes. When only this page's field edits came after the card was drawn,
 // it is the choice at the card's index now: the card was redrawn from an
-// earlier of those edits while a later one was in flight, so ctx.choice,
-// advanced only by its own ops, may miss one. Otherwise it is ctx.choice,
+// earlier of those edits while a later one was in flight, so ctx.base,
+// advanced only by its own ops, may miss one. Otherwise it is ctx.base,
 // and the server finds the card if it moved.
 function expectOf(ctx) {
-  if (!onlyFieldEdits(ctx.sha)) return ctx.choice;
+  if (!onlyFieldEdits(ctx.sha)) return ctx.base;
   const prof = store.state.profiles.find((p) => p.name === ctx.profile);
-  return prof && prof.choices[ctx.index] ? prof.choices[ctx.index] : ctx.choice;
+  return prof && prof.choices[ctx.index] ? prof.choices[ctx.index] : ctx.base;
 }
 
-// ctx.choice is the choice as this card's own edits left it. A second edit
-// made before the first one's redraw is built when its turn comes, from
-// what the first left, not from the choice the card was drawn with.
+// sendSet sends choice.set of field on ctx's card, for caps.js and chips.js
+// too (ctx.set). The card shows value until the op is answered; the op is
+// built when its turn comes, value being build(expect) when given, so that
+// it changes what earlier edits left. Answered, the ctx advances.
+function sendSet(ctx, field, value, build = () => value) {
+  const p = { key: ctx.key, sha: ctx.sha, field, value };
+  pendingSets.push(p);
+  ctx.choice = shownChoice(ctx.key, ctx.base);
+  return sendOp("choice.set", () => {
+    const expect = expectOf(ctx);
+    return { profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field, value: build(expect) };
+  }, { done: (res) => settle(ctx, p, res) });
+}
+
+// settle drops the answered edit p: ctx's base moves to what the op left
+// (choice.set keeps the index, and no other op runs between the op and
+// done), and ctx and the card's ctx drawn since show what is still pending.
+function settle(ctx, p, res) {
+  pendingSets = pendingSets.filter((q) => q !== p);
+  if (res.ok && store.state) {
+    const prof = store.state.profiles.find((q) => q.name === ctx.profile);
+    if (prof && prof.choices[ctx.index]) ctx.base = prof.choices[ctx.index];
+  }
+  for (const c of new Set([ctx, ctxs.get(ctx.key)])) if (c) c.choice = shownChoice(c.key, c.base);
+}
+
 async function setField(ctx, field, value) {
-  const r = await sendOp("choice.set",
-    () => ({ profile: ctx.profile, index: ctx.index, expect: expectOf(ctx), member_of: ctx.memberOf(), field, value }),
-    { done: (res) => advance(ctx, res) });
+  const r = await sendSet(ctx, field, value);
   if (!r.ok) paint();
-}
-
-// advance moves ctx.choice to what the op left: choice.set keeps the index,
-// and no other op runs between the op and done.
-function advance(ctx, res) {
-  if (!res.ok || !store.state) return;
-  const prof = store.state.profiles.find((p) => p.name === ctx.profile);
-  if (prof && prof.choices[ctx.index]) ctx.choice = prof.choices[ctx.index];
 }
 
 // options lists values, with the current value first when the list lacks
@@ -377,14 +409,12 @@ function memberOf(v, i) {
 }
 
 // hookCtxs gives each card's ctx what its ops need from the view, for
-// caps.js and chips.js too: expect() and memberOf() build the op's expect
-// and member_of, and advance(res) moves ctx.choice to what a choice.set
-// left, so a later op's member_of sees the edit before the redraw does.
+// caps.js and chips.js too: set() sends a choice.set (sendSet) and
+// memberOf() builds an op's member_of.
 function hookCtxs(v) {
   v.ctxs.forEach((ctx, i) => {
-    ctx.expect = () => expectOf(ctx);
+    ctx.set = (field, value, build) => sendSet(ctx, field, value, build);
     ctx.memberOf = () => memberOf(v, i);
-    ctx.advance = (res) => advance(ctx, res);
   });
   return v;
 }
