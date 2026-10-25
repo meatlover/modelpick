@@ -125,6 +125,11 @@ a:hover {
 }
 
 /* Doctor status button and its popover. */
+/* As tall as the zone switch and the status beside it. */
+.diagnose {
+  min-height: 44px;
+}
+
 .status-wrap {
   position: relative;
 }

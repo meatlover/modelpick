@@ -26,8 +26,9 @@
 ### Changed
 
 - The UI's doctor status lists each problem with a Go to that opens the tab
-  holding its item, scrolls to it and lights it up for a moment. Its Check
-  all button is gone; run `modelpick doctor all` instead.
+  holding its item, scrolls to it and lights it up for a moment. Check all,
+  which read as "check every problem", is now **Diagnose** (`doctor all`),
+  in the header left of the status instead of inside its panel.
 - A choice card's schedules end under Remove's right edge.
 - `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which cancels a renewal.
 - The UI no longer refuses an edit as "changed outside the UI" when it was

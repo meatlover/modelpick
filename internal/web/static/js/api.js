@@ -204,3 +204,26 @@ export async function refresh(account, opts = {}) {
   if (opts.reload !== false) await reload();
   return out;
 }
+
+// doctorAll runs `doctor all` on the server. The page reloads (the calls
+// changed usage rows), then the POST's own result replaces the doctor:
+// it holds findings plain doctor does not make (cannot update stored usage,
+// cannot read stored usage for a file the call repaired). The next focus or
+// 60 s reload shows plain doctor again.
+export async function doctorAll() {
+  let r;
+  try {
+    r = await postJSON("/api/doctor/all");
+  } catch {
+    stopped(true);
+    return { ok: false, reason: "modelpick ui has stopped" };
+  }
+  if (r.status !== 200) {
+    const reason = r.data.reason || "Diagnose failed";
+    toast(reason, "Not checked.");
+    return { ok: false, reason };
+  }
+  await reload();
+  store.set({ doctor: r.data });
+  return { ok: true };
+}
