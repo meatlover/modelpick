@@ -92,7 +92,9 @@ func opProfileRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 }
 
 // opChoiceAdd copies the last choice's account; nothing after an uncapped
-// choice can be picked, so the new one goes before a trailing uncapped one.
+// choice can be picked, so the new one goes before a trailing uncapped one
+// (after a trailing group, as a plain choice). With a.Group it adds a
+// member to that group instead.
 func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 	cs, ok := doc.Profiles[a.Profile]
 	if !ok {
@@ -101,13 +103,16 @@ func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 	if len(cs) == 0 {
 		return opProfileFill(doc, a.Profile, env)
 	}
+	if a.Group != nil {
+		return opMemberAdd(doc, a, env, cs)
+	}
 	last := len(cs) - 1
 	c, err := newChoice(env, cs[last].Account)
 	if err != nil {
 		return err
 	}
 	at := len(cs)
-	if !cs[last].Capped {
+	if cs[last].Group == 0 && !cs[last].Capped {
 		at = last
 	}
 	out := append(append(append([]core.DocChoice{}, cs[:at]...), c), cs[at:]...)
@@ -137,10 +142,14 @@ func opChoiceRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	if len(cs) == 1 {
 		return refuse("Profile %s needs at least one choice", a.Profile)
 	}
-	doc.Profiles[a.Profile] = append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
+	doc.Profiles[a.Profile] = normalizeGroups(append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...))
 	return nil
 }
 
+// opChoiceMove moves one choice to a.To, an index into the list without
+// it. With a.Group it ends a member of that group and must land inside the
+// group or at either edge; without, it ends plain and must not land inside
+// a group.
 func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect)
 	if err != nil {
@@ -149,9 +158,47 @@ func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	if a.To < 0 || a.To >= len(cs) {
 		return refuse("Profile %s has no position %d", a.Profile, a.To+1)
 	}
+	card := cs[i]
+	card.Group, card.LoadBalance = 0, ""
+	if a.Group != nil {
+		p, err := groupAt(cs, a.Profile, *a.Group)
+		if err != nil {
+			return err
+		}
+		card.Group, card.LoadBalance = cs[p.Start].Group, p.LoadBalance
+	}
 	rest := append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
-	out := append(append(append([]core.DocChoice{}, rest[:a.To]...), cs[i]), rest[a.To:]...)
-	doc.Profiles[a.Profile] = out
+	what := "Choice " + label(cs, i) + " of " + a.Profile
+	if err := checkLanding(rest, a.To, card.Group, what); err != nil {
+		return err
+	}
+	out := append(append(append([]core.DocChoice{}, rest[:a.To]...), card), rest[a.To:]...)
+	doc.Profiles[a.Profile] = normalizeGroups(out)
+	return nil
+}
+
+// checkLanding refuses a plain choice (group 0) landing strictly inside a
+// group of rest, and a choice joining group landing outside that group's
+// run; either edge of the run is inside.
+func checkLanding(rest []core.DocChoice, to, group int, what string) error {
+	if group == 0 {
+		if to > 0 && to < len(rest) && rest[to-1].Group != 0 && rest[to-1].Group == rest[to].Group {
+			return refuse("%s cannot be placed inside a load balancing group", what)
+		}
+		return nil
+	}
+	start, end := -1, -1
+	for k, c := range rest {
+		if c.Group == group {
+			if start < 0 {
+				start = k
+			}
+			end = k + 1
+		}
+	}
+	if start < 0 || to < start || to > end {
+		return refuse("%s must be placed inside the load balancing group it joins", what)
+	}
 	return nil
 }
 
@@ -160,7 +207,7 @@ func opChoiceSet(doc *core.Doc, a opArgs, env OpEnv) error {
 	if err != nil {
 		return err
 	}
-	where := "Profile " + a.Profile + ", choice " + strconv.Itoa(i+1)
+	where := "Profile " + a.Profile + ", choice " + label(cs, i)
 	c := cs[i]
 	if err := setField(doc, env, &c, where, a); err != nil {
 		return err
@@ -371,7 +418,10 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 
 // findChoice resolves a choice the page addressed by index and sent as
 // expect (spec §8.4): the choice at index if identical, else the one
-// identical choice in the profile, else a refusal.
+// identical choice on the same side of a group boundary as index (the same
+// group, or among plain choices; spec §8, so a stale edit never reaches
+// into or out of a group), else a refusal. An index past the end counts as
+// plain.
 func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage) ([]core.DocChoice, int, error) {
 	cs, ok := doc.Profiles[profile]
 	if !ok {
@@ -382,9 +432,13 @@ func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage
 	if ok && inRange && sameChoice(cs[index], want) {
 		return cs, index, nil
 	}
+	side := 0
+	if inRange {
+		side = cs[index].Group
+	}
 	found, n := -1, 0
 	for i := range cs {
-		if ok && sameChoice(cs[i], want) {
+		if ok && cs[i].Group == side && sameChoice(cs[i], want) {
 			found, n = i, n+1
 		}
 	}
@@ -394,11 +448,12 @@ func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage
 	if !inRange {
 		return nil, 0, refuse("Profile %s has no choice %d", profile, index+1)
 	}
-	return nil, 0, refuse("Choice %d of %s was changed outside the UI", index+1, profile)
+	return nil, 0, refuse("Choice %s of %s was changed outside the UI", label(cs, index), profile)
 }
 
 // sameChoice compares as written: null and [] lists alike, 90 and 90.0
 // alike, trailing "default" positions ignored; uncapped differs from [].
+// Group and LoadBalance are not identity: findChoice handles the boundary.
 func sameChoice(a, b core.DocChoice) bool {
 	if a.Account != b.Account || a.Model != b.Model || a.Capped != b.Capped {
 		return false
@@ -442,7 +497,8 @@ func sameList(a, b []string) bool {
 	return true
 }
 
-// describe is a choice's position for a refusal, 1-based.
-func describe(profile string, i int) string {
-	return fmt.Sprintf("profile %s, choice %d", profile, i+1)
+// describe names flat choice i of profile cs for a refusal by its label
+// ("choice 2b").
+func describe(profile string, cs []core.DocChoice, i int) string {
+	return fmt.Sprintf("profile %s, choice %s", profile, label(cs, i))
 }
