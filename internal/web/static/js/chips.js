@@ -5,7 +5,7 @@
 // "+ New schedule" on the Schedules tab. Every edit is one choice.set of
 // skip_during / allow_during.
 import { h, clear } from "./dom.js";
-import { store, sendOp } from "./api.js";
+import { store } from "./api.js";
 import { newSchedule } from "./schedules.js";
 import { weekPeek } from "./weekpeek.js";
 
@@ -231,16 +231,12 @@ function edit(key, kind, change, refocus) {
     const ctx = liveCtx(key);
     if (!ctx) return;
     const cur = ctx.choice[kind] || [];
-    if (JSON.stringify(change(cur)) === JSON.stringify(cur)) return;
-    // expect, member_of (profiles.js) and the list are built when the op's
-    // turn comes, on what earlier ops left (a cap edit made just before is
-    // in another queue); the ctx advances to what the op left, for the ops
-    // queued behind it.
-    await sendOp("choice.set", () => {
-      const expect = ctx.expect();
-      return { profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field: kind,
-        value: change(expect[kind] || []) };
-    }, { done: (res) => ctx.advance(res) });
+    const next = change(cur);
+    if (JSON.stringify(next) === JSON.stringify(cur)) return;
+    // ctx.set (profiles.js) shows next until answered and builds the list
+    // when the op's turn comes, on what earlier ops left (a cap edit made
+    // just before is in another queue).
+    await ctx.set(kind, next, (expect) => change(expect[kind] || []));
     if (refocus) focusAdd(key);
   }).catch(() => {});
   return chain;

@@ -112,6 +112,74 @@ test("an edit on a card redrawn while an earlier edit is in flight still applies
   await expect(page.getByText("changed outside the UI")).toHaveCount(0);
 });
 
+// A redraw that comes while an edit is in flight (here the earlier account
+// edit's) shows the card with that edit, not as the file held it before.
+for (const [what, edit, shows] of [
+  ["model", (page) => card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1"),
+    (page) => expect(card(page, 4).getByLabel("Model")).toHaveValue("claude-fable-5-1")],
+  ["cap", (page) => card(page, 4).getByRole("button", { name: "Add caps" }).click(),
+    (page) => expect(card(page, 4).getByRole("button", { name: "Add caps" })).toHaveCount(0)],
+  ["schedule", (page) => attach(page, 4, "Skip", "night"),
+    (page) => expect(card(page, 4).getByTitle("Skip during night")).toBeVisible()],
+]) {
+  test(`a redraw while a ${what} edit is in flight shows the edit`, async ({ page }) => {
+    const gate = await stateGate(page);
+    await card(page, 4).getByLabel("Account").selectOption("claude-spare");
+    await expectConfig(server.configPath, (c) => coder(c)[3].account, "claude-spare", "account");
+    await edit(page);
+    const drawn = await card(page, 4).getByLabel("Account").elementHandle();
+    gate.pass(1);
+    await expect.poll(() => drawn.evaluate((el) => el.isConnected), { message: "the account's redraw" }).toBe(false);
+    await expect.poll(() => gate.held(), { message: `the ${what} edit answered, its reload held` }).toBe(1);
+    await shows(page);
+    gate.open();
+    await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+    await shows(page);
+  });
+}
+
+// An edit made on a card before a move's redraw is shown on that card only:
+// redrawn by the move, the card now at its old place does not show it.
+test("an edit made before a move's redraw is not shown on the card now in its place", async ({ page }) => {
+  const mod = await modKey(page);
+  const gate = await stateGate(page);
+  await card(page, 4).focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, accountsOf, [ORIGINAL[0], ORIGINAL[1], ORIGINAL[3], ORIGINAL[2]], "sonnet third");
+  await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
+  gate.pass(1);
+  await expectConfig(server.configPath, (c) => coder(c)[2].model, "claude-fable-5-1", "the moved card's model");
+  await expect.poll(() => gate.held(), { message: "the model edit answered, its reload held" }).toBe(1);
+  await expect(card(page, 4).getByLabel("Model")).toHaveValue("opencode-go/deepseek-v4.1");
+  gate.open();
+  await expect(card(page, 3).getByLabel("Model")).toHaveValue("claude-fable-5-1");
+  await expect(card(page, 4).getByLabel("Model")).toHaveValue("opencode-go/deepseek-v4.1");
+});
+
+// A refused edit stops showing: redrawn after another card's edit, the card
+// is as the file holds it.
+for (const [what, edit, back] of [
+  ["model", (page) => card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1"),
+    (page) => expect(card(page, 4).getByLabel("Model")).toHaveValue("claude-sonnet-5-5")],
+  ["cap", (page) => card(page, 4).getByRole("button", { name: "Add caps" }).click(),
+    (page) => expect(card(page, 4).getByRole("button", { name: "Add caps" })).toBeVisible()],
+  ["schedule", (page) => attach(page, 4, "Skip", "night"),
+    (page) => expect(card(page, 4).getByTitle("Skip during night")).toHaveCount(0)],
+]) {
+  test(`a refused ${what} edit shows the choice as the file holds it`, async ({ page }) => {
+    const before = coder(readConfig(server.configPath))[3];
+    await page.route("**/api/op", (route) => route.fulfill({ status: 422, contentType: "application/json",
+      body: JSON.stringify({ reason: "refused by the test" }) }), { times: 1 });
+    await edit(page);
+    await expect(page.getByText("refused by the test")).toBeVisible();
+    await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
+    await expectConfig(server.configPath, (c) => coder(c)[0].model, "claude-fable-5-1", "choice 1's model");
+    await expect(card(page, 1).getByLabel("Model")).toHaveValue("claude-fable-5-1");
+    await back(page);
+    expect(coder(readConfig(server.configPath))[3]).toEqual(before);
+  });
+}
+
 // A cap and a schedule edit on one card go through different editors; the
 // second, made before the first's redraw, is built on what the first left.
 for (const [what, first, second] of [

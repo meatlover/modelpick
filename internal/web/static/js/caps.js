@@ -5,7 +5,7 @@
 // bar and its caption). Edits apply on Enter, on leaving the frame and on
 // the bar's release, as one choice.set field=cap; a refusal reverts.
 import { h, clear, svg, trashIcon } from "./dom.js";
-import { store, sendOp } from "./api.js";
+import { store } from "./api.js";
 
 // Drawn bar width, px: the editor is as wide as "Cap at time elapsed + 50%"
 // and no more (owner, 2026-10-24), and the bar fills it. app.css's .cap-bar
@@ -285,13 +285,10 @@ function liveCtx(key) {
   return m ? m.ctx : null;
 }
 
-// setCap sends choice.set of the card's cap: expect and member_of
-// (profiles.js) are built when the op's turn comes, on what earlier ops
-// left, and the ctx advances to what the op left, for the ops queued behind it.
+// setCap sends choice.set of the card's cap through ctx.set (profiles.js),
+// which shows it until answered and builds the op when its turn comes.
 function setCap(ctx, value) {
-  return sendOp("choice.set",
-    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.expect(), member_of: ctx.memberOf(), field: "cap", value }),
-    { done: (res) => ctx.advance(res) });
+  return ctx.set("cap", value);
 }
 
 // unpend drops the pending text of a box unless a later edit replaced it.
