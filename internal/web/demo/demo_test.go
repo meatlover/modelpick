@@ -5,16 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/web"
 )
 
 var t0 = time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)
 
-func newDemo() *Demo { return New(func() time.Time { return t0 }) }
+func newDemo() *Demo { return New(func() time.Time { return t0 }, core.AlgorithmNames()) }
 
 func apply(t *testing.T, d *Demo, base, op string, args any) (web.OpResult, error) {
 	t.Helper()
@@ -352,7 +354,7 @@ func TestBrokenIsReadOnlyAndRestores(t *testing.T) {
 
 func TestRefreshRules(t *testing.T) {
 	now := t0
-	d := New(func() time.Time { return now })
+	d := New(func() time.Time { return now }, core.AlgorithmNames())
 	for _, c := range []struct{ acct, want string }{
 		{"go-3", "rate-limited until 2026-10-23T09:32:00Z"}} {
 		// The row answers, unchanged; its state says why it was not read.
@@ -473,7 +475,8 @@ func TestNoUnexpectedNulls(t *testing.T) {
 		all.Write(raw)
 	}
 	s := all.String()
-	for _, ok := range []string{`"cap":null`, `"thinking":null`, `"scope":null`, `"resets_at":null`, `"reading_age_seconds":null`} {
+	for _, ok := range []string{`"cap":null`, `"thinking":null`, `"scope":null`, `"resets_at":null`, `"reading_age_seconds":null`,
+		`"load_balance":null`} {
 		s = strings.ReplaceAll(s, ok, "")
 	}
 	if i := strings.Index(s, "null"); i >= 0 {
@@ -710,5 +713,27 @@ func TestAccountRemoveWithChoicesUnknownAndFalse(t *testing.T) {
 	got := refusal(t, d, "account.remove", map[string]any{"name": "claude-main", "with_choices": false}).Reason
 	if got != "Account claude-main is used by profile coder-difficult, choice 1" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// TestGroupMemberLabels: a member is named by its label, as live names it,
+// in the account.remove refusal and in a doctor subject (contract 6).
+func TestGroupMemberLabels(t *testing.T) {
+	d := newDemo()
+	must(t, d, "group.create", map[string]any{"profile": "tester", "indexes": []int{1, 2},
+		"expects": []json.RawMessage{choiceJSON(t, d, "tester", 1), choiceJSON(t, d, "tester", 2)}})
+	got := refusal(t, d, "account.remove", map[string]any{"name": "go-3"}).Reason
+	if got != "Account go-3 is used by profile tester, choice 2b" {
+		t.Errorf("refusal %q", got)
+	}
+	d.mu.Lock()
+	d.profiles[1].Choices[2].Thinking = str("ultra")
+	d.mu.Unlock()
+	var subjects []string
+	for _, f := range d.Doctor().Findings {
+		subjects = append(subjects, f.Subject)
+	}
+	if !slices.Contains(subjects, "profile tester, choice 2b") {
+		t.Errorf("subjects %q, want profile tester, choice 2b", subjects)
 	}
 }

@@ -51,11 +51,15 @@ type Demo struct {
 	schedules  []web.Schedule
 	profiles   []web.Profile
 	readings   map[string]*reading
+	algorithms []string
 }
 
 // New returns a Demo whose readings and resets are relative to now().
-func New(now func() time.Time) *Demo {
-	d := &Demo{now: now, delay: 600 * time.Millisecond, counter: 1, defaultCap: 95}
+// algorithms are the load balancing algorithms the state lists: the
+// caller passes core.AlgorithmNames(), which this package cannot import.
+func New(now func() time.Time, algorithms []string) *Demo {
+	d := &Demo{now: now, delay: 600 * time.Millisecond, counter: 1, defaultCap: 95,
+		algorithms: append([]string{}, algorithms...)}
 	d.buildAccounts()
 	d.buildReadings(now())
 	d.buildModels()
@@ -248,7 +252,7 @@ func (d *Demo) State() web.State {
 func (d *Demo) stateLocked() web.State {
 	s := web.State{SHA256: d.sha(), Path: configPath, ReadOnly: d.readOnly,
 		DefaultCap: d.defaultCap, Accounts: d.accounts, Models: d.models,
-		Windows: d.windows, Schedules: d.schedules, Profiles: d.profiles}
+		Windows: d.windows, Schedules: d.schedules, Profiles: d.profiles, Algorithms: d.algorithms}
 	raw, err := json.Marshal(s)
 	if err != nil {
 		panic(err) // the wire types always marshal
@@ -348,14 +352,14 @@ func (d *Demo) findings() []web.Finding {
 }
 
 // thinkingErrors flags each choice whose thinking level its model does
-// not offer, by the subject grammar of contract 6 (choices 1-based).
+// not offer, by the subject grammar of contract 6 (choices by label).
 func (d *Demo) thinkingErrors() []web.Finding {
 	out := []web.Finding{}
 	for _, p := range d.profiles {
 		for i, c := range p.Choices {
 			if c.Thinking != nil && !contains(d.modelThinking(c.Account, c.Model), *c.Thinking) {
 				out = append(out, web.Finding{Severity: "error",
-					Subject: fmt.Sprintf("profile %s, choice %d", p.Name, i+1),
+					Subject: fmt.Sprintf("profile %s, choice %s", p.Name, labels(p.Choices)[i]),
 					Message: fmt.Sprintf("thinking %q not supported by %s", *c.Thinking, c.Model)})
 			}
 		}

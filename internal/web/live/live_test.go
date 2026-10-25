@@ -19,6 +19,7 @@ import (
 	"github.com/meatlover/modelpick/internal/adapter/opencodego"
 	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
+	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/web"
 	"github.com/meatlover/modelpick/internal/web/webtest"
 )
@@ -181,6 +182,7 @@ func TestConformance(t *testing.T) {
 		Fix:         func(t *testing.T) { write(t, orig) },
 		Secrets:     []string{secretKey},
 		Refreshable: "claude-main",
+		Algorithms:  core.AlgorithmNames(),
 		UsageCalls:  func() int { return f.usageCalls() },
 		MissingTool: func(*testing.T) []string {
 			names := []string{"claude-main", "claude-rec"}
@@ -346,10 +348,10 @@ func TestStateModelsWindowsSchedulesProfiles(t *testing.T) {
 		"windows": `{"claude-main":{"claude-fable-5-1":["5h","7d","7d fable"],` +
 			`"claude-opus-5-5":["5h","7d"]}}`,
 		"profiles": `[{"name":"coder","choices":[` +
-			`{"account":"claude-main","model":"claude-opus-5-5","thinking":"high","cap":[90,"default","pace+10"],"skip_during":[],"allow_during":[]},` +
-			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":null,"skip_during":["night"],"allow_during":[]},` +
-			`{"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":null,"skip_during":[],"allow_during":[]}]},` +
-			`{"name":"rec","choices":[{"account":"claude-rec","model":"claude-sonnet-5-5","thinking":"medium","cap":[],"skip_during":[],"allow_during":[]}]}]`,
+			`{"account":"claude-main","model":"claude-opus-5-5","thinking":"high","cap":[90,"default","pace+10"],"skip_during":[],"allow_during":[],"group":0,"load_balance":null},` +
+			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":null,"skip_during":["night"],"allow_during":[],"group":0,"load_balance":null},` +
+			`{"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":null,"skip_during":[],"allow_during":[],"group":0,"load_balance":null}]},` +
+			`{"name":"rec","choices":[{"account":"claude-rec","model":"claude-sonnet-5-5","thinking":"medium","cap":[],"skip_during":[],"allow_during":[],"group":0,"load_balance":null}]}]`,
 	}
 	if got := mustJSON(t, s.Windows); got != checks["windows"] {
 		t.Errorf("windows: %s", got)

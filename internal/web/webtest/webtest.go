@@ -36,10 +36,13 @@ type Harness struct {
 	// MissingTool makes one tool missing for two or more accounts and
 	// returns their names, sorted.
 	MissingTool func(t *testing.T) []string
+	// Algorithms are core.AlgorithmNames(), which the state must list.
+	Algorithms []string
 }
 
 // The fixture behind New must have at least one account, one profile and
-// a choice with no schedule lists.
+// a choice with no schedule lists; for the group scenarios, two or more
+// accounts that list models, and no profile wt-g.
 func Run(t *testing.T, h Harness) {
 	t.Helper()
 	cases := []struct {
@@ -65,6 +68,9 @@ func Run(t *testing.T, h Harness) {
 		{"DoctorAllGetIs405", doctorAllGet},
 		{"DoctorMakesNoUsageCall", doctorNoUsageCall},
 		{"GroupedFindingCarriesAccounts", groupedAccounts},
+		{"StateListsAlgorithms", stateAlgorithms},
+		{"GroupScenarios", groupScenarios},
+		{"GroupMemberAccount", memberAddAccount},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, h) })
@@ -133,7 +139,7 @@ func mustRefuse(t *testing.T, err error, what string) web.Refused {
 
 // nullable are the keys whose null means something (contract 11).
 var nullable = map[string]bool{"cap": true, "thinking": true, "scope": true,
-	"resets_at": true, "reading_age_seconds": true}
+	"resets_at": true, "reading_age_seconds": true, "load_balance": true}
 
 // nullPaths lists every JSON null in v outside the nullable keys.
 func nullPaths(t *testing.T, v any) []string {
@@ -435,6 +441,9 @@ func everyOp(t *testing.T, s web.State) []opCall {
 		{"choice.add", map[string]any{"profile": p}},
 		{"choice.set", with(map[string]any{"field": "cap", "value": []any{80}})},
 		{"choice.move", map[string]any{"profile": p, "from": i, "to": 0, "expect": c}},
+		{"group.create", map[string]any{"profile": p, "indexes": []int{i, i}, "expects": []web.Choice{c, c}}},
+		{"group.dissolve", map[string]any{"profile": p, "index": i, "expect": map[string]any{"load_balance": "random", "choices": []web.Choice{c}}}},
+		{"group.move", map[string]any{"profile": p, "index": i, "to": 0, "expect": map[string]any{"load_balance": "random", "choices": []web.Choice{c}}}},
 		{"schedule.add", map[string]any{"name": "wt-new"}},
 		{"schedule.paint", map[string]any{"name": sched, "cells": [][2]int{{1, 2}}, "on": true}},
 		{"account.add", map[string]any{"name": "wt-new", "vendor": "claude",

@@ -3,7 +3,7 @@ package web
 // The page calls .find/.map on every list, so a nil slice or map, which
 // encoding/json writes as null, would blank a tab. Each response is copied
 // through these before it is written; only the fields whose null means
-// something (Choice.Cap and Thinking, UsageWindow.Scope,
+// something (Choice.Cap, Thinking and LoadBalance, UsageWindow.Scope,
 // UsageRow.ReadingAgeSeconds) keep it. The backend's slices are never
 // written into.
 
@@ -26,6 +26,7 @@ func normalState(s State) State {
 	s.Models = normalModels(s.Models)
 	s.Windows = normalWindows(s.Windows)
 	s.Schedules = list(s.Schedules)
+	s.Algorithms = list(s.Algorithms)
 	profiles := make([]Profile, len(s.Profiles))
 	for i, p := range s.Profiles {
 		choices := make([]Choice, len(p.Choices))

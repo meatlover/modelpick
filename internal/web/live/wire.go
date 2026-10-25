@@ -16,7 +16,8 @@ import (
 func emptyState(path, sha, readOnly string) web.State {
 	return web.State{SHA256: sha, Path: path, ReadOnly: readOnly,
 		Accounts: []web.Account{}, Models: map[string][]web.Model{},
-		Windows: map[string]map[string][]string{}, Schedules: []web.Schedule{}, Profiles: []web.Profile{}}
+		Windows: map[string]map[string][]string{}, Schedules: []web.Schedule{}, Profiles: []web.Profile{},
+		Algorithms: core.AlgorithmNames()}
 }
 
 func list(in []string) []string { return append([]string{}, in...) }
@@ -79,7 +80,11 @@ func wireProfiles(doc *core.Doc) []web.Profile {
 
 func wireChoice(c core.DocChoice) web.Choice {
 	w := web.Choice{Account: c.Account, Model: c.Model, Cap: wireCap(c),
-		SkipDuring: list(c.SkipDuring), AllowDuring: list(c.AllowDuring)}
+		SkipDuring: list(c.SkipDuring), AllowDuring: list(c.AllowDuring), Group: c.Group}
+	if c.Group != 0 {
+		lb := c.LoadBalance
+		w.LoadBalance = &lb
+	}
 	if c.Thinking != nil {
 		t := *c.Thinking
 		w.Thinking = &t
