@@ -57,7 +57,12 @@ type Demo struct {
 // New returns a Demo whose readings and resets are relative to now().
 // algorithms are the load balancing algorithms the state lists: the
 // caller passes core.AlgorithmNames(), which this package cannot import.
+// It panics on an empty list, which only a composition root's mistake
+// gives, rather than serve a state with no algorithm to name.
 func New(now func() time.Time, algorithms []string) *Demo {
+	if len(algorithms) == 0 {
+		panic("demo.New: no load balancing algorithms")
+	}
 	d := &Demo{now: now, delay: 600 * time.Millisecond, counter: 1, defaultCap: 95,
 		algorithms: append([]string{}, algorithms...)}
 	d.buildAccounts()

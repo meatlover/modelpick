@@ -11,8 +11,8 @@ import (
 )
 
 // Load balancing groups over the wire types, mirroring the live ops
-// (internal/app/opsgroup.go, opsprofile.go; the op contract in api.go,
-// item 19). This package may import only internal/web (archtest), so the
+// (internal/app/opsgroup.go, opsprofile.go; the wire shape and the op
+// contract in api.go, items 19 and 20). This package may import only internal/web (archtest), so the
 // few pure helpers core has (Positions, Labels) are repeated here, small;
 // webtest's group scenarios hold both back ends to the same results.
 

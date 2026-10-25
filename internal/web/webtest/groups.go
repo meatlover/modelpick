@@ -89,7 +89,7 @@ func groupMoveCases() []groupCase {
 }
 
 func groupStaleCases() []groupCase {
-	return []groupCase{
+	return append(groupHandEditCases(), []groupCase{
 		{name: "member sent as plain", start: "10 [20 30] 40", op: setSeen("20", 1, plain, 21),
 			refused: "Choice 2a of wt-g was changed outside the UI"},
 		{name: "plain sent as a member", start: "10 [20 30] 40", op: setSeen("10", 0, asMember, 11),
@@ -98,6 +98,51 @@ func groupStaleCases() []groupCase {
 			want: "10 [20 35] 40"},
 		{name: "stale plain move does not take a member", start: "[10 30 20] 40",
 			op: moveSeen("20", 1, 0, plain), refused: "Choice 1b of wt-g was changed outside the UI"},
+		{name: "member expect with another algorithm", start: "[10 20] 30",
+			op:      withArg(remove("10"), "expect", seenChoice("10", otherAlgorithm)),
+			refused: "Choice 1a of wt-g was changed outside the UI"},
+		{name: "member cannot stay inside without group", start: "[10 20 30]", op: move("20", 1, ""),
+			refused: "Choice 1b of wt-g cannot be placed inside a load balancing group"},
+	}...)
+}
+
+// groupHandEditCases: the page addressed a group that a hand edit has
+// since moved, changed or removed. The start is the file after the edit;
+// the op carries the page's older view (indexes, group expects).
+func groupHandEditCases() []groupCase {
+	return []groupCase{
+		{name: "create expects do not match indexes", start: "10 20 30",
+			op: withArg(create("10", "20"), "expects", seenChoices("10")), refused: "Bad arguments for group.create"},
+		{name: "dissolve out of range", start: "[10 20] 30",
+			op: withArg(dissolveSeen("20", 99), "index", 5), refused: "Profile wt-g has no choice 6"},
+		{name: "dissolve follows the one identical group", start: "30 [10 20]",
+			op: withArg(dissolve("10"), "index", 0), want: "30 10 20"},
+		{name: "group.move stale", start: "40 [10 20] 30",
+			op:      withArg(groupMove("10", 0), "expect", reversedGroup("10")),
+			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		{name: "move: group out of range", start: "[10 20] 30",
+			op:      withArg(withArg(move("30", 1, "10"), "group", 9), "group_expect", staleGroup("20", 99)),
+			refused: "Profile wt-g has no choice 10"},
+		{name: "move: group expect matches no group", start: "[10 20] 30 40",
+			op:      withArg(withArg(move("40", 2, "10"), "group", 2), "group_expect", seenAsGroup("30", "40")),
+			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		// The page saw 50 [10 20] [30 40] and drops 50 into [10 20]; a hand
+		// edit swapped the groups. group_expect follows the group the user
+		// chose, and the drop is not inside it.
+		{name: "move: groups swapped by hand", start: "50 [30 40] [10 20]",
+			op:      withArg(move("50", 1, "10"), "group", 1),
+			refused: "Choice 1 of wt-g must be placed inside the load balancing group it joins"},
+		{name: "move: group changed by hand", start: "30 [10 40]",
+			op:      withArg(move("30", 0, "10"), "group_expect", staleGroup("40", 20)),
+			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		{name: "add member: out of range", start: "10 20 30",
+			op:      withArg(withArg(plainAdd, "group", 3), "group_expect", seenAsGroup("10", "20")),
+			refused: "Profile wt-g has no choice 4"},
+		{name: "add member: group expect matches no group", start: "10 20 30",
+			op:      withArg(withArg(plainAdd, "group", 1), "group_expect", seenAsGroup("10", "20")),
+			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		{name: "add member: groups swapped by hand", start: "[30 40] [10 20]",
+			op: withArg(memberAdd("10"), "group", 0), want: "[30 40] [10 20 _]"},
 	}
 }
 
@@ -148,33 +193,59 @@ func groupScenarios(t *testing.T, h Harness) {
 }
 
 // memberAddAccount: a new member uses an account the group does not use,
-// of the last member's vendor first, with that account's first model.
-// With the last member on otherAccount, the vendor's next account (demo)
-// or, with none left, the first unused one (live) is checked too.
+// of the last member's vendor first, else the first unused one, else the
+// last member's, with that account's first model. "last on other" puts
+// the last member on otherAccount, which separates the vendor preference
+// from the name order (demo) or reaches the first unused account (live);
+// "every account" gives the group a member on each account.
 func memberAddAccount(t *testing.T, h Harness) {
-	for _, onOther := range []bool{false, true} {
-		b := h.New(t)
-		build(t, b, "10 [20 30] 40")
-		used := []string{b.State().Accounts[0].Name}
-		if onOther {
-			o := toOther("30")(t, b.State())
+	for _, mode := range []string{"first account", "last on other", "every account"} {
+		t.Run(mode, func(t *testing.T) {
+			b := h.New(t)
+			n := memberSetup(t, b, mode)
+			s := b.State()
+			var used []string
+			for _, c := range profileChoices(t, s, gp)[:n] {
+				used = append(used, c.Account)
+			}
+			o := memberAdd("10")(t, s)
 			mustApply(t, b, o.op, o.args)
-			used = append(used, otherAccount(t, b.State()))
-		}
-		s := b.State()
-		o := memberAdd("30")(t, s)
-		mustApply(t, b, o.op, o.args)
-		after := b.State()
-		got := profileChoices(t, after, gp)[3]
-		want := memberAccountFor(t, s, used)
-		m := after.Models[want]
-		if got.Account != want || len(m) == 0 || got.Model != m[0].ID {
-			t.Errorf("last member on %s: new member %s/%s, want %s and its first model", used[len(used)-1], got.Account, got.Model, want)
-		}
-		if fmt.Sprint(got.Cap) != "[]" || got.Group != 1 {
-			t.Errorf("new member cap %v group %d, want [] and 1", got.Cap, got.Group)
-		}
+			after := b.State()
+			got := profileChoices(t, after, gp)[n]
+			want := memberAccountFor(t, s, used)
+			m := after.Models[want]
+			if got.Account != want || len(m) == 0 || got.Model != m[0].ID {
+				t.Errorf("members on %v: new member %s/%s, want %s and its first model", used, got.Account, got.Model, want)
+			}
+			if fmt.Sprint(got.Cap) != "[]" || got.Group != 1 {
+				t.Errorf("new member cap %v group %d, want [] and 1", got.Cap, got.Group)
+			}
+		})
 	}
+}
+
+// memberSetup builds gp as one group for mode and returns its size.
+func memberSetup(t *testing.T, b web.Backend, mode string) int {
+	t.Helper()
+	accounts := b.State().Accounts
+	n := 2
+	if mode == "every account" {
+		n = len(accounts)
+	}
+	tags := make([]string, n)
+	for k := range tags {
+		tags[k] = strconv.Itoa(10 * (k + 1))
+	}
+	build(t, b, "["+strings.Join(tags, " ")+"]")
+	for k := 1; k < n; k++ {
+		acct := accounts[k].Name
+		if mode == "last on other" {
+			acct = otherAccount(t, b.State())
+		}
+		o := setField(tags[k], "account", acct)(t, b.State())
+		mustApply(t, b, o.op, o.args)
+	}
+	return n
 }
 
 // memberAccountFor is the contract's choice for a group whose members use

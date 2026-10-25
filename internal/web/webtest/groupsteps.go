@@ -1,6 +1,7 @@
 package webtest
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/meatlover/modelpick/internal/web"
@@ -31,8 +32,30 @@ func dissolve(tg string) step {
 // dissolveSeen dissolves the group of tg as the page saw it before tg's
 // cap was changed by hand from [was].
 func dissolveSeen(tg string, was int) step {
+	return withArg(dissolve(tg), "expect", staleGroup(tg, was))
+}
+
+// arg is an op argument computed from the state, for withArg.
+type arg func(t *testing.T, s web.State) any
+
+// withArg sets one argument of what st builds: value, or what an arg
+// computes.
+func withArg(st step, key string, value any) step {
 	return func(t *testing.T, s web.State) opCall {
-		i, _ := find(t, s, tg)
+		o := st(t, s)
+		if f, ok := value.(arg); ok {
+			o.args[key] = f(t, s)
+		} else {
+			o.args[key] = value
+		}
+		return o
+	}
+}
+
+// staleGroup is the group of tg as the page saw it before tg's cap was
+// changed by hand from [was].
+func staleGroup(tg string, was int) arg {
+	return func(t *testing.T, s web.State) any {
 		g := groupOf(t, s, tg)
 		members := append([]web.Choice{}, g["choices"].([]web.Choice)...)
 		for k := range members {
@@ -41,7 +64,51 @@ func dissolveSeen(tg string, was int) step {
 			}
 		}
 		g["choices"] = members
-		return opCall{"group.dissolve", map[string]any{"profile": gp, "index": i, "expect": g}}
+		return g
+	}
+}
+
+// reversedGroup is the group of tg with its members in reverse order.
+func reversedGroup(tg string) arg {
+	return func(t *testing.T, s web.State) any {
+		g := groupOf(t, s, tg)
+		members := append([]web.Choice{}, g["choices"].([]web.Choice)...)
+		slices.Reverse(members)
+		g["choices"] = members
+		return g
+	}
+}
+
+// seenAsGroup is a group of the plain choices tags, as a page that saw
+// them grouped sends it.
+func seenAsGroup(tags ...string) arg {
+	return func(t *testing.T, s web.State) any {
+		members := []web.Choice{}
+		for _, tg := range tags {
+			_, c := find(t, s, tg)
+			members = append(members, asMember(c))
+		}
+		return map[string]any{"load_balance": "random", "choices": members}
+	}
+}
+
+// seenChoices is the choices tags as the state gives them.
+func seenChoices(tags ...string) arg {
+	return func(t *testing.T, s web.State) any {
+		out := []web.Choice{}
+		for _, tg := range tags {
+			_, c := find(t, s, tg)
+			out = append(out, c)
+		}
+		return out
+	}
+}
+
+// seenChoice is tg as a page holding view of it sends it.
+func seenChoice(tg string, view seen) arg {
+	return func(t *testing.T, s web.State) any {
+		_, c := find(t, s, tg)
+		return view(c)
 	}
 }
 
@@ -101,6 +168,13 @@ func same(c web.Choice) web.Choice { return c }
 
 func plain(c web.Choice) web.Choice {
 	c.Group, c.LoadBalance = 0, nil
+	return c
+}
+
+// otherAlgorithm is a member as a page that saw another algorithm holds it.
+func otherAlgorithm(c web.Choice) web.Choice {
+	lb := "weighted"
+	c.LoadBalance = &lb
 	return c
 }
 

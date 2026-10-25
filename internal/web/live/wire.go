@@ -11,7 +11,7 @@ import (
 )
 
 // This file maps app and core values to the wire types (api.go, contract
-// 1–17). Every list is non-nil; names are sorted.
+// 1–20). Every list is non-nil; names are sorted.
 
 func emptyState(path, sha, readOnly string) web.State {
 	return web.State{SHA256: sha, Path: path, ReadOnly: readOnly,

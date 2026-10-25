@@ -737,3 +737,19 @@ func TestGroupMemberLabels(t *testing.T) {
 		t.Errorf("subjects %q, want profile tester, choice 2b", subjects)
 	}
 }
+
+// TestNewRefusesNoAlgorithms: a composition root that forgets the
+// algorithms would serve "algorithms": [] and the page could name none, so
+// New panics instead of starting.
+func TestNewRefusesNoAlgorithms(t *testing.T) {
+	for _, algorithms := range [][]string{nil, {}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("New(now, %#v) did not panic", algorithms)
+				}
+			}()
+			New(func() time.Time { return t0 }, algorithms)
+		}()
+	}
+}
