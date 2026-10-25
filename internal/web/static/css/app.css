@@ -1125,6 +1125,58 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   margin-block: 2px;
 }
 
+/* ---------- load balancing group (spec §8, layout A) ---------- */
+
+/* A frame around the member cards. It reaches past the plain cards by its
+   border and padding (1 + 10 px) on each side, so a member keeps a plain
+   card's edges and the column names stay over its dropdowns. */
+.p-group {
+  margin: 0 -11px;
+  padding: 6px 10px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  background: var(--accent-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The header starts at a card's handle column (card border 1 + padding 18). */
+.p-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-left: 19px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.p-group-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.p-group-stop {
+  margin-left: auto;
+}
+
+.p-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* + Add Model in the frame: its text starts where a member's Account label
+   does, as the page's own + Add Model does (.p-add). */
+.p-group-add {
+  justify-content: flex-start;
+  padding-left: 60px;
+}
+
 /* ---------- caps on a card (caps.js, CapsEditor.dc.html) ---------- */
 
 .p-caps.is-uncapped {

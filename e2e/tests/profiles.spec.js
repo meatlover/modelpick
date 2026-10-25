@@ -4,7 +4,7 @@
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
-const { readConfig, expectConfig, expectUnchanged } = require("./config");
+const { readConfig, expectConfig, expectUnchanged, handEdit, loadBalanceGo } = require("./config");
 
 let server;
 
@@ -326,6 +326,102 @@ test("global default cap: the page bounds 101, the server refuses it", async ({ 
   expect(r.ok()).toBe(false);
   expect((await r.json()).reason).toBe("Global default cap: 101 is outside 0–100%");
   expectUnchanged(server.configPath, before);
+});
+
+// ---------- load balancing groups ----------
+
+// shapeOf writes coder as account names, a group as [names] after its
+// algorithm: ["claude-main", "random[go-1 go-2]", …].
+const shapeOf = (cfg) => coder(cfg).map((it) =>
+  (it.choices ? `${it.load_balance}[${it.choices.map((m) => m.account).join(" ")}]` : it.account));
+
+const GROUPED = ["claude-main", "random[go-1 go-2]", "codex-main", "claude-main"];
+
+// grouped hand-edits coder into GROUPED (more changes: mutate) and shows it.
+async function grouped(page, mutate = () => {}) {
+  handEdit(server.configPath, (c) => {
+    loadBalanceGo(c);
+    mutate(c);
+  });
+  await page.reload();
+  await expect(card(page, "2a")).toBeVisible();
+}
+
+test("a group shows its frame, header and member numbers", async ({ page }) => {
+  await grouped(page);
+  const frame = card(page, 2);
+  await expect(frame).toContainText("2 · Load balancing 2 models");
+  await expect(frame).toContainText("· algorithm: random");
+  await expect(frame.getByRole("button", { name: "Stop load balancing" })).toBeVisible();
+  await expect(frame.getByRole("button", { name: "+ Add Model" })).toBeVisible();
+  for (const [n, account] of [["2a", "go-1"], ["2b", "go-2"]]) {
+    const m = frame.getByRole("group", { name: `Choice ${n}`, exact: true });
+    await expect(m.getByLabel("Account")).toHaveValue(account);
+    await expect(m.locator(".p-n")).toHaveText(n);
+    await expect(m.getByRole("button", { name: `Remove choice ${n}` })).toBeVisible();
+  }
+  // Positions after the group count on from it.
+  await expect(card(page, 1).getByLabel("Account")).toHaveValue("claude-main");
+  await expect(card(page, 3).getByLabel("Account")).toHaveValue("codex-main");
+  await expect(card(page, 4).getByLabel("Model")).toHaveValue("claude-sonnet-5-5");
+  await expect(card(page, 5)).toHaveCount(0);
+});
+
+test("a member's fields edit that member", async ({ page }) => {
+  await grouped(page);
+  await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices.map((m) => m.model),
+    ["opencode-go/deepseek-v4.1", "opencode-go/kimi-k3"], "2b's model");
+  await expectConfig(server.configPath, shapeOf, GROUPED, "still one group");
+});
+
+test("Stop load balancing makes members plain choices in place", async ({ page }) => {
+  await grouped(page);
+  await card(page, 2).getByRole("button", { name: "Stop load balancing" }).click();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "go-2", "codex-main", "claude-main"],
+    "the members are plain, at the group's place");
+  await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
+  await expect(card(page, 3).getByLabel("Account")).toHaveValue("go-2");
+  await expect(page.getByRole("button", { name: "Stop load balancing" })).toHaveCount(0);
+});
+
+test("+ Add Model inside a group adds a member", async ({ page }) => {
+  await grouped(page);
+  await card(page, 2).getByRole("button", { name: "+ Add Model" }).click();
+  // Both opencode-go accounts are in the group: the first unused account.
+  await expectConfig(server.configPath, shapeOf,
+    ["claude-main", "random[go-1 go-2 claude-main]", "codex-main", "claude-main"], "a third member");
+  await expect(card(page, "2c").getByLabel("Account")).toHaveValue("claude-main");
+  await expect(card(page, 2)).toContainText("2 · Load balancing 3 models");
+});
+
+test("removing the last-but-one member dissolves the group", async ({ page }) => {
+  await grouped(page);
+  await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-1", "codex-main", "claude-main"],
+    "go-1 stays plain at the group's place");
+  await expect(card(page, 2).getByLabel("Account")).toHaveValue("go-1");
+  await expect(card(page, "2a")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop load balancing" })).toHaveCount(0);
+});
+
+test("a doctor finding on choice 2b marks that member card", async ({ page }) => {
+  await grouped(page, (c) => { c.profiles.coder[1].choices[1].thinking = "ultra"; });
+  await expect(card(page, "2b")).toHaveClass(/is-error/);
+  await expect(card(page, "2a")).not.toHaveClass(/is-error/);
+  await expect(card(page, 2)).not.toHaveClass(/is-error/);
+  await expect(card(page, 3)).not.toHaveClass(/is-error/);
+  await expect(page.getByRole("link", { name: "coder", exact: true })).toHaveClass(/is-error/);
+});
+
+// A plain card dragged past a group lands where it was dropped: the drop
+// index counts the group's members.
+test("a plain card dragged past a group lands where it was dropped", async ({ page }) => {
+  await grouped(page);
+  await dragCard(page, 1, 3);
+  await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "codex-main", "claude-main", "claude-main"],
+    "opus after codex-main");
+  await expectConfig(server.configPath, (c) => coder(c)[2].model, "claude-opus-5-5", "the moved card");
 });
 
 // This test is its own setup: its page registers the listeners before the

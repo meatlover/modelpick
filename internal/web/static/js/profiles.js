@@ -10,7 +10,7 @@ import { currentTab } from "./header.js";
 import { renderCaps } from "./caps.js";
 import { renderChips } from "./chips.js";
 import { wireReorder, dragHandle } from "./reorder.js";
-import { choiceSubject, profileHasError } from "./subjects.js";
+import { choiceLabels, choiceSubject, positions, profileHasError } from "./subjects.js";
 
 export const uses = ["state", "doctor"];
 
@@ -319,20 +319,52 @@ function mount(cls, fill, ctx) {
   return el;
 }
 
-function card(st, profile, c, i, red) {
+// card draws the choice at flat index i, labelled label ("3", or "2b" for a
+// member of a load balancing group).
+function card(st, profile, c, i, label, red) {
   const ctx = { profile, index: i, choice: c };
   const handle = h("span", { class: "p-handle", "aria-hidden": "true" }, dots());
-  const el = h("div", { class: ["p-card", red.has(choiceSubject(profile, i)) && "is-error"],
-    tabindex: "0", role: "group", "aria-label": `Choice ${i + 1}`, "data-key": `card-${i}`, "data-index": String(i) },
-  h("div", { class: "p-pos" }, handle, h("span", { class: "mono p-n" }, String(i + 1))),
+  const el = h("div", { class: ["p-card", red.has(choiceSubject(profile, label)) && "is-error"],
+    tabindex: "0", role: "group", "aria-label": `Choice ${label}`, "data-key": `card-${i}`, "data-index": String(i) },
+  h("div", { class: "p-pos" }, handle, h("span", { class: "mono p-n" }, label)),
   h("div", { class: "p-card-main" }, selects(st, ctx),
     mount("p-caps", renderCaps, ctx), mount("p-chips", renderChips, ctx)),
   h("div", { class: "p-card-side" },
-    h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${i + 1}`,
+    h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${label}`,
       "data-key": `c${i}-remove`,
       onClick: () => sendOp("choice.remove", () => ({ profile, index: i, expect: ctx.choice })) }, "Remove")));
   dragHandle(el, handle);
   return el;
+}
+
+// groupHead is a group's header: what it is, its algorithm (as text while
+// there is one algorithm; spec §8 makes it a menu once there are two), and
+// Stop load balancing, which dissolves it.
+function groupHead(prof, pos, n, expect) {
+  const k = pos.end - pos.start;
+  return h("div", { class: "p-group-head" },
+    h("span", { class: "p-group-title" }, `${n} · Load balancing ${k} models`),
+    h("span", { class: "p-group-how" }, `· algorithm: ${pos.load_balance}`),
+    h("button", { type: "button", class: "btn btn-quiet p-group-stop", "data-key": `group-${pos.start}-stop`,
+      onClick: () => sendOp("group.dissolve", { profile: prof.name, index: pos.start, expect }) },
+    "Stop load balancing"));
+}
+
+// groupFrame draws the load balancing group at position n (pos from
+// positions()): a frame named Choice n holding its member cards, with
+// + Add Model at the bottom. Its expect is the group as the file holds it,
+// {load_balance, choices}, members as the page received them.
+function groupFrame(st, prof, pos, n, labels, red) {
+  const members = prof.choices.slice(pos.start, pos.end);
+  const expect = { load_balance: pos.load_balance, choices: members };
+  return h("div", { class: ["p-group", red.has(choiceSubject(prof.name, String(n))) && "is-error"],
+    role: "group", "aria-label": `Choice ${n}`, "data-key": `group-${pos.start}` },
+  groupHead(prof, pos, n, expect),
+  h("ol", { class: "p-members" }, members.map((c, k) => h("li", { class: "p-member" },
+    card(st, prof.name, c, pos.start + k, labels[pos.start + k], red)))),
+  h("button", { type: "button", class: "btn btn-dashed p-group-add", "data-key": `group-${pos.start}-add`,
+    onClick: () => sendOp("choice.add", { profile: prof.name, group: pos.start, group_expect: expect }) },
+  "+ Add Model"));
 }
 
 // move keeps focus (and the selected style) on the moved card, whether it
@@ -345,9 +377,13 @@ async function move(prof, from, to) {
   paint();
 }
 
+// cards lists the profile's positions: a plain choice's card, or a group's
+// frame. Cards keep their flat index (data-index), which every op uses.
 function cards(st, prof, red) {
-  const ol = h("ol", { class: "p-cards" },
-    prof.choices.map((c, i) => h("li", { class: "p-item" }, card(st, prof.name, c, i, red))));
+  const labels = choiceLabels(prof.choices);
+  const ol = h("ol", { class: "p-cards" }, positions(prof.choices).map((pos, n) => (pos.group > 0
+    ? h("li", { class: "p-item p-group-item" }, groupFrame(st, prof, pos, n + 1, labels, red))
+    : h("li", { class: "p-item" }, card(st, prof.name, prof.choices[pos.start], pos.start, labels[pos.start], red)))));
   wireReorder(ol, (from, to) => move(prof, from, to));
   return ol;
 }

@@ -32,4 +32,13 @@ function handEdit(configPath, mutate) {
   fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\n");
 }
 
-module.exports = { readConfig, expectConfig, expectUnchanged, handEdit };
+// loadBalanceGo is a handEdit mutation: coder's go-1 choice and a copy of it
+// on go-2 become one load balancing group at position 2, ahead of codex-main.
+// Coder then reads 1 opus, 2a go-1, 2b go-2, 3 codex-main, 4 sonnet.
+function loadBalanceGo(cfg) {
+  const [opus, codex, go1, sonnet] = cfg.profiles.coder;
+  const go2 = { ...go1, account: "go-2" };
+  cfg.profiles.coder = [opus, { load_balance: "random", choices: [go1, go2] }, codex, sonnet];
+}
+
+module.exports = { readConfig, expectConfig, expectUnchanged, handEdit, loadBalanceGo };

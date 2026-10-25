@@ -1,12 +1,16 @@
 // Reordering choice cards: drag by the handle (HTML5 drag and drop, a
 // dashed "Drop here" slot marks the landing place) or, on a focused card,
 // ⌘↑/⌘↓ (Ctrl off a Mac). Plain ↑/↓ move focus between cards.
-// The list is ol > li.p-item > .p-card[data-index].
+// The list is ol > li.p-item, each holding one .p-card[data-index] or a
+// load balancing group's frame of several; data-index is the card's flat
+// index. A drop lands between items, never inside a group's frame (joining
+// a group by drag is Task 8 of the load balancing plan).
 import { h } from "./dom.js";
 
-// dropIndex is where a dragged card lands among the other cards: the number
-// of them whose vertical midpoint (mids, top to bottom) is above y. It is
-// the `to` of choice.move, an index into the list without the dragged card.
+// dropIndex is where a dragged card lands among the other items: the number
+// of them whose vertical midpoint (mids, top to bottom) is above y. With no
+// group it is the `to` of choice.move, an index into the list without the
+// dragged card; cardsBefore counts a group's members.
 export function dropIndex(mids, y) {
   let n = 0;
   for (const m of mids) if (y > m) n++;
@@ -86,6 +90,15 @@ function others(ol) {
   return [...ol.children].filter((li) => li.classList.contains("p-item") && li !== drag.li);
 }
 
+// cardsBefore is the `to` of choice.move for a drop before items[k]: the
+// cards the items above it hold (a group's item holds several), the dragged
+// card left out.
+function cardsBefore(items, k) {
+  let n = 0;
+  for (const li of items.slice(0, k)) n += [...li.querySelectorAll(".p-card")].filter((c) => c !== drag.card).length;
+  return n;
+}
+
 // place moves the slot to where a drop at y would land.
 function place(ol, y) {
   const items = others(ol);
@@ -93,10 +106,12 @@ function place(ol, y) {
     const r = li.getBoundingClientRect();
     return r.top + r.height / 2;
   });
-  drag.to = dropIndex(mids, y);
-  let before = items[drag.to] || null;
-  // Landing in its own place: the slot goes above or below the dragged card.
-  if (drag.to === drag.from) {
+  const k = dropIndex(mids, y);
+  drag.to = cardsBefore(items, k);
+  let before = items[k] || null;
+  // Landing in its own place: the slot goes above or below the dragged
+  // card (a member's own place is inside its frame, where no slot goes).
+  if (drag.to === drag.from && drag.li.parentNode === ol) {
     const r = drag.li.getBoundingClientRect();
     if (slotAbove(y, r.top, r.height)) before = drag.li;
   }
