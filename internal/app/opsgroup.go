@@ -67,17 +67,16 @@ func normalizeGroups(cs []core.DocChoice) []core.DocChoice {
 	return out
 }
 
-// groupAt is the group that flat index g of profile names, as the group
-// argument of choice.add and choice.move does: its id, algorithm and run.
-func groupAt(cs []core.DocChoice, profile string, g int) (core.Position, error) {
-	if g < 0 || g >= len(cs) {
-		return core.Position{}, refuse("Profile %s has no choice %d", profile, g+1)
+// targetGroup resolves the group argument of choice.add and choice.move
+// (a.Group != nil): a.Group is any member's flat index and a.GroupExpect the
+// group as the page saw it, resolved as group.dissolve resolves its expect,
+// so a hand edit cannot send the card to a group the user did not choose.
+func targetGroup(doc *core.Doc, a opArgs, op string) (core.Position, error) {
+	if len(a.GroupExpect) == 0 || rawText(a.GroupExpect) == "null" {
+		return core.Position{}, refuse("Bad arguments for %s", op)
 	}
-	if cs[g].Group == 0 {
-		return core.Position{}, refuse("Choice %s of %s is not in a load balancing group", label(cs, g), profile)
-	}
-	ps := positionsOf(cs)
-	return ps[positionOf(ps, g)], nil
+	_, p, err := findGroup(doc, a.Profile, *a.Group, a.GroupExpect)
+	return p, err
 }
 
 // opGroupCreate makes one group of the chosen plain choices at the place of
@@ -258,7 +257,7 @@ func findGroup(doc *core.Doc, profile string, index int, expect json.RawMessage)
 // vendor, with that account's first model; when the group uses every
 // account it copies the last member's account as choice.add does (spec §8).
 func opMemberAdd(doc *core.Doc, a opArgs, env OpEnv, cs []core.DocChoice) error {
-	p, err := groupAt(cs, a.Profile, *a.Group)
+	p, err := targetGroup(doc, a, "choice.add")
 	if err != nil {
 		return err
 	}

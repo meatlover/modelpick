@@ -347,7 +347,7 @@ var profileCases = []opCase{
 	{name: "choice.move to end", doc: base, op: "choice.move", args: move(0, 2, e0), want: base.prof("coder", c1, c2, c0)},
 	{name: "choice.move follows", doc: base, op: "choice.move", args: move(0, 0, e1), want: base.prof("coder", c1, c0, c2)},
 	{name: "choice.move no position", doc: base, op: "choice.move", args: move(0, 3, e0),
-		refused: "Profile coder has no position 4"},
+		refused: "Profile coder has no choice 4"},
 	{name: "choice.move stale", doc: base, op: "choice.move", args: move(0, 1, es),
 		refused: "Choice 1 of coder was changed outside the UI"},
 }

@@ -21,9 +21,21 @@ func member(expect string, group int) string {
 	return strings.TrimSuffix(expect, "}") + `,"group":` + itoa(group) + `,"load_balance":"random"}`
 }
 
-// gmove is choice.move on coder with a group argument ("null" = plain).
-func gmove(from, to int, expect, group string) string {
-	return `{"profile":"coder","from":` + itoa(from) + `,"to":` + itoa(to) + `,"expect":` + expect + `,"group":` + group + `}`
+// gmove is choice.move on coder that ends plain (group null).
+func gmove(from, to int, expect string) string {
+	return `{"profile":"coder","from":` + itoa(from) + `,"to":` + itoa(to) + `,"expect":` + expect + `,"group":null}`
+}
+
+// gjoin is choice.move on coder into the group at flat index group, which
+// the page saw as groupExpect.
+func gjoin(from, to int, expect string, group int, groupExpect string) string {
+	return `{"profile":"coder","from":` + itoa(from) + `,"to":` + itoa(to) + `,"expect":` + expect +
+		`,"group":` + itoa(group) + `,"group_expect":` + groupExpect + `}`
+}
+
+// addMember is choice.add on coder into the group at flat index group.
+func addMember(group int, groupExpect string) string {
+	return `{"profile":"coder","group":` + itoa(group) + `,"group_expect":` + groupExpect + `}`
 }
 
 func create(indexes string, expects ...string) string {
@@ -83,36 +95,52 @@ var groupDissolveCases = []opCase{
 func TestOpGroupDissolve(t *testing.T) { runOps(t, groupDissolveCases) }
 
 var groupMoveCases = []opCase{
-	{name: "in", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move", args: gmove(2, 1, e2, "0"),
+	{name: "in", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move", args: gjoin(2, 1, e2, 0, grp(e0, e1)),
 		want: base.prof("coder", grp(c0, c2, c1))},
 	{name: "in at the end edge", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
-		args: gmove(2, 2, e2, "1"), want: base.prof("coder", grp(c0, c1, c2))},
+		args: gjoin(2, 2, e2, 1, grp(e0, e1)), want: base.prof("coder", grp(c0, c1, c2))},
 	{name: "in at the front edge", doc: base.prof("coder", c2, grp(c0, c1)), op: "choice.move",
-		args: gmove(0, 0, e2, "1"), want: base.prof("coder", grp(c2, c0, c1))},
+		args: gjoin(0, 0, e2, 1, grp(e0, e1)), want: base.prof("coder", grp(c2, c0, c1))},
 	{name: "in lands outside the group", doc: base.prof("coder", grp(c0, c1), c2, c3), op: "choice.move",
-		args: gmove(3, 3, e3, "0"), refused: "Choice 3 of coder must be placed inside the load balancing group it joins"},
-	{name: "group names a plain choice", doc: base.prof("coder", grp(c0, c1), c2, c3), op: "choice.move",
-		args: gmove(3, 2, e3, "2"), refused: "Choice 2 of coder is not in a load balancing group"},
+		args: gjoin(3, 3, e3, 0, grp(e0, e1)), refused: "Choice 3 of coder must be placed inside the load balancing group it joins"},
+	{name: "group expect matches no group", doc: base.prof("coder", grp(c0, c1), c2, c3), op: "choice.move",
+		args: gjoin(3, 2, e3, 2, grp(e2, e3)), refused: "Load balancing group 2 of coder was changed outside the UI"},
+	{name: "group without group_expect", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
+		args: `{"profile":"coder","from":2,"to":1,"expect":` + e2 + `,"group":0}`, refused: "Bad arguments for choice.move"},
+	// The page saw [c2, group(c0, c1), group(c3, c0b)] and drops c2 into the
+	// first group; a hand edit swapped the two groups. group_expect follows
+	// the group the user chose, and the drop is not inside it.
+	{name: "groups swapped by hand", doc: base.prof("coder", c2, grp(c3, c0b), grp(c0, c1)), op: "choice.move",
+		args: gjoin(0, 1, e2, 1, grp(e0, e1)), refused: "Choice 1 of coder must be placed inside the load balancing group it joins"},
+	{name: "group changed by hand", doc: base.prof("coder", c2, grp(c0, c3)), op: "choice.move",
+		args: gjoin(0, 0, e2, 1, grp(e0, e1)), refused: "Load balancing group 2 of coder was changed outside the UI"},
+	// The page saw [c0, c1, c2], all plain; a hand edit grouped them. A
+	// stale plain expect must not pull a member out, by fallback or by a
+	// direct hit at index (reviewer, Task 4 round 1).
+	{name: "stale plain expect, fallback finds a member", doc: base.prof("coder", grp(c0, c2, c1)), op: "choice.move",
+		args: gmove(1, 0, e1), refused: "Choice 1b of coder was changed outside the UI"},
+	{name: "stale plain expect, direct hit on a member", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
+		args: gmove(1, 2, e1), refused: "Choice 1b of coder was changed outside the UI"},
 	{name: "group out of range", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
-		args: gmove(2, 1, e2, "9"), refused: "Profile coder has no choice 10"},
+		args: gjoin(2, 1, e2, 9, grp(e0, e2)), refused: "Profile coder has no choice 10"},
 	{name: "out", doc: base.prof("coder", grp(c0, c1, c2), c3), op: "choice.move",
-		args: gmove(0, 3, member(e0, 1), "null"), want: base.prof("coder", grp(c1, c2), c3, c0)},
+		args: gmove(0, 3, member(e0, 1)), want: base.prof("coder", grp(c1, c2), c3, c0)},
 	{name: "out at the front edge", doc: base.prof("coder", grp(c0, c1, c2), c3), op: "choice.move",
-		args: gmove(1, 0, member(e1, 1), "null"), want: base.prof("coder", c1, grp(c0, c2), c3)},
+		args: gmove(1, 0, member(e1, 1)), want: base.prof("coder", c1, grp(c0, c2), c3)},
 	{name: "out leaving one dissolves", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
-		args: gmove(0, 2, member(e0, 1), "null"), want: base.prof("coder", c1, c2, c0)},
+		args: gmove(0, 2, member(e0, 1)), want: base.prof("coder", c1, c2, c0)},
 	{name: "plain cannot land inside a group", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.move",
-		args: gmove(2, 1, e2, "null"), refused: "Choice 2 of coder cannot be placed inside a load balancing group"},
+		args: gmove(2, 1, e2), refused: "Choice 2 of coder cannot be placed inside a load balancing group"},
 	{name: "member cannot stay inside without group", doc: base.prof("coder", grp(c0, c1, c2)), op: "choice.move",
-		args: gmove(1, 1, member(e1, 1), "null"), refused: "Choice 1b of coder cannot be placed inside a load balancing group"},
+		args: gmove(1, 1, member(e1, 1)), refused: "Choice 1b of coder cannot be placed inside a load balancing group"},
 	{name: "plain past a group", doc: base.prof("coder", c2, grp(c0, c1)), op: "choice.move",
-		args: gmove(0, 2, e2, "null"), want: base.prof("coder", grp(c0, c1), c2)},
+		args: gmove(0, 2, e2), want: base.prof("coder", grp(c0, c1), c2)},
 	{name: "between two groups", doc: base.prof("coder", grp(c0, c1), grp(c2, c3)), op: "choice.move",
-		args: gmove(0, 1, member(e0, 1), "null"), want: base.prof("coder", c1, c0, grp(c2, c3))},
+		args: gmove(0, 1, member(e0, 1)), want: base.prof("coder", c1, c0, grp(c2, c3))},
 	{name: "within a group", doc: base.prof("coder", grp(c0, c1, c2)), op: "choice.move",
-		args: gmove(0, 2, member(e0, 1), "0"), want: base.prof("coder", grp(c1, c2, c0))},
+		args: gjoin(0, 2, member(e0, 1), 0, grp(e0, e1, e2)), want: base.prof("coder", grp(c1, c2, c0))},
 	{name: "member to another group", doc: base.prof("coder", grp(c0, c1), grp(c2, c3)), op: "choice.move",
-		args: gmove(0, 2, member(e0, 1), "2"), want: base.prof("coder", c1, grp(c2, c0, c3))},
+		args: gjoin(0, 2, member(e0, 1), 2, grp(e2, e3)), want: base.prof("coder", c1, grp(c2, c0, c3))},
 }
 
 func TestOpGroupMove(t *testing.T) { runOps(t, groupMoveCases) }
@@ -123,7 +151,10 @@ var groupMemberCases = []opCase{
 	{name: "remove down to one dissolves", doc: base.prof("coder", c3, grp(c0, c1)), op: "choice.remove",
 		args: at("coder", 1, member(e0, 1)), want: base.prof("coder", c3, c1)},
 	{name: "remove renumbers", doc: base.prof("coder", grp(c0, c1), grp(c2, c3)), op: "choice.remove",
-		args: at("coder", 0, e0), want: base.prof("coder", c1, grp(c2, c3))},
+		args: at("coder", 0, member(e0, 1)), want: base.prof("coder", c1, grp(c2, c3))},
+	{name: "member expect with another algorithm", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.remove",
+		args:    at("coder", 0, strings.Replace(member(e0, 1), "random", "weighted", 1)),
+		refused: "Choice 1a of coder was changed outside the UI"},
 	{name: "stale names the member", doc: base.prof("coder", grp(c0, c1), c2), op: "choice.remove",
 		args: at("coder", 1, es), refused: "Choice 1b of coder was changed outside the UI"},
 	// The file was [c0, c1, c2]; a hand edit made it [group(c0, c2), c1].
@@ -142,22 +173,29 @@ var groupMemberCases = []opCase{
 		args: `{"profile":"coder"}`, want: base.prof("coder", c0, grp(c1, c2),
 			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":[]}`)},
 	{name: "add member: unused account of the last member's vendor", doc: base.prof("coder", grp(c1, c0), c2),
-		op: "choice.add", args: `{"profile":"coder","group":0}`,
+		op: "choice.add", args: addMember(0, grp(e1, e0)),
 		want: base.prof("coder", grp(c1, c0, `{"account":"claude-two","model":"claude-haiku-5","thinking":null,"cap":[]}`), c2)},
 	{name: "add member: the vendor comes before the name order", doc: withGo2.prof("coder", grp(c0, c2)),
-		op: "choice.add", args: `{"profile":"coder","group":0}`,
+		op: "choice.add", args: addMember(0, grp(e0, e2)),
 		want: withGo2.prof("coder", grp(c0, c2, `{"account":"go-2","model":"opencode-go/kimi-k3","thinking":"max","cap":[]}`))},
 	{name: "add member: vendor used up, first unused account", doc: base.prof("coder", c2, grp(c0, c1)),
-		op: "choice.add", args: `{"profile":"coder","group":2}`,
+		op: "choice.add", args: addMember(2, grp(e0, e1)),
 		want: base.prof("coder", c2, grp(c0, c1, `{"account":"claude-two","model":"claude-haiku-5","thinking":null,"cap":[]}`))},
 	{name: "add member: every account used, copies the last", doc: twoAccounts, op: "choice.add",
-		args: `{"profile":"coder","group":1}`,
+		args: addMember(1, grp(e0, e1)),
 		want: twoAccounts.prof("coder", grp(c0, c1, `{"account":"codex-main","model":"gpt-6.1-sol","thinking":"low","cap":[]}`))},
 	{name: "add member: models not listed", doc: base.prof("coder", grp(c1, c2)), op: "choice.add",
-		args: `{"profile":"coder","group":0}`, refused: "Cannot list the models of go-9: opencode not found on PATH"},
-	{name: "add member: plain index", doc: base, op: "choice.add", args: `{"profile":"coder","group":1}`,
-		refused: "Choice 2 of coder is not in a load balancing group"},
-	{name: "add member: out of range", doc: base, op: "choice.add", args: `{"profile":"coder","group":3}`,
+		args: addMember(0, grp(e1, e2)), refused: "Cannot list the models of go-9: opencode not found on PATH"},
+	{name: "add member: group expect matches no group", doc: base, op: "choice.add", args: addMember(1, grp(e0, e1)),
+		refused: "Load balancing group 2 of coder was changed outside the UI"},
+	{name: "add member: without group_expect", doc: base.prof("coder", grp(c0, c1)), op: "choice.add",
+		args: `{"profile":"coder","group":0}`, refused: "Bad arguments for choice.add"},
+	// The page saw [group(c0, c1), group(c2, c3)] and adds to the first; a
+	// hand edit swapped them. The member goes to the group the user chose.
+	{name: "add member: groups swapped by hand", doc: base.prof("coder", grp(c2, c3), grp(c0, c1)), op: "choice.add",
+		args: addMember(0, grp(e0, e1)),
+		want: base.prof("coder", grp(c2, c3), grp(c0, c1, `{"account":"claude-two","model":"claude-haiku-5","thinking":null,"cap":[]}`))},
+	{name: "add member: out of range", doc: base, op: "choice.add", args: addMember(3, grp(e0, e1)),
 		refused: "Profile coder has no choice 4"},
 }
 
@@ -204,7 +242,7 @@ func TestEditorWritesGroups(t *testing.T) {
 		t.Fatalf("written profile p = %+v, want one random group of 2", got)
 	}
 	if _, _, err := f.ed.Apply(s.SHA256, "choice.remove",
-		json.RawMessage(`{"profile":"p","index":1,"expect":`+codex+`}`)); err != nil {
+		json.RawMessage(`{"profile":"p","index":1,"expect":`+member(codex, 1)+`}`)); err != nil {
 		t.Fatal(err)
 	}
 	if text := string(f.bytes(t)); strings.Contains(text, "load_balance") {

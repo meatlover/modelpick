@@ -156,12 +156,12 @@ func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
 		return err
 	}
 	if a.To < 0 || a.To >= len(cs) {
-		return refuse("Profile %s has no position %d", a.Profile, a.To+1)
+		return refuse("Profile %s has no choice %d", a.Profile, a.To+1)
 	}
 	card := cs[i]
 	card.Group, card.LoadBalance = 0, ""
 	if a.Group != nil {
-		p, err := groupAt(cs, a.Profile, *a.Group)
+		p, err := targetGroup(doc, a, "choice.move")
 		if err != nil {
 			return err
 		}
@@ -380,7 +380,8 @@ func capElement(where string, raw json.RawMessage) (core.CapElem, error) {
 	return core.CapElem{}, refuse("%s: %s is not a number, pace+N or default", where, text)
 }
 
-// wireChoice is a choice as the page sends it in expect.
+// wireChoice is a choice as the page sends it in expect. Group and
+// LoadBalance say whether the page saw it as a group member.
 type wireChoice struct {
 	Account     string          `json:"account"`
 	Model       string          `json:"model"`
@@ -388,9 +389,14 @@ type wireChoice struct {
 	Cap         json.RawMessage `json:"cap"`
 	SkipDuring  []string        `json:"skip_during"`
 	AllowDuring []string        `json:"allow_during"`
+	Group       *int            `json:"group"`
+	LoadBalance *string         `json:"load_balance"`
 }
 
-// expectedChoice decodes expect; false when it is missing or malformed.
+// expectedChoice decodes expect; false when it is missing or malformed. A
+// member (group set and not 0, load_balance set and not "") comes back with
+// Group 1 and its LoadBalance; the page's group id itself is not kept, as
+// ids renumber.
 func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 	var w wireChoice
 	if len(raw) == 0 || json.Unmarshal(raw, &w) != nil {
@@ -398,6 +404,9 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 	}
 	c := core.DocChoice{Account: w.Account, Model: w.Model, Thinking: w.Thinking,
 		SkipDuring: w.SkipDuring, AllowDuring: w.AllowDuring}
+	if w.Group != nil && *w.Group != 0 && w.LoadBalance != nil && *w.LoadBalance != "" {
+		c.Group, c.LoadBalance = 1, *w.LoadBalance
+	}
 	if w.Cap == nil || rawText(w.Cap) == "null" {
 		return c, true
 	}
@@ -418,10 +427,10 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 
 // findChoice resolves a choice the page addressed by index and sent as
 // expect (spec §8.4): the choice at index if identical, else the one
-// identical choice on the same side of a group boundary as index (the same
-// group, or among plain choices; spec §8, so a stale edit never reaches
-// into or out of a group), else a refusal. An index past the end counts as
-// plain.
+// identical choice in the profile, else a refusal. Identity includes
+// whether the page saw the choice plain or as a member (and the member's
+// algorithm), so a stale edit never reaches into or out of a group (spec
+// §8); group ids are not identity, as they renumber.
 func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage) ([]core.DocChoice, int, error) {
 	cs, ok := doc.Profiles[profile]
 	if !ok {
@@ -429,16 +438,12 @@ func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage
 	}
 	want, ok := expectedChoice(expect)
 	inRange := index >= 0 && index < len(cs)
-	if ok && inRange && sameChoice(cs[index], want) {
+	if ok && inRange && sameStatus(cs[index], want) && sameChoice(cs[index], want) {
 		return cs, index, nil
-	}
-	side := 0
-	if inRange {
-		side = cs[index].Group
 	}
 	found, n := -1, 0
 	for i := range cs {
-		if ok && cs[i].Group == side && sameChoice(cs[i], want) {
+		if ok && sameStatus(cs[i], want) && sameChoice(cs[i], want) {
 			found, n = i, n+1
 		}
 	}
@@ -451,9 +456,15 @@ func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage
 	return nil, 0, refuse("Choice %s of %s was changed outside the UI", label(cs, index), profile)
 }
 
+// sameStatus is true when both are plain, or both are members of a group
+// with the same algorithm.
+func sameStatus(have, want core.DocChoice) bool {
+	return (have.Group != 0) == (want.Group != 0) && have.LoadBalance == want.LoadBalance
+}
+
 // sameChoice compares as written: null and [] lists alike, 90 and 90.0
 // alike, trailing "default" positions ignored; uncapped differs from [].
-// Group and LoadBalance are not identity: findChoice handles the boundary.
+// Group and LoadBalance are not compared here: findChoice adds sameStatus.
 func sameChoice(a, b core.DocChoice) bool {
 	if a.Account != b.Account || a.Model != b.Model || a.Capped != b.Capped {
 		return false

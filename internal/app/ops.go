@@ -53,8 +53,10 @@ type opArgs struct {
 	Expects []json.RawMessage `json:"expects"`
 	// Group is the flat index (before the op) of any member of a group:
 	// choice.add adds a member to it, choice.move makes the moved choice a
-	// member of it. nil: a plain choice.
-	Group *int `json:"group"`
+	// member of it. nil: a plain choice. GroupExpect is that group as the
+	// page saw it, checked as group.dissolve's expect.
+	Group       *int            `json:"group"`
+	GroupExpect json.RawMessage `json:"group_expect"`
 }
 
 type opFunc func(doc *core.Doc, a opArgs, env OpEnv) error
