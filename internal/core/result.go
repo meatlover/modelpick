@@ -30,6 +30,14 @@ type RunError struct {
 	Error   string `json:"error"`
 }
 
+// LBPick says which load balancing group member was picked: the group's
+// position number in the profile and the member's label ("2b").
+type LBPick struct {
+	Algorithm string `json:"algorithm"`
+	Choice    int    `json:"choice"`
+	Member    string `json:"member"`
+}
+
 // Result is the output of pick (spec §7).
 type Result struct {
 	Status     Status           `json:"status"`
@@ -39,10 +47,12 @@ type Result struct {
 	Model      *string          `json:"model"`
 	Thinking   *string          `json:"thinking"`
 	AccountRef *adapter.Account `json:"account_ref"`
-	Reason     *string          `json:"reason"`
-	Skipped    []Skip           `json:"skipped"`
-	Errors     []RunError       `json:"errors"`
-	Warnings   []string         `json:"warnings"`
+	// LoadBalance: nil unless the picked choice is a group member.
+	LoadBalance *LBPick    `json:"load_balance"`
+	Reason      *string    `json:"reason"`
+	Skipped     []Skip     `json:"skipped"`
+	Errors      []RunError `json:"errors"`
+	Warnings    []string   `json:"warnings"`
 }
 
 // ExitCode maps Status to the process exit code: ok 0, failed 1,
@@ -79,6 +89,7 @@ func (r Result) JSON() []byte {
 		{"model", inline(r.Model)},
 		{"thinking", inline(r.Thinking)},
 		{"account_ref", inline(r.AccountRef)},
+		{"load_balance", inline(r.LoadBalance)},
 		{"reason", inline(r.Reason)},
 		{"skipped", list(r.Skipped)},
 		{"errors", list(r.Errors)},

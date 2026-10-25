@@ -36,8 +36,11 @@ func TestExampleConfigParses(t *testing.T) {
 	if cfg.Settings.MinCallInterval != 15*time.Minute || cfg.Settings.DefaultCap != 95 {
 		t.Errorf("Settings = %+v", cfg.Settings)
 	}
-	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "tester"}) {
+	if got := cfg.ProfileNames(); !reflect.DeepEqual(got, []string{"coder-difficult", "reviewer", "tester"}) {
 		t.Errorf("ProfileNames = %v", got)
+	}
+	if r := cfg.Profiles["reviewer"]; len(r) != 4 || r[0].Group == 0 || r[0].Group != r[2].Group || r[3].Group != 0 || r[0].LoadBalance != "random" {
+		t.Errorf("reviewer = %+v, want a random group of go-1..go-3 then a plain choice", r)
 	}
 	if len(cfg.Schedules["deepseek-peak"].Rules[0].Ranges) != 2 {
 		t.Errorf("schedule = %+v", cfg.Schedules["deepseek-peak"])
@@ -257,5 +260,57 @@ func TestConfigAcceptsWholeDay(t *testing.T) {
 	s := cfg.Schedules["d"]
 	if !s.Matches(at(t, "2026-10-19T00:00:00Z")) || !s.Matches(at(t, "2026-10-19T23:59:00Z")) || s.Matches(at(t, "2026-10-20T00:00:00Z")) {
 		t.Error("whole-day Monday must cover 00:00 and 23:59 but not Tuesday 00:00")
+	}
+}
+
+const groupSetup = `"accounts":{"a":{"vendor":"claude","config_dir":"/c"},"b":{"vendor":"claude","config_dir":"/d"}},` +
+	`"schedules":{"peak":{"days":["mon"],"utc":["01:00-04:00"]}}`
+
+const (
+	memberA = `{"account":"a","model":"m","thinking":null}`
+	memberB = `{"account":"b","model":"m","thinking":null}`
+)
+
+// groupProfile is a valid config whose profile "tester" holds items.
+func groupProfile(items string) string {
+	return `{"version":1,` + groupSetup + `,"profiles":{"tester":[` + items + `]}}`
+}
+
+// groupConfig is a group (head, then members a and b) followed by a plain choice.
+func groupConfig(head string) string {
+	return groupProfile(`{` + head + `,"choices":[` + memberA + `,` + memberB + `]},` + memberA)
+}
+
+func TestValidateGroupErrors(t *testing.T) {
+	group := func(members ...string) string {
+		return `{"load_balance":"random","choices":[` + strings.Join(members, ",") + `]}`
+	}
+	cases := []struct{ name, doc, field, msg string }{
+		{"unknown algorithm", groupConfig(`"load_balance":"weighted"`), "profiles.tester[0].load_balance", `unknown algorithm "weighted" (known: random)`},
+		{"load_balance missing", groupProfile(`{"choices":[` + memberA + `,` + memberB + `]}`), "profiles.tester[0].load_balance", "required"},
+		{"member unknown account", groupProfile(group(memberA, `{"account":"zz","model":"m","thinking":null}`)), "profiles.tester[0].choices[1].account", `unknown account "zz"`},
+		{"member unknown schedule", groupProfile(memberA + `,` + group(memberA, `{"account":"b","model":"m","thinking":null,"skip_during":["nope"]}`)), "profiles.tester[1].choices[1].skip_during", `unknown schedule "nope"`},
+		{"plain after group keeps file index", groupProfile(group(memberA, memberB) + `,{"account":"a","model":""}`), "profiles.tester[1].thinking", "required (use null for none)"},
+		{"plain after group, validate path", groupProfile(group(memberA, memberB) + `,{"account":"zz","model":"m","thinking":null}`), "profiles.tester[1].account", `unknown account "zz"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Parse([]byte(c.doc), "c.json", "/h")
+			var ce *ConfigError
+			if !errors.As(err, &ce) || ce.Field != c.field || ce.Msg != c.msg {
+				t.Errorf("err = %v, want %s: %s", err, c.field, c.msg)
+			}
+		})
+	}
+	cfg, err := Parse([]byte(groupConfig(`"load_balance":"random"`)), "c.json", "/h")
+	if err != nil {
+		t.Fatalf("the valid control does not parse: %v", err)
+	}
+	var got []string
+	for _, c := range cfg.Profiles["tester"] {
+		got = append(got, fmt.Sprintf("%s/%d/%s", c.Account, c.Group, c.LoadBalance))
+	}
+	if want := []string{"a/1/random", "b/1/random", "a/0/"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("choices = %q, want %q", got, want)
 	}
 }

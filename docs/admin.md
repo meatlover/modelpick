@@ -138,6 +138,26 @@ Each account's model list is read once per run, so an edit does not run
 not installed yet) is tried again when you reload the page or come back to
 it.
 
+**Load balancing.** Where several choices should share one position, the
+Profiles tab can group them (the file form is in the
+[configuration guide](configuration.md#load-balancing-groups)).
+
+- **⇉ Load balance…** above the choice list puts a checkbox on every choice
+  not already in a group. Tick two or more and press **Load balance N
+  models** (Cancel or Esc backs out). The group appears at the first ticked
+  choice's place and the others join it in their order.
+- A group is a frame around its members, numbered `2a`, `2b`, with the header
+  `algorithm: random` and **Stop load balancing**, which turns the members
+  back into plain choices in place. **+ Add Model** at the bottom of the frame
+  adds a member, preferring an account the group does not use yet.
+- Drag a choice into or out of the frame, or a whole group among the
+  positions; a group cannot go into another group. With the keyboard,
+  Cmd/Ctrl+Arrow moves a member out at the frame's edge, and a plain choice
+  moves past a group, not into it. To join by keyboard use **Load balance…**.
+- A group left with one member (a removal, a drag out, a removed account) is
+  dissolved and the member stays as a plain choice; with none it is gone. The
+  file never holds a one-member group.
+
 **The first write reformats the file.** The UI writes canonical JSON: 2-space
 indent, top-level keys in the order `version, settings, accounts, schedules,
 profiles`, map keys sorted, trailing `"default"` cap elements dropped.
@@ -262,6 +282,8 @@ shows `error` there, and its message is on a line below the table
 | `cache unavailable: ...` | The cache directory or lock file cannot be used. | Check permissions on `~/.cache/modelpick`. No usage calls are made until this is fixed. |
 | `no usage reading; last call at ... failed: ...; next call allowed at ...` | The last call failed and the floor has not passed. | Wait, or use `--refresh` once. |
 | `profile <p>, choice <i>: never picked, choice <j> always wins first` | Choice j comes earlier and is usable whenever choice i is (uncapped, or the same account and model with caps at least as high), so i can never be picked. | Reorder or remove a choice, or narrow choice j's schedule. |
+| `profile <p>, choice <i>: never picked, choice <j> always wins first` (group) | The same rule for groups: a later position is covered when, at every minute it can run, some member of an earlier group outranks it (a group member that is uncapped, say). A later group is covered when each of its members is. | As above; for an uncapped member, give it a cap or a schedule. |
+| `profile <p>, choice 2b: same as choice 2a; doubles its chance in the load balancing group` | Two members of a group have the same account, model and thinking. | Remove one, or change its model. |
 | `schedule <name>: empty` | The schedule has no days and no hours (as the UI creates it), so it never matches. | Paint its hours in the UI, or fill in `days` and `utc`. |
 | `account reports N windows (...), cap has M values; ignored the last K` | Your `cap` array has more values than the plan reports windows. A shorter array is fine: the missing positions use `default_cap`. | Drop the extra values; positions are in [this order](configuration.md#caps). |
 | `thinking "x" not supported by <model> (supported: ...)` | The thinking value is not one the model takes. | Use one of the listed values, or `null`. |

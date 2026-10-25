@@ -86,9 +86,9 @@ func (d *Demo) fixThinking(c *web.Choice) {
 	}
 }
 
-func (d *Demo) setAccount(c *web.Choice, v string) error {
+func (d *Demo) setAccount(c *web.Choice, where, v string) error {
 	if !d.hasAccount(v) {
-		return refuse("Unknown account %s", v)
+		return refuse("%s: unknown account %s", where, v)
 	}
 	c.Account = v
 	if !d.offers(v, c.Model) {
@@ -117,7 +117,7 @@ func (d *Demo) setField(c *web.Choice, base string, a opArgs) error {
 			return refuse("%s: %s must be text", where, a.Field)
 		}
 		if a.Field == "account" {
-			return d.setAccount(c, s)
+			return d.setAccount(c, where, s)
 		}
 		if !d.offers(c.Account, s) {
 			return refuse("%s: %s does not offer %s", where, c.Account, s)
@@ -132,11 +132,11 @@ func (d *Demo) setField(c *web.Choice, base string, a opArgs) error {
 		return err
 	case "skip_during", "allow_during":
 		if json.Unmarshal(a.Value, &list) != nil || list == nil {
-			return refuse("%s: %s must be a list", where, a.Field)
+			return refuse("%s: schedules must be a list", where)
 		}
 		return d.setSchedules(c, where, a.Field, list)
 	default:
-		return refuse("Unknown field %s", a.Field)
+		return refuse("%s: unknown field %s", where, a.Field)
 	}
 	return nil
 }
@@ -166,18 +166,18 @@ func (d *Demo) setSchedules(c *web.Choice, where, field string, list []string) e
 }
 
 func (d *Demo) opChoiceSet(a opArgs) error {
-	p, err := d.choiceAt(a.Profile, a.Index, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
-	where := "Profile " + p.Name + ", choice " + strconv.Itoa(a.Index+1)
-	c := p.Choices[a.Index]
+	where := "Profile " + p.Name + ", choice " + labels(p.Choices)[i]
+	c := p.Choices[i]
 	if err := d.setField(&c, where, a); err != nil {
 		return err
 	}
 	if len(c.SkipDuring) > 0 && len(c.AllowDuring) > 0 {
 		return refuse("Use Skip or Allow, not both")
 	}
-	p.Choices[a.Index] = c
+	p.Choices[i] = c
 	return nil
 }

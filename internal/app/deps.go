@@ -27,6 +27,9 @@ type Deps struct {
 	Home     string // "" = unknown; commands refuse to run
 	Now      func() time.Time
 	Adapters map[string]adapter.Adapter // keyed by vendor
+	// Shuffle is pick's random source for load balancing groups; nil =
+	// math/rand/v2's Shuffle.
+	Shuffle func(n int, swap func(i, j int))
 }
 
 // ErrNoHome is reported instead of running with an empty home directory,

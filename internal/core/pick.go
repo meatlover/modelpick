@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,24 +32,41 @@ type Env interface {
 	Usage(account string) AccountState // lazy; implementations memoise per account
 }
 
-// Pick walks the profile's choices in order (spec §7) and returns the first
-// usable one. Each account's usage is read at most once, and only when a
-// capped choice reaches that step.
-func Pick(cfg *Config, profile string, now time.Time, env Env) Result {
+// Shuffle permutes n items through swap, as rand.Shuffle does.
+type Shuffle = func(n int, swap func(i, j int))
+
+// Pick walks the profile's positions in order (spec §7) and returns the first
+// usable choice; at a load balancing group it lets the group's algorithm pick
+// a usable member (load balancing spec §5). Each account's usage is read at
+// most once, and only when a capped choice reaches that step. shuffle is the
+// groups' random source; nil means rand.Shuffle.
+func Pick(cfg *Config, profile string, now time.Time, env Env, shuffle Shuffle) Result {
 	choices, ok := cfg.Profiles[profile]
 	if !ok {
 		return Failed(profile, fmt.Sprintf("unknown profile %q; configured: %s",
 			profile, strings.Join(cfg.ProfileNames(), ", ")))
 	}
-	p := picker{cfg: cfg, now: now, env: env, states: map[string]AccountState{}}
+	if shuffle == nil {
+		shuffle = rand.Shuffle
+	}
+	p := picker{cfg: cfg, now: now, env: env, shuffle: shuffle, states: map[string]AccountState{}}
 	p.res.Profile = profile
-	for _, c := range choices {
-		why, usable := p.evaluate(c)
-		if !usable {
-			p.res.Skipped = append(p.res.Skipped, Skip{Account: c.Account, Model: c.Model, Why: why})
+	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
+	for i, c := range choices {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	labels := Labels(groups)
+	for n, pos := range Positions(groups, lbs) {
+		if groups[pos.Start] == 0 {
+			if p.try(choices[pos.Start], p.evaluate) {
+				return p.picked(choices[pos.Start], nil)
+			}
 			continue
 		}
-		return p.picked(c)
+		if i, ok := p.group(choices[pos.Start:pos.End], pos.LoadBalance); ok {
+			lb := &LBPick{Algorithm: pos.LoadBalance, Choice: n + 1, Member: labels[pos.Start+i]}
+			return p.picked(choices[pos.Start+i], lb)
+		}
 	}
 	reason := "no choice available"
 	p.res.Status = StatusFailed
@@ -57,15 +75,55 @@ func Pick(cfg *Config, profile string, now time.Time, env Env) Result {
 }
 
 type picker struct {
-	cfg    *Config
-	now    time.Time
-	env    Env
-	states map[string]AccountState // accounts already read in this pick
-	res    Result
+	cfg     *Config
+	now     time.Time
+	env     Env
+	shuffle Shuffle
+	states  map[string]AccountState // accounts already read in this pick
+	res     Result
+}
+
+// try applies check to c and records a skip when c is not usable.
+func (p *picker) try(c Choice, check func(Choice) (string, bool)) bool {
+	why, usable := check(c)
+	if !usable {
+		p.res.Skipped = append(p.res.Skipped, Skip{Account: c.Account, Model: c.Model, Why: why})
+	}
+	return usable
+}
+
+// group picks a usable member of a load balancing group (load balancing
+// spec §5): the local checks run on every member in file order, so a
+// credential error does not depend on the shuffle; then the algorithm walks
+// the survivors, which it is given, reading usage only for the members it
+// asks about. It returns the picked member's index in members.
+func (p *picker) group(members []Choice, algorithm string) (int, bool) {
+	var survivors []int
+	var alive []Choice
+	for i, c := range members {
+		if p.try(c, p.local) {
+			survivors, alive = append(survivors, i), append(alive, c)
+		}
+	}
+	usable := func(i int) bool { return p.try(alive[i], p.usageAllows) }
+	i, ok := Algorithms[algorithm].Pick(alive, usable, p.shuffle)
+	if !ok {
+		return 0, false
+	}
+	return survivors[i], true
 }
 
 // evaluate applies steps 1–7 of spec §7 to c. It returns usable, or why not.
 func (p *picker) evaluate(c Choice) (why string, usable bool) {
+	if why, ok := p.local(c); !ok {
+		return why, false
+	}
+	return p.usageAllows(c)
+}
+
+// local applies the steps that read no usage (spec §7 steps 1–2): the
+// schedules and the credential source.
+func (p *picker) local(c Choice) (why string, usable bool) {
 	for _, name := range c.SkipDuring {
 		if p.cfg.Schedules[name].Matches(p.now) {
 			return "in schedule " + name, false
@@ -88,6 +146,12 @@ func (p *picker) evaluate(c Choice) (why string, usable bool) {
 		p.addError(c.Account, msg)
 		return "credential missing (see errors)", false
 	}
+	return "", true
+}
+
+// usageAllows applies the cap steps (spec §7 steps 3–7), reading the
+// account's usage only when c is capped.
+func (p *picker) usageAllows(c Choice) (why string, usable bool) {
 	if !c.Capped {
 		return "", true
 	}
@@ -177,7 +241,8 @@ func (p *picker) addWarnings(ws []string) {
 	}
 }
 
-func (p *picker) picked(c Choice) Result {
+// picked is the result for c; lb is nil unless c is a group member.
+func (p *picker) picked(c Choice, lb *LBPick) Result {
 	acct := p.cfg.Accounts[c.Account]
 	r := p.res
 	r.Status = StatusOK
@@ -192,6 +257,7 @@ func (p *picker) picked(c Choice) Result {
 		r.Thinking = &thinking
 	}
 	r.AccountRef = &acct
+	r.LoadBalance = lb
 	return r
 }
 

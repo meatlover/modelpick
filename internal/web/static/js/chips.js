@@ -233,8 +233,12 @@ function edit(key, kind, change, refocus) {
     const cur = ctx.choice[kind] || [];
     const next = change(cur);
     if (JSON.stringify(next) === JSON.stringify(cur)) return;
-    await sendOp("choice.set", { profile: ctx.profile, index: ctx.index, expect: ctx.choice,
-      field: kind, value: next });
+    // member_of (profiles.js) is built when the op's turn comes; the ctx
+    // advances to what the op left, for the ops queued behind it.
+    const expect = ctx.choice;
+    await sendOp("choice.set",
+      () => ({ profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field: kind, value: next }),
+      { done: (res) => ctx.advance(res) });
     if (refocus) focusAdd(key);
   }).catch(() => {});
   return chain;

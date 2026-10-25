@@ -157,3 +157,49 @@ func TestConfIsConfigAlias(t *testing.T) {
 		t.Errorf("usage lacks the alias note:\n%s", usageText)
 	}
 }
+
+// A group prints in the file's shape: load_balance, then its members in the
+// existing choice layout.
+func TestConfigOutputGroup(t *testing.T) {
+	d := apptest.NewDeps(t, `{"version":1,
+ "accounts":{"codex-main":{"vendor":"codex","codex_home":"~/.codex"}},
+ "profiles":{"p":[
+  {"load_balance":"random","choices":[
+   {"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":[90]},
+   {"account":"codex-main","model":"gpt-6.1-sol","thinking":null}]},
+  {"account":"codex-main","model":"gpt-6.1-sol","thinking":"low","cap":[80]}]}}`)
+	const want = `    "p": [
+      {
+        "load_balance": "random",
+        "choices": [
+          {
+            "account": "codex-main",
+            "model": "gpt-6.1-sol",
+            "thinking": "high",
+            "cap": [
+              90
+            ]
+          },
+          {
+            "account": "codex-main",
+            "model": "gpt-6.1-sol",
+            "thinking": null,
+            "uncapped": true
+          }
+        ]
+      },
+      {
+        "account": "codex-main",
+        "model": "gpt-6.1-sol",
+        "thinking": "low",
+        "cap": [
+          80
+        ]
+      }
+    ]
+`
+	stdout, stderr, code := run(d, "config")
+	if code != 0 || !strings.Contains(stdout, want) {
+		t.Fatalf("exit %d, stderr %q; got\n%s\nwant it to contain\n%s", code, stderr, stdout, want)
+	}
+}

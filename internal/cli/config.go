@@ -25,6 +25,12 @@ type configChoice struct {
 	AllowDuring []string        `json:"allow_during,omitempty"`
 }
 
+// configGroup is a load balancing group in the file's shape.
+type configGroup struct {
+	LoadBalance string         `json:"load_balance"`
+	Choices     []configChoice `json:"choices"`
+}
+
 type configSettings struct {
 	MinCallIntervalMinutes float64 `json:"min_call_interval_minutes"`
 	DefaultCap             float64 `json:"default_cap"`
@@ -34,7 +40,7 @@ type configOutput struct {
 	Settings  configSettings             `json:"settings"`
 	Accounts  map[string]adapter.Account `json:"accounts"`
 	Schedules json.RawMessage            `json:"schedules"`
-	Profiles  map[string][]configChoice  `json:"profiles"`
+	Profiles  map[string][]any           `json:"profiles"`
 }
 
 // runConfig is `modelpick config`: the effective config as JSON. No network
@@ -73,20 +79,42 @@ func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		},
 		Accounts:  cfg.Accounts,
 		Schedules: written.Schedules,
-		Profiles:  map[string][]configChoice{},
+		Profiles:  map[string][]any{},
 	}
 	for name, choices := range cfg.Profiles {
-		cs := make([]configChoice, 0, len(choices))
-		for _, c := range choices {
-			cc := configChoice{Account: c.Account, Model: c.Model, Thinking: c.Thinking,
-				Uncapped: !c.Capped, SkipDuring: c.SkipDuring, AllowDuring: c.AllowDuring}
-			if c.Capped {
-				capCopy := append([]core.CapElem{}, c.Cap...)
-				cc.Cap = &capCopy
-			}
-			cs = append(cs, cc)
-		}
-		out.Profiles[name] = cs
+		out.Profiles[name] = configItems(choices)
 	}
 	return writeJSON(stdout, stderr, out)
+}
+
+// configItems is a profile's list in the file's shape: a plain choice, or a
+// group holding its members.
+func configItems(choices []core.Choice) []any {
+	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
+	for i, c := range choices {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	var items []any
+	for _, pos := range core.Positions(groups, lbs) {
+		members := make([]configChoice, 0, pos.End-pos.Start)
+		for _, c := range choices[pos.Start:pos.End] {
+			members = append(members, newConfigChoice(c))
+		}
+		if groups[pos.Start] == 0 {
+			items = append(items, members[0])
+			continue
+		}
+		items = append(items, configGroup{LoadBalance: pos.LoadBalance, Choices: members})
+	}
+	return items
+}
+
+func newConfigChoice(c core.Choice) configChoice {
+	cc := configChoice{Account: c.Account, Model: c.Model, Thinking: c.Thinking,
+		Uncapped: !c.Capped, SkipDuring: c.SkipDuring, AllowDuring: c.AllowDuring}
+	if c.Capped {
+		capCopy := append([]core.CapElem{}, c.Cap...)
+		cc.Cap = &capCopy
+	}
+	return cc
 }

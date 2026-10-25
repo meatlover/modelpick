@@ -80,13 +80,15 @@ func doctor(cfg *core.Config, d Deps, cache *CheckCache) findings {
 	savedFindings(&f, cfg, d, accounts, checked)
 	scheduleFindings(cfg, f.add)
 	for _, p := range sortedProfiles(cfg) {
+		labels := profileLabels(cfg.Profiles[p])
 		for i, c := range cfg.Profiles[p] {
-			subject := fmt.Sprintf("profile %s, choice %d", p, i+1)
+			subject := fmt.Sprintf("profile %s, choice %s", p, labels[i])
 			if ms, ok := models[c.Account]; ok {
 				thinkingFinding(&f, subject, c, ms)
 			}
 		}
 		neverFindings(cfg, p, f.add)
+		identicalMemberFindings(p, cfg.Profiles[p], f.add)
 	}
 	groupCheckFindings(&f)
 	sortFindings(f.list)
@@ -217,6 +219,7 @@ func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string, che
 		}
 	}
 	for _, p := range sortedProfiles(cfg) {
+		labels := profileLabels(cfg.Profiles[p])
 		for i, c := range cfg.Profiles[p] {
 			rd := saved[c.Account]
 			if !c.Capped || rd == nil {
@@ -225,7 +228,7 @@ func savedFindings(f *findings, cfg *core.Config, d Deps, accounts []string, che
 			ordered := core.OrderWindows(rd.Windows, c.Model)
 			_, warns := core.EffectiveCaps(c.Account, c.Cap, ordered, cfg.Settings.DefaultCap)
 			for _, w := range warns {
-				f.add(sevWarning, fmt.Sprintf("profile %s, choice %d", p, i+1), w)
+				f.add(sevWarning, fmt.Sprintf("profile %s, choice %s", p, labels[i]), w)
 			}
 		}
 	}

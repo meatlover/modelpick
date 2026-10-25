@@ -3,7 +3,6 @@ package demo
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,6 +29,17 @@ type opArgs struct {
 	On      bool            `json:"on"`
 	// WithChoices lets account.remove take the account's choices with it.
 	WithChoices bool `json:"with_choices"`
+	// Indexes and Expects are group.create's chosen choices.
+	Indexes []int             `json:"indexes"`
+	Expects []json.RawMessage `json:"expects"`
+	// Group is the flat index of any member of the group choice.add adds
+	// to or choice.move joins (nil: plain); GroupExpect is that group as
+	// the page saw it.
+	Group       *int            `json:"group"`
+	GroupExpect json.RawMessage `json:"group_expect"`
+	// MemberOf is the group holding the member choice.set, choice.remove
+	// or choice.move addresses, as the page saw it.
+	MemberOf json.RawMessage `json:"member_of"`
 }
 
 type opFunc func(d *Demo, a opArgs) error
@@ -42,6 +52,9 @@ var ops = map[string]opFunc{
 	"choice.remove":        (*Demo).opChoiceRemove,
 	"choice.move":          (*Demo).opChoiceMove,
 	"choice.set":           (*Demo).opChoiceSet,
+	"group.create":         (*Demo).opGroupCreate,
+	"group.dissolve":       (*Demo).opGroupDissolve,
+	"group.move":           (*Demo).opGroupMove,
 	"schedule.add":         (*Demo).opScheduleAdd,
 	"schedule.remove":      (*Demo).opScheduleRemove,
 	"schedule.paint":       (*Demo).opSchedulePaint,
@@ -85,7 +98,7 @@ func (d *Demo) Apply(req web.OpRequest) (web.OpResult, error) {
 	var a opArgs
 	if len(req.Args) > 0 {
 		if err := json.Unmarshal(req.Args, &a); err != nil {
-			return web.OpResult{}, refuse("Bad arguments: %v", err)
+			return web.OpResult{}, refuse("Bad arguments for %s", req.Op)
 		}
 	}
 	if err := fn(d, a); err != nil {
@@ -171,19 +184,36 @@ func (d *Demo) opProfileRemove(a opArgs) error {
 	return refuse("Unknown profile %s", a.Name)
 }
 
+// opChoiceAdd copies the last choice's account, before a trailing position
+// that always wins (an uncapped choice, or a group with an uncapped member),
+// else last; with a.Group it adds a member to that group instead.
 func (d *Demo) opChoiceAdd(a opArgs) error {
 	p, err := d.profile(a.Profile)
 	if err != nil {
 		return err
 	}
+	if a.Group != nil {
+		return d.opMemberAdd(p, a)
+	}
 	last := len(p.Choices) - 1
 	c := d.newChoice(p.Choices[last].Account)
 	at := len(p.Choices)
-	if p.Choices[last].Cap == nil {
-		at = last
+	ps := positions(p.Choices)
+	if trailing := ps[len(ps)-1]; alwaysWins(p.Choices[trailing.start:trailing.end]) {
+		at = trailing.start
 	}
 	p.Choices = append(p.Choices[:at], append([]web.Choice{c}, p.Choices[at:]...)...)
 	return nil
+}
+
+// alwaysWins reports whether a position (its choices) has an uncapped one.
+func alwaysWins(position []web.Choice) bool {
+	for _, c := range position {
+		if c.Cap == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // normalized makes nil list fields empty so a page's copy compares equal.
@@ -197,44 +227,44 @@ func normalized(c web.Choice) web.Choice {
 	return c
 }
 
-func (d *Demo) choiceAt(profile string, i int, expect json.RawMessage) (*web.Profile, error) {
-	p, err := d.profile(profile)
-	if err != nil {
-		return nil, err
-	}
-	if i < 0 || i >= len(p.Choices) {
-		return nil, refuse("Profile %s has no choice %d", profile, i+1)
-	}
-	var seen web.Choice
-	if err := json.Unmarshal(expect, &seen); err != nil || !reflect.DeepEqual(normalized(seen), normalized(p.Choices[i])) {
-		return nil, refuse("Choice %d of %s was changed outside the UI", i+1, profile)
-	}
-	return p, nil
-}
-
 func (d *Demo) opChoiceRemove(a opArgs) error {
-	p, err := d.choiceAt(a.Profile, a.Index, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
 	if len(p.Choices) == 1 {
 		return refuse("Profile %s needs at least one choice", p.Name)
 	}
-	p.Choices = append(p.Choices[:a.Index], p.Choices[a.Index+1:]...)
+	p.Choices = normalizeGroups(append(append([]web.Choice{}, p.Choices[:i]...), p.Choices[i+1:]...))
 	return nil
 }
 
+// opChoiceMove moves one choice to a.To, an index into the list without
+// it. With a.Group it ends a member of that group and must land inside it
+// or at either edge; without, it ends plain and must not land inside one.
 func (d *Demo) opChoiceMove(a opArgs) error {
-	p, err := d.choiceAt(a.Profile, a.From, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.From, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
-	if a.To < 0 || a.To >= len(p.Choices) {
-		return refuse("Profile %s has no position %d", p.Name, a.To)
+	cs := p.Choices
+	if a.To < 0 || a.To >= len(cs) {
+		return refuse("Profile %s has no choice %d", p.Name, a.To+1)
 	}
-	c := p.Choices[a.From]
-	rest := append(append([]web.Choice{}, p.Choices[:a.From]...), p.Choices[a.From+1:]...)
-	p.Choices = append(rest[:a.To], append([]web.Choice{c}, rest[a.To:]...)...)
+	card := cs[i]
+	card.Group, card.LoadBalance = 0, nil
+	if a.Group != nil {
+		g, err := targetGroup(p, a, "choice.move")
+		if err != nil {
+			return err
+		}
+		card.Group, card.LoadBalance = cs[g.start].Group, str(g.lb)
+	}
+	rest := append(append([]web.Choice{}, cs[:i]...), cs[i+1:]...)
+	if err := checkLanding(rest, a.To, card.Group, "Choice "+labels(cs)[i]+" of "+p.Name); err != nil {
+		return err
+	}
+	p.Choices = normalizeGroups(append(append(append([]web.Choice{}, rest[:a.To]...), card), rest[a.To:]...))
 	return nil
 }
 
@@ -400,7 +430,7 @@ func (d *Demo) opAccountRemove(a opArgs) error {
 	for _, p := range d.profiles {
 		for i, c := range p.Choices {
 			if c.Account == a.Name {
-				return refuse("Account %s is used by profile %s, choice %d", a.Name, p.Name, i+1)
+				return refuse("Account %s is used by profile %s, choice %s", a.Name, p.Name, labels(p.Choices)[i])
 			}
 		}
 	}
@@ -418,7 +448,8 @@ func (d *Demo) opAccountRemove(a opArgs) error {
 }
 
 // dropChoicesOf removes the choices that use account and the profiles left
-// with none, as the real back end does.
+// with none, as the real back end does; a group left with one member
+// becomes plain.
 func (d *Demo) dropChoicesOf(account string) {
 	var profiles []web.Profile
 	for _, p := range d.profiles {
@@ -431,7 +462,7 @@ func (d *Demo) dropChoicesOf(account string) {
 		if len(kept) == len(p.Choices) {
 			profiles = append(profiles, p)
 		} else if len(kept) > 0 {
-			p.Choices = kept
+			p.Choices = normalizeGroups(kept)
 			profiles = append(profiles, p)
 		}
 	}

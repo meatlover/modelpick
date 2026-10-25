@@ -91,8 +91,10 @@ func opProfileRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	return nil
 }
 
-// opChoiceAdd copies the last choice's account; nothing after an uncapped
-// choice can be picked, so the new one goes before a trailing uncapped one.
+// opChoiceAdd copies the last choice's account. Nothing after a position
+// that always wins can be picked, so the new plain choice goes before a
+// trailing uncapped choice or a trailing group with an uncapped member,
+// else last. With a.Group it adds a member to that group instead.
 func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 	cs, ok := doc.Profiles[a.Profile]
 	if !ok {
@@ -101,18 +103,33 @@ func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 	if len(cs) == 0 {
 		return opProfileFill(doc, a.Profile, env)
 	}
+	if a.Group != nil {
+		return opMemberAdd(doc, a, env, cs)
+	}
 	last := len(cs) - 1
 	c, err := newChoice(env, cs[last].Account)
 	if err != nil {
 		return err
 	}
 	at := len(cs)
-	if !cs[last].Capped {
-		at = last
+	ps := positionsOf(cs)
+	if trailing := ps[len(ps)-1]; alwaysWins(cs[trailing.Start:trailing.End]) {
+		at = trailing.Start
 	}
 	out := append(append(append([]core.DocChoice{}, cs[:at]...), c), cs[at:]...)
 	doc.Profiles[a.Profile] = out
 	return nil
+}
+
+// alwaysWins reports whether a position (its choices) has an uncapped
+// choice, so that no later position is ever picked.
+func alwaysWins(position []core.DocChoice) bool {
+	for _, c := range position {
+		if !c.Capped {
+			return true
+		}
+	}
+	return false
 }
 
 // opProfileFill gives a profile with no choices (not a state the file can
@@ -130,37 +147,79 @@ func opProfileFill(doc *core.Doc, profile string, env OpEnv) error {
 }
 
 func opChoiceRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
 	if len(cs) == 1 {
 		return refuse("Profile %s needs at least one choice", a.Profile)
 	}
-	doc.Profiles[a.Profile] = append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
+	doc.Profiles[a.Profile] = normalizeGroups(append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...))
 	return nil
 }
 
+// opChoiceMove moves one choice to a.To, an index into the list without
+// it. With a.Group it ends a member of that group and must land inside the
+// group or at either edge; without, it ends plain and must not land inside
+// a group.
 func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
 	if a.To < 0 || a.To >= len(cs) {
-		return refuse("Profile %s has no position %d", a.Profile, a.To+1)
+		return refuse("Profile %s has no choice %d", a.Profile, a.To+1)
+	}
+	card := cs[i]
+	card.Group, card.LoadBalance = 0, ""
+	if a.Group != nil {
+		p, err := targetGroup(doc, a, "choice.move")
+		if err != nil {
+			return err
+		}
+		card.Group, card.LoadBalance = cs[p.Start].Group, p.LoadBalance
 	}
 	rest := append(append([]core.DocChoice{}, cs[:i]...), cs[i+1:]...)
-	out := append(append(append([]core.DocChoice{}, rest[:a.To]...), cs[i]), rest[a.To:]...)
-	doc.Profiles[a.Profile] = out
+	what := "Choice " + label(cs, i) + " of " + a.Profile
+	if err := checkLanding(rest, a.To, card.Group, what); err != nil {
+		return err
+	}
+	out := append(append(append([]core.DocChoice{}, rest[:a.To]...), card), rest[a.To:]...)
+	doc.Profiles[a.Profile] = normalizeGroups(out)
+	return nil
+}
+
+// checkLanding refuses a plain choice (group 0) landing strictly inside a
+// group of rest, and a choice joining group landing outside that group's
+// run; either edge of the run is inside.
+func checkLanding(rest []core.DocChoice, to, group int, what string) error {
+	if group == 0 {
+		if to > 0 && to < len(rest) && rest[to-1].Group != 0 && rest[to-1].Group == rest[to].Group {
+			return refuse("%s cannot be placed inside a load balancing group", what)
+		}
+		return nil
+	}
+	start, end := -1, -1
+	for k, c := range rest {
+		if c.Group == group {
+			if start < 0 {
+				start = k
+			}
+			end = k + 1
+		}
+	}
+	if start < 0 || to < start || to > end {
+		return refuse("%s must be placed inside the load balancing group it joins", what)
+	}
 	return nil
 }
 
 func opChoiceSet(doc *core.Doc, a opArgs, env OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
-	where := "Profile " + a.Profile + ", choice " + strconv.Itoa(i+1)
+	where := "Profile " + a.Profile + ", choice " + label(cs, i)
 	c := cs[i]
 	if err := setField(doc, env, &c, where, a); err != nil {
 		return err
@@ -333,7 +392,8 @@ func capElement(where string, raw json.RawMessage) (core.CapElem, error) {
 	return core.CapElem{}, refuse("%s: %s is not a number, pace+N or default", where, text)
 }
 
-// wireChoice is a choice as the page sends it in expect.
+// wireChoice is a choice as the page sends it in expect. Group and
+// LoadBalance say whether the page saw it as a group member.
 type wireChoice struct {
 	Account     string          `json:"account"`
 	Model       string          `json:"model"`
@@ -341,9 +401,14 @@ type wireChoice struct {
 	Cap         json.RawMessage `json:"cap"`
 	SkipDuring  []string        `json:"skip_during"`
 	AllowDuring []string        `json:"allow_during"`
+	Group       *int            `json:"group"`
+	LoadBalance *string         `json:"load_balance"`
 }
 
-// expectedChoice decodes expect; false when it is missing or malformed.
+// expectedChoice decodes expect; false when it is missing or malformed. A
+// member (group set and not 0, load_balance set and not "") comes back with
+// Group 1 and its LoadBalance; the page's group id itself is not kept, as
+// ids renumber.
 func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 	var w wireChoice
 	if len(raw) == 0 || json.Unmarshal(raw, &w) != nil {
@@ -351,6 +416,9 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 	}
 	c := core.DocChoice{Account: w.Account, Model: w.Model, Thinking: w.Thinking,
 		SkipDuring: w.SkipDuring, AllowDuring: w.AllowDuring}
+	if w.Group != nil && *w.Group != 0 && w.LoadBalance != nil && *w.LoadBalance != "" {
+		c.Group, c.LoadBalance = 1, *w.LoadBalance
+	}
 	if w.Cap == nil || rawText(w.Cap) == "null" {
 		return c, true
 	}
@@ -371,34 +439,69 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 
 // findChoice resolves a choice the page addressed by index and sent as
 // expect (spec §8.4): the choice at index if identical, else the one
-// identical choice in the profile, else a refusal.
-func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage) ([]core.DocChoice, int, error) {
+// identical choice in the profile, else a refusal. Identity includes
+// whether the page saw the choice plain or as a member (and the member's
+// algorithm), and a member is looked for only inside the group memberOf
+// names (expectScope), so a stale edit never reaches into, out of or across
+// a group (spec §8); group ids are not identity, as they renumber.
+func findChoice(doc *core.Doc, profile string, index int, expect, memberOf json.RawMessage) ([]core.DocChoice, int, error) {
 	cs, ok := doc.Profiles[profile]
 	if !ok {
 		return nil, 0, refuse("Unknown profile %s", profile)
 	}
 	want, ok := expectedChoice(expect)
-	inRange := index >= 0 && index < len(cs)
-	if ok && inRange && sameChoice(cs[index], want) {
+	lo, hi, err := expectScope(doc, profile, index, want, memberOf)
+	if err != nil {
+		return nil, 0, err
+	}
+	match := func(i int) bool { return ok && sameStatus(cs[i], want) && sameChoice(cs[i], want) }
+	if index >= lo && index < hi && match(index) {
 		return cs, index, nil
 	}
 	found, n := -1, 0
-	for i := range cs {
-		if ok && sameChoice(cs[i], want) {
+	for i := lo; i < hi; i++ {
+		if match(i) {
 			found, n = i, n+1
 		}
 	}
 	if n == 1 {
 		return cs, found, nil
 	}
-	if !inRange {
+	if index < 0 || index >= len(cs) {
 		return nil, 0, refuse("Profile %s has no choice %d", profile, index+1)
 	}
-	return nil, 0, refuse("Choice %d of %s was changed outside the UI", index+1, profile)
+	return nil, 0, refuse("Choice %s of %s was changed outside the UI", label(cs, index), profile)
+}
+
+// expectScope is the flat range [lo, hi) findChoice searches for want: the
+// whole profile for a plain choice (a member never matches it); for a
+// member, the group memberOf names, resolved as group.dissolve resolves its
+// expect, or without memberOf only index itself (spec §8: the fallback
+// stays on the same side of a group boundary).
+func expectScope(doc *core.Doc, profile string, index int, want core.DocChoice, memberOf json.RawMessage) (int, int, error) {
+	cs := doc.Profiles[profile]
+	if want.Group == 0 {
+		return 0, len(cs), nil
+	}
+	if len(memberOf) == 0 || rawText(memberOf) == "null" {
+		if index < 0 || index >= len(cs) {
+			return 0, 0, nil
+		}
+		return index, index + 1, nil
+	}
+	_, p, err := findGroup(doc, profile, index, memberOf)
+	return p.Start, p.End, err
+}
+
+// sameStatus is true when both are plain, or both are members of a group
+// with the same algorithm.
+func sameStatus(have, want core.DocChoice) bool {
+	return (have.Group != 0) == (want.Group != 0) && have.LoadBalance == want.LoadBalance
 }
 
 // sameChoice compares as written: null and [] lists alike, 90 and 90.0
 // alike, trailing "default" positions ignored; uncapped differs from [].
+// Group and LoadBalance are not compared here: findChoice adds sameStatus.
 func sameChoice(a, b core.DocChoice) bool {
 	if a.Account != b.Account || a.Model != b.Model || a.Capped != b.Capped {
 		return false
@@ -442,7 +545,8 @@ func sameList(a, b []string) bool {
 	return true
 }
 
-// describe is a choice's position for a refusal, 1-based.
-func describe(profile string, i int) string {
-	return fmt.Sprintf("profile %s, choice %d", profile, i+1)
+// describe names flat choice i of profile cs for a refusal by its label
+// ("choice 2b").
+func describe(profile string, cs []core.DocChoice, i int) string {
+	return fmt.Sprintf("profile %s, choice %s", profile, label(cs, i))
 }

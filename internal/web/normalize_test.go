@@ -25,8 +25,9 @@ func (nilStub) DoctorAll() Doctor                  { return Doctor{} }
 func (nilStub) Apply(OpRequest) (OpResult, error)  { return OpResult{SHA256: "s"}, nil }
 
 // allowedNulls are the fields whose null means something (uncapped, no
-// level, no scope, no reading); every other null in a body is a bug.
-var allowedNulls = []string{`"cap":null`, `"thinking":null`, `"scope":null`, `"reading_age_seconds":null`}
+// level, no scope, no reading, plain choice); every other null in a body is a bug.
+var allowedNulls = []string{`"cap":null`, `"thinking":null`, `"scope":null`, `"reading_age_seconds":null`,
+	`"load_balance":null`}
 
 func unexpectedNull(body string) string {
 	for _, ok := range allowedNulls {

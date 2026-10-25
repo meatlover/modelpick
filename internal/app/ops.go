@@ -48,6 +48,19 @@ type opArgs struct {
 	On      bool            `json:"on"`
 	// WithChoices lets account.remove take the account's choices with it.
 	WithChoices bool `json:"with_choices"`
+	// Indexes and Expects are group.create's chosen choices.
+	Indexes []int             `json:"indexes"`
+	Expects []json.RawMessage `json:"expects"`
+	// Group is the flat index (before the op) of any member of a group:
+	// choice.add adds a member to it, choice.move makes the moved choice a
+	// member of it. nil: a plain choice. GroupExpect is that group as the
+	// page saw it, checked as group.dissolve's expect.
+	Group       *int            `json:"group"`
+	GroupExpect json.RawMessage `json:"group_expect"`
+	// MemberOf is the group holding the member choice.set, choice.remove
+	// or choice.move addresses, as the page saw it (group_expect's shape):
+	// a member's expect is looked for only inside that group.
+	MemberOf json.RawMessage `json:"member_of"`
 }
 
 type opFunc func(doc *core.Doc, a opArgs, env OpEnv) error
@@ -60,6 +73,9 @@ var ops = map[string]opFunc{
 	"choice.remove":        opChoiceRemove,
 	"choice.move":          opChoiceMove,
 	"choice.set":           opChoiceSet,
+	"group.create":         opGroupCreate,
+	"group.dissolve":       opGroupDissolve,
+	"group.move":           opGroupMove,
 	"schedule.add":         opScheduleAdd,
 	"schedule.remove":      opScheduleRemove,
 	"schedule.paint":       opSchedulePaint,

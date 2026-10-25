@@ -23,7 +23,7 @@ func paceWin(length time.Duration, used float64, resetsIn time.Duration) adapter
 func pickPace(t *testing.T, cap string, w adapter.Window) Result {
 	t.Helper()
 	env := &fakeEnv{usage: map[string]AccountState{"claude-main": {Reading: reading(noon, w)}}}
-	return Pick(paceConfig(t, cap), "p", noon, env)
+	return Pick(paceConfig(t, cap), "p", noon, env, nil)
 }
 
 func wantSkip(t *testing.T, r Result, why string) {
@@ -101,7 +101,7 @@ func TestPaceAllowedUnknown(t *testing.T) {
 func TestPaceGolden(t *testing.T) {
 	env := &fakeEnv{usage: map[string]AccountState{"claude-main": {Reading: reading(noon,
 		paceWin(5*hour, 60, 5*hour/2), paceWin(7*day, 30, 43*day/10))}}}
-	r := Pick(paceConfig(t, `["pace+5", "pace+10"]`), "p", noon, env)
+	r := Pick(paceConfig(t, `["pace+5", "pace+10"]`), "p", noon, env, nil)
 	want, err := os.ReadFile("testdata/pick_pace.json")
 	if err != nil {
 		t.Fatal(err)

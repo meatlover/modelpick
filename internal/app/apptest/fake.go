@@ -295,7 +295,8 @@ func NewDeps(t *testing.T, configJSON string, fakes ...*Fake) app.Deps {
 }
 
 // NewDepsDir is NewDeps in dir: it writes dir/config.json and points
-// MODELPICK_CONFIG at it and XDG_CACHE_HOME at dir/cache. The clock is Now.
+// MODELPICK_CONFIG at it and XDG_CACHE_HOME at dir/cache. The clock is Now,
+// and the shuffle leaves load balancing groups in file order.
 func NewDepsDir(dir, configJSON string, fakes ...*Fake) (app.Deps, error) {
 	cfgPath := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(configJSON), 0o600); err != nil {
@@ -317,6 +318,8 @@ func NewDepsDir(dir, configJSON string, fakes ...*Fake) (app.Deps, error) {
 		Home:     "/home/u",
 		Now:      func() time.Time { return Now },
 		Adapters: adapters,
+		// Load balancing groups keep file order, so picks are deterministic.
+		Shuffle: func(int, func(i, j int)) {},
 	}, nil
 }
 

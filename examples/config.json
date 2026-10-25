@@ -9,7 +9,8 @@
     "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" },
     "codex-main":  { "vendor": "codex", "codex_home": "~/.codex" },
     "go-1": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1 },
-    "go-2": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 2 }
+    "go-2": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 2 },
+    "go-3": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 3 }
   },
   "schedules": {
     "deepseek-peak": {
@@ -29,6 +30,17 @@
         "cap": [95, 95, 98], "skip_during": ["deepseek-peak"] },
       { "account": "go-2", "model": "opencode-go/deepseek-v4.1", "thinking": null,
         "cap": [95, 95, 98], "skip_during": ["deepseek-peak"] },
+      { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" }
+    ],
+    "reviewer": [
+      {
+        "load_balance": "random",
+        "choices": [
+          { "account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] },
+          { "account": "go-2", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] },
+          { "account": "go-3", "model": "opencode-go/deepseek-v4.1", "thinking": null, "cap": [95, 95, 98] }
+        ]
+      },
       { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" }
     ]
   }

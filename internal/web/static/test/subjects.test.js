@@ -3,15 +3,34 @@
 // contract 6; webtest pins the back-end half). In the browser,
 // subjects.test.html writes the verdict into <output id="result">;
 // elsewhere run() resolves it.
-import { accountErrorSet, choiceSubject, profileHasError } from "../js/subjects.js";
+import { accountErrorSet, choiceLabels, choiceSubject, positions, profileHasError } from "../js/subjects.js";
 
 const red = (...subjects) => new Set(subjects);
 
+// plain and member build wire choices: only group and load_balance matter.
+const plain = () => ({ group: 0, load_balance: null });
+const member = (g) => ({ group: g, load_balance: "random" });
+const labels = (...cs) => choiceLabels(cs).join(",");
+const spans = (...cs) => positions(cs).map((p) => `${p.start}-${p.end}:${p.load_balance}`).join(" ");
+
 const cases = [
-  ["first card's subject", () => choiceSubject("coder", 0), "profile coder, choice 1"],
-  ["third card's subject", () => choiceSubject("coder", 2), "profile coder, choice 3"],
-  ["card 3 red for choice 3", () => red("profile coder, choice 3").has(choiceSubject("coder", 2)), true],
-  ["card 1 not red for choice 3", () => red("profile coder, choice 3").has(choiceSubject("coder", 0)), false],
+  ["first card's subject", () => choiceSubject("coder", "1"), "profile coder, choice 1"],
+  ["third card's subject", () => choiceSubject("coder", "3"), "profile coder, choice 3"],
+  ["a member's subject", () => choiceSubject("coder", "2b"), "profile coder, choice 2b"],
+  ["card 3 red for choice 3", () => red("profile coder, choice 3").has(choiceSubject("coder", "3")), true],
+  ["card 1 not red for choice 3", () => red("profile coder, choice 3").has(choiceSubject("coder", "1")), false],
+  ["member 2b red for choice 2b", () => red("profile coder, choice 2b").has(choiceSubject("coder", "2b")), true],
+  ["member 2a not red for choice 2b", () => red("profile coder, choice 2b").has(choiceSubject("coder", "2a")), false],
+  ["the group's position is not a member", () => red("profile coder, choice 2").has(choiceSubject("coder", "2a")), false],
+  ["labels with no group", () => labels(plain(), plain(), plain()), "1,2,3"],
+  ["labels count positions", () => labels(plain(), member(1), member(1), plain()), "1,2a,2b,3"],
+  ["two groups side by side", () => labels(member(1), member(1), member(2), member(2), member(2)), "1a,1b,2a,2b,2c"],
+  ["past z the letters go on as aa", () => choiceLabels(Array.from({ length: 28 }, () => member(1))).slice(25).join(","),
+    "1z,1aa,1ab"],
+  ["no choices, no labels", () => labels(), ""],
+  ["positions span a group", () => spans(plain(), member(1), member(1), plain()), "0-1:null 1-3:random 3-4:null"],
+  ["positions split adjacent groups", () => spans(member(1), member(1), member(2), member(2)), "0-2:random 2-4:random"],
+  ["link red for a member error", () => profileHasError(red("profile coder, choice 2b"), "coder"), true],
   ["link red for a profile error", () => profileHasError(red("profile coder"), "coder"), true],
   ["link red for a choice error", () => profileHasError(red("go-1", "profile coder, choice 3"), "coder"), true],
   ["link not red for another profile's choice",

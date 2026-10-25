@@ -110,8 +110,10 @@ unknown and the error names the cache.
 | `failed` | 1 | No model: nothing available, unknown profile, config error, or any other failure. |
 
 The JSON always has the fields `status, profile, vendor, account, model,
-thinking, account_ref, reason, skipped, errors, warnings`; the last three are
-lists, never `null`.
+thinking, account_ref, load_balance, reason, skipped, errors, warnings`; the
+last three are lists, never `null`. `load_balance` is `null` unless the pick
+came from a [load balancing group](docs/configuration.md#load-balancing-groups),
+then `{"algorithm": "random", "choice": 2, "member": "2b"}`.
 
 ## Terms and credentials
 

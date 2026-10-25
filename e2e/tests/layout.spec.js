@@ -5,7 +5,7 @@
 // when they do not fit there, at the left of their own line.
 const { test, expect } = require("@playwright/test");
 const { startServer, login } = require("./helpers");
-const { handEdit } = require("./config");
+const { handEdit, loadBalanceGo } = require("./config");
 
 let server;
 
@@ -128,4 +128,35 @@ test("schedules: right end of the caps line, else left of their own line", async
       expect(Math.abs(chips.right - main.right), `${width}px: at the right`).toBeLessThanOrEqual(1);
     }
   }
+});
+
+// A member card is a card like any other: inside the group's frame it keeps
+// the labels over its dropdowns, Remove level with them, and two rows.
+test("member cards keep the single-card layout rules", async ({ page }) => {
+  await login(page, server.url);
+  handEdit(server.configPath, loadBalanceGo);
+  await page.reload();
+  await page.getByRole("link", { name: "Profiles", exact: true }).click();
+  const m = card(page, "2b");
+  await expect(m).toBeVisible();
+  const cols = page.locator(".p-cols");
+  for (const name of ["Account", "Model", "Thinking"]) {
+    const label = await rect(cols.getByText(name, { exact: true }));
+    expect(Math.abs(label.left - (await rect(m.getByLabel(name))).left), `${name} over its dropdown`)
+      .toBeLessThanOrEqual(1);
+  }
+  const remove = await rect(m.getByRole("button", { name: "Remove choice 2b" }));
+  expect(Math.abs(mid(remove) - mid(await rect(m.getByLabel("Account"))))).toBeLessThanOrEqual(1);
+  const add = await rect(m.getByRole("button", { name: "+ schedule" }));
+  const nocaps = await rect(m.getByRole("button", { name: "No caps" }));
+  expect(Math.abs(mid(add) - mid(nocaps))).toBeLessThanOrEqual(1);
+  expect((await rect(m)).height).toBeLessThanOrEqual(110);
+  // The member's edges are a plain card's: the frame sits around them.
+  const plain = await rect(card(page, 1));
+  const r = await rect(m);
+  expect(Math.abs(r.left - plain.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(r.right - plain.right)).toBeLessThanOrEqual(1);
+  const frame = await rect(card(page, 2));
+  expect(frame.left).toBeLessThan(r.left);
+  expect(frame.right).toBeGreaterThan(r.right);
 });

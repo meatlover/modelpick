@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/web"
 	"github.com/meatlover/modelpick/internal/web/demo"
 )
@@ -41,7 +42,7 @@ func run(port int, noOpen bool) error {
 	if err != nil {
 		return err
 	}
-	d := demo.New(time.Now)
+	d := demo.New(time.Now, core.AlgorithmNames())
 	srv := &http.Server{Handler: web.NewServer(d, actual, token), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

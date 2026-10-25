@@ -86,7 +86,7 @@ func opAccountRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	for _, p := range sortedNames(doc.Profiles) {
 		for i, c := range doc.Profiles[p] {
 			if c.Account == a.Name {
-				return refuse("Account %s is used by %s", a.Name, describe(p, i))
+				return refuse("Account %s is used by %s", a.Name, describe(p, doc.Profiles[p], i))
 			}
 		}
 	}
@@ -96,6 +96,7 @@ func opAccountRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 
 // dropChoicesOf removes the choices that use account, and the profiles that
 // had only such choices (a profile in the file keeps at least one choice).
+// A group left with one member becomes a plain choice.
 func dropChoicesOf(doc *core.Doc, account string) {
 	for p, choices := range doc.Profiles {
 		kept := choices[:0:0]
@@ -109,7 +110,7 @@ func dropChoicesOf(doc *core.Doc, account string) {
 		case len(kept) == 0:
 			delete(doc.Profiles, p)
 		default:
-			doc.Profiles[p] = kept
+			doc.Profiles[p] = normalizeGroups(kept)
 		}
 	}
 }

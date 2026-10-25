@@ -151,6 +151,7 @@ func testOpEnv() app.OpEnv {
 		"claude-two": {{ID: "claude-haiku-5"}, {ID: "claude-opus-5-5", Thinking: []string{"low", "medium"}}},
 		"codex-main": {{ID: "gpt-6.1-sol", Thinking: []string{"low", "medium", "high", "xhigh"}}, {ID: "gpt-5-mini"}},
 		"go-1":       {{ID: "opencode-go/deepseek-v4.1-flash"}, {ID: "opencode-go/kimi-k3", Thinking: []string{"max"}}},
+		"go-2":       {{ID: "opencode-go/kimi-k3", Thinking: []string{"max"}}},
 		"go-0":       {},
 	}
 	return app.OpEnv{
@@ -219,8 +220,35 @@ func runOps(t *testing.T, cases []opCase) {
 			if _, err := core.Parse([]byte(got), "config.json", "/home/u"); err != nil {
 				t.Fatalf("result does not parse: %v", err)
 			}
+			if have, fresh := groupShape(d), groupShape(mustDoc(t, got)); have != fresh {
+				t.Fatalf("groups left as %s, the written file reads %s", have, fresh)
+			}
 		})
 	}
+}
+
+// groupShape lists each profile's group ids and algorithms. A Doc an op
+// left must read like the written file parsed afresh: ids 1, 2, … in file
+// order, every member carrying its group's algorithm.
+func groupShape(d *core.Doc) string {
+	var b strings.Builder
+	for _, p := range sortedKeys(d.Profiles) {
+		b.WriteString(p + ":")
+		for _, c := range d.Profiles[p] {
+			b.WriteString(" " + itoa(c.Group) + c.LoadBalance)
+		}
+		b.WriteString("; ")
+	}
+	return b.String()
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func set(profile string, index int, expect, field, value string) string {
@@ -319,7 +347,7 @@ var profileCases = []opCase{
 	{name: "choice.move to end", doc: base, op: "choice.move", args: move(0, 2, e0), want: base.prof("coder", c1, c2, c0)},
 	{name: "choice.move follows", doc: base, op: "choice.move", args: move(0, 0, e1), want: base.prof("coder", c1, c0, c2)},
 	{name: "choice.move no position", doc: base, op: "choice.move", args: move(0, 3, e0),
-		refused: "Profile coder has no position 4"},
+		refused: "Profile coder has no choice 4"},
 	{name: "choice.move stale", doc: base, op: "choice.move", args: move(0, 1, es),
 		refused: "Choice 1 of coder was changed outside the UI"},
 }

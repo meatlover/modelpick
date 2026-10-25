@@ -15,6 +15,11 @@
   `min_call_interval_minutes`, and shows the old reading with `renewal failed:
   <reason>`. If the refresh token itself has expired, log in again.
 - The page's Refresh button works for an expired account that can be renewed.
+- Load balancing groups: a profile position can hold two or more choices
+  (`"load_balance": "random"`), and `pick` takes a random usable member, moving
+  on only when none is usable. `pick` JSON gains `load_balance`; `doctor`
+  extends never-picked to groups and warns on identical members. The UI
+  creates, edits and dissolves groups (⇉ Load balance…).
 
 ### Changed
 

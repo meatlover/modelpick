@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -179,6 +180,162 @@ func TestParseDocErrors(t *testing.T) {
 		{"thinking absent", `{"version":1,"profiles":{"p":[{"account":"a","model":"m"}]}}`, "profiles.p[0].thinking", "required (use null for none)"},
 		{"cap null", `{"version":1,"profiles":{"p":[{"account":"a","model":"m","thinking":null,"cap":null}]}}`, "profiles.p[0].cap", "cap must not be null: omit cap for no limit"},
 		{"unknown key", `{"version":1,"x":1}`, "x", "unknown key"},
+	}
+	for _, c := range cases {
+		_, err := ParseDoc([]byte(c.src))
+		var ce *ConfigError
+		if !errors.As(err, &ce) || ce.Field != c.field || ce.Msg != c.msg {
+			t.Errorf("%s: err = %v, want %s: %s", c.name, err, c.field, c.msg)
+		}
+	}
+}
+
+// specGroupExample is the profile of spec §4 (load balancing design), as written there.
+const specGroupExample = `{"version":1,"profiles":{"tester": [
+  {
+    "load_balance": "random",
+    "choices": [
+      { "account": "go-1", "model": "opencode-go/deepseek-v4.1-flash", "thinking": null, "cap": [95, 95, 95], "skip_during": ["deepseek-peak"] },
+      { "account": "go-2", "model": "opencode-go/deepseek-v4.1-flash", "thinking": null, "cap": [95, 95, 95], "skip_during": ["deepseek-peak"] },
+      { "account": "go-3", "model": "opencode-go/deepseek-v4.1-flash", "thinking": null, "cap": [],           "skip_during": ["deepseek-peak"] }
+    ]
+  },
+  { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" }
+]}}`
+
+func TestDecodeGroup(t *testing.T) {
+	cs := mustDoc(t, specGroupExample).Profiles["tester"]
+	if len(cs) != 4 {
+		t.Fatalf("decoded %d choices, want 4 flat", len(cs))
+	}
+	for i, c := range cs[:3] {
+		if c.Group != 1 || c.LoadBalance != "random" || c.Account != fmt.Sprintf("go-%d", i+1) {
+			t.Errorf("member %d = %+v", i, c)
+		}
+	}
+	if c := cs[3]; c.Group != 0 || c.LoadBalance != "" || c.Account != "claude-main" {
+		t.Errorf("plain choice = %+v", c)
+	}
+	if !cs[2].Capped || len(cs[2].Cap) != 0 || cs[2].SkipDuring[0] != "deepseek-peak" {
+		t.Errorf("member fields lost: %+v", cs[2])
+	}
+}
+
+const adjacentGroups = `{
+  "version": 1,
+  "profiles": {
+    "p": [
+      {
+        "load_balance": "random",
+        "choices": [
+          {
+            "account": "a",
+            "model": "m",
+            "thinking": null
+          },
+          {
+            "account": "b",
+            "model": "m",
+            "thinking": null
+          }
+        ]
+      },
+      {
+        "load_balance": "random",
+        "choices": [
+          {
+            "account": "c",
+            "model": "m",
+            "thinking": null
+          },
+          {
+            "account": "d",
+            "model": "m",
+            "thinking": null
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
+func TestDecodeAdjacentGroups(t *testing.T) {
+	d := mustDoc(t, adjacentGroups)
+	var ids []int
+	for _, c := range d.Profiles["p"] {
+		ids = append(ids, c.Group)
+	}
+	if !reflect.DeepEqual(ids, []int{1, 1, 2, 2}) {
+		t.Errorf("group ids = %v, want [1 1 2 2]", ids)
+	}
+	if got := string(d.Encode()); got != adjacentGroups {
+		t.Errorf("Encode merged or changed the groups:\n%s", got)
+	}
+}
+
+const specGroupCanonical = `{
+  "version": 1,
+  "profiles": {
+    "tester": [
+      {
+        "load_balance": "random",
+        "choices": [
+          {
+            "account": "go-1",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "thinking": null,
+            "cap": [95, 95, 95],
+            "skip_during": ["deepseek-peak"]
+          },
+          {
+            "account": "go-2",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "thinking": null,
+            "cap": [95, 95, 95],
+            "skip_during": ["deepseek-peak"]
+          },
+          {
+            "account": "go-3",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "thinking": null,
+            "cap": [],
+            "skip_during": ["deepseek-peak"]
+          }
+        ]
+      },
+      {
+        "account": "claude-main",
+        "model": "claude-sonnet-5-5",
+        "thinking": "medium"
+      }
+    ]
+  }
+}
+`
+
+func TestEncodeGroupCanonical(t *testing.T) {
+	if got := string(mustDoc(t, specGroupExample).Encode()); got != specGroupCanonical {
+		t.Errorf("Encode:\n%s\nwant:\n%s", got, specGroupCanonical)
+	}
+}
+
+func TestParseDocGroupErrors(t *testing.T) {
+	prof := func(items string) string { return `{"version":1,"profiles":{"t":[` + items + `]}}` }
+	const m = `{"account":"a","model":"m","thinking":null}`
+	cases := []struct{ name, src, field, msg string }{
+		{"account and load_balance", prof(`{"account":"a","model":"m","thinking":null,"load_balance":"random"}`), "profiles.t[0]", "a choice has account, a group has load_balance and choices: not both"},
+		{"account and choices", prof(`{"account":"a","choices":[` + m + `,` + m + `]}`), "profiles.t[0]", "a choice has account, a group has load_balance and choices: not both"},
+		{"neither", prof(`{"model":"m","thinking":null}`), "profiles.t[0]", "needs account (a choice) or load_balance (a group)"},
+		{"neither, second item", prof(m + `,{}`), "profiles.t[1]", "needs account (a choice) or load_balance (a group)"},
+		{"one member", prof(`{"load_balance":"random","choices":[` + m + `]}`), "profiles.t[0].choices", "needs at least 2 members"},
+		{"no choices", prof(`{"load_balance":"random"}`), "profiles.t[0].choices", "needs at least 2 members"},
+		{"choices not an array", prof(`{"load_balance":"random","choices":{}}`), "profiles.t[0].choices", "must be an array"},
+		{"nested group", prof(`{"load_balance":"random","choices":[{"load_balance":"random","choices":[` + m + `,` + m + `]},` + m + `]}`), "profiles.t[0].choices[0]", "a group cannot be a member of a group"},
+		{"cap on a group", prof(`{"load_balance":"random","cap":[90],"choices":[` + m + `,` + m + `]}`), "profiles.t[0].cap", "unknown key"},
+		{"no load_balance", prof(`{"choices":[` + m + `,` + m + `]}`), "profiles.t[0].load_balance", "required"},
+		{"member thinking", prof(m + `,{"load_balance":"random","choices":[` + m + `,{"account":"a","model":"m"}]}`), "profiles.t[1].choices[1].thinking", "required (use null for none)"},
+		{"member not an object", prof(`{"load_balance":"random","choices":[` + m + `,1]}`), "profiles.t[0].choices[1]", "must be an object"},
 	}
 	for _, c := range cases {
 		_, err := ParseDoc([]byte(c.src))

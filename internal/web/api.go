@@ -32,8 +32,9 @@
 //     on the way in (owner, round 5; supersedes "store as sent").
 //  10. While ReadOnly != "", every op is refused; State still has non-null
 //     lists and a sha256.
-//  11. No null list; only cap, thinking, scope, resets_at and
-//     reading_age_seconds may be null (the server also normalises).
+//  11. No null list; only cap, thinking, scope, resets_at,
+//     reading_age_seconds and load_balance may be null (the server also
+//     normalises).
 //  12. Accounts, schedules, profiles and usage rows are sorted by name.
 //  13. Conflict is HTTP 409 (the page reloads); 200 carries the new
 //     sha256; refresh answers the account's full row whatever the call's
@@ -50,6 +51,47 @@
 //     call per account without a fresh reading; nothing else on the page
 //     causes a usage call except Refresh and the background first reading
 //     of an account that has none.
+//  19. Load balancing groups (spec §8). A profile's choices stay one flat
+//     list in file order; a member has group > 0 (ids 1, 2, … in order,
+//     contiguous) and load_balance its algorithm; a plain choice has group
+//     0 and load_balance null. No group has fewer than 2 members. State
+//     .algorithms is core.AlgorithmNames() (sorted). Choices are labelled
+//     "2" or "2a", "2b", … by position; refusals and doctor subjects use
+//     the label, except "Profile p has no choice N" (N = index+1, no label
+//     exists) and group.move's "Profile p has no position N".
+//  20. Group ops. Indexes are flat, taken before the op. A choice's expect
+//     is the choice as the state gave it: plain when group is absent/0/null
+//     or load_balance absent/""/null, else a member, which matches only a
+//     member of a group with that algorithm (ids are not identity; this
+//     holds for the "one identical choice elsewhere" fallback too). A
+//     group's expect is {"load_balance", "choices": [<choice>, …]}, found
+//     at index or as the one identical group elsewhere.
+//     - member_of: choice.set, choice.remove and choice.move on a member
+//     send member_of, the member's group as the page saw it (a group's
+//     expect, resolved the same way from the member's index; refused when
+//     it resolves to no group). A member's expect then matches only inside
+//     that group, at index or as the one identical member there. Without
+//     member_of a member's expect matches only at index. A plain expect
+//     ignores member_of and may fall back to any plain choice.
+//     - group.create {profile, indexes, expects}: 2+ plain choices; the
+//     group, algorithm random, takes the place of the first in file order.
+//     - group.dissolve {profile, index, expect}: members turn plain in place.
+//     - group.move {profile, index, expect, to}: to counts positions
+//     without the group (0 … that count); the group goes before it.
+//     - choice.add {profile, group?, group_expect?}: with group (any
+//     member's index; group_expect required) a member is appended to that
+//     group on the first unused account of the last member's vendor, else
+//     of any vendor, else the last member's; without, a plain choice goes
+//     before a trailing position that always wins (an uncapped choice, or
+//     a group with an uncapped member), else last.
+//     - choice.move {profile, from, to, expect, member_of?, group?,
+//     group_expect?}: member_of is the moved member's own group; group and
+//     group_expect the destination's. Without group the card ends plain and
+//     may not land strictly inside a group; with it, it joins that group
+//     and lands inside it or at an edge.
+//     - choice.remove, choice.move, group ops and account.remove
+//     with_choices leave a one-member group plain in place, and drop an
+//     empty one.
 //
 // Errors other than Conflict and Refused are internal: the server answers
 // 500 "internal error" (422 "<account>: refresh failed" for a refresh) and
@@ -69,6 +111,9 @@ type State struct {
 	Windows    map[string]map[string][]string `json:"windows"`
 	Schedules  []Schedule                     `json:"schedules"`
 	Profiles   []Profile                      `json:"profiles"`
+	// Algorithms are the load balancing algorithms a group can name,
+	// sorted (core.AlgorithmNames).
+	Algorithms []string `json:"algorithms"`
 }
 
 // Account is one configured account.
@@ -107,6 +152,11 @@ type Choice struct {
 	Cap         []any    `json:"cap"`
 	SkipDuring  []string `json:"skip_during"`
 	AllowDuring []string `json:"allow_during"`
+	// Group is 0 for a plain choice; the members of one load balancing
+	// group share an id, 1, 2, … in file order (contract 19).
+	Group int `json:"group"`
+	// LoadBalance is the member's group's algorithm; null when plain.
+	LoadBalance *string `json:"load_balance"`
 }
 
 // UsageRow is one account's usage reading.
