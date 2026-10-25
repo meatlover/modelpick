@@ -226,7 +226,7 @@ test("a drag on a default box saves it as set", async ({ page }) => {
   await expectConfig(server.configPath, (c) => typeof coder(c)[3].cap[0], "number", "the dragged box is set");
 });
 
-// dragTo presses grip (a drag handle) and drops it on target at the height
+// dragTo presses grip (a drag handle, or a box {x, y, width, height}) and drops it on target at the height
 // at(box) gives (default: the lower part of target), in steps so the browser
 // sees the pointer travel (a real drag). The "Drop here" slot shifts the
 // cards while the pointer moves, so the drop point is read again once the
@@ -235,7 +235,7 @@ async function dragTo(page, grip, target, at = (b) => b.y + b.height - 8) {
   // Every card must be inside the viewport: a pointer outside it sends no
   // drag events.
   await page.setViewportSize({ width: 1280, height: 1400 });
-  const handle = await grip.boundingBox();
+  const handle = grip.boundingBox ? await grip.boundingBox() : grip;
   const hx = handle.x + handle.width / 2;
   const hy = handle.y + handle.height / 2;
   await page.mouse.move(hx, hy);
@@ -652,6 +652,37 @@ test("a group move right after a member's edit still applies", async ({ page }) 
   await expect(page.getByText("changed outside the UI")).toHaveCount(0);
 });
 
+// A file that parses but is invalid (default_cap 500) is read-only: the
+// page still shows the profile, and main.js makes every focusable or
+// draggable element inert, a group's frame included.
+test("read-only: a group frame cannot be moved by keyboard or drag", async ({ page }) => {
+  await grouped(page, (c) => { c.settings.default_cap = 500; });
+  await expect(page.getByRole("alert").filter({ hasText: "Cannot edit — " })).toBeVisible();
+  const mod = await modKey(page);
+  const sent = opsSent(page);
+  const before = fs.readFileSync(server.configPath, "utf8");
+  const frame = card(page, 2);
+  // The server refuses any op while read-only, so the file alone proves
+  // nothing: each step must send no op at all.
+  const steps = [
+    ["the frame's drag", () => dragTo(page, frameGrip(page, 2), card(page, 3))],
+    ["a card's drag into the frame", () => dragTo(page, card(page, 1).locator(".p-handle"), card(page, "2a"))],
+    ["⌘/Ctrl+↓ on the frame", async () => {
+      await frame.focus();
+      await page.keyboard.press(`${mod}+ArrowDown`);
+    }],
+  ];
+  for (const [name, act] of steps) {
+    await act();
+    await page.waitForTimeout(300);
+    expect(sent, `no op sent by ${name}`).toEqual([]);
+  }
+  expectUnchanged(server.configPath, before);
+  await expect(frame).toHaveJSProperty("inert", true);
+  await frame.focus();
+  await expect(frame).not.toBeFocused();
+});
+
 // ---------- creating a group: selection mode ----------
 
 const lbStart = (page) => page.getByRole("button", { name: "⇉ Load balance…", exact: true });
@@ -748,11 +779,33 @@ test("Load balance: the checkboxes work from the keyboard", async ({ page }) => 
 // Every inert control is pressed the way a user would (the mouse, or a key
 // on the focused card); then one ordinary edit is sent. Ops run in order, so
 // once that edit is in the file anything the inert controls sent would be too.
+// opsSent records every /api/op request the page sends from now on.
+function opsSent(page) {
+  const sent = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/api/op") sent.push(r.postData());
+  });
+  return sent;
+}
+
+// grips are where the drag handles of card 1, member 2a and group 2's frame
+// sit: their first child, which is the handle outside selection mode.
+const grips = (page) => [card(page, 1).locator(".p-pos > :first-child"),
+  card(page, "2a").locator(".p-pos > :first-child"), card(page, 2).locator(".p-group-head > :first-child")];
+
 test("Load balance: Remove, Stop, + Add Model, fields and moves are inert while selecting", async ({ page }) => {
   await grouped(page);
   // Every control pressed below must be inside the viewport.
   await page.setViewportSize({ width: 1280, height: 1400 });
+  // Outside selection mode the grips are the handles; their places are
+  // where the drags below start.
+  const handles = [];
+  for (const g of grips(page)) {
+    await expect(g).toHaveClass("p-handle");
+    handles.push(await g.boundingBox());
+  }
   await lbStart(page).click();
+  const sent = opsSent(page);
   for (const key of ["c0-remove", "c1-remove", "group-1-stop", "group-1-add", "add-choice"]) {
     const box = await page.locator(`[data-key="${key}"]`).boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -761,18 +814,30 @@ test("Load balance: Remove, Stop, + Add Model, fields and moves are inert while 
   await account.focus();
   await expect(account).not.toBeFocused();
   await expect(page.locator(".p-handle")).toHaveCount(0);
-  // A card cannot take focus, so no ⌘/Ctrl+arrow reaches it, and a drag
-  // from its number column (where the handle was) moves nothing.
-  const card0 = page.locator('[data-key="card-0"]');
-  await expect(card0).not.toHaveAttribute("tabindex", /.*/);
-  await card0.focus();
-  await expect(card0).not.toBeFocused();
-  await expect(card(page, 2)).not.toHaveAttribute("tabindex", /.*/);
+  // Neither a card nor a frame can take focus, so no ⌘/Ctrl+arrow reaches
+  // them; a drag from where each handle sits outside selection mode (card
+  // 1, member 2a, the frame) sends nothing.
+  for (const el of [page.locator('[data-key="card-0"]'), card(page, 2)]) {
+    await expect(el).not.toHaveAttribute("tabindex", /.*/);
+    await el.focus();
+    await expect(el).not.toBeFocused();
+  }
   const before = fs.readFileSync(server.configPath, "utf8");
-  await dragTo(page, card(page, 1).locator(".p-n"), card(page, 3));
-  await dragTo(page, card(page, 2).locator(".p-group-head"), card(page, 4));
-  await expect(pick(page, 1)).toBeVisible();
+  const [g1, g2a, gFrame] = grips(page);
+  for (const [i, g] of [g1, g2a, gFrame].entries()) {
+    const box = await g.boundingBox();
+    expect(Math.abs(box.x - handles[i].x) + Math.abs(box.y - handles[i].y), `grip ${i} in the handle's place`)
+      .toBeLessThanOrEqual(1);
+  }
+  for (const [name, g, target] of [["card 1", g1, card(page, 3)], ["member 2a", g2a, card(page, 4)],
+    ["the frame", gFrame, card(page, 4)]]) {
+    await dragTo(page, g, target);
+    // A drop sends its op at once; give a sent one time to show.
+    await page.waitForTimeout(300);
+    expect(sent, `no op sent by the drag from ${name}`).toEqual([]);
+  }
   expectUnchanged(server.configPath, before);
+  await expect(pick(page, 1)).toBeVisible();
   await lbCancel(page).click();
   await card(page, 4).getByLabel("Model").selectOption("claude-fable-5-1");
   await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "the edit after Cancel");

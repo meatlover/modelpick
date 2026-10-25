@@ -1165,6 +1165,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .p-group-grip {
   flex: 0 0 26px;
+  height: 32px;
   margin-right: 4px;
 }
 
