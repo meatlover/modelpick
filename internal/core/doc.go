@@ -35,6 +35,10 @@ type DocChoice struct {
 	Capped         bool
 	SkipDuring     []string
 	AllowDuring    []string
+	// Group is 0 for a plain choice. Members of one load balancing group
+	// share an id > 0 and are contiguous; ids run 1, 2, … in file order.
+	Group       int
+	LoadBalance string // the group's algorithm as written; "" when Group is 0
 }
 
 // ParseDoc decodes data structurally: strict keys and types, no cross-checks
@@ -173,17 +177,95 @@ func (p parser) decodeProfiles(raws map[string]json.RawMessage) (map[string][]Do
 		if len(items) == 0 {
 			return nil, p.fail(prefix, "must not be empty")
 		}
-		choices := make([]DocChoice, len(items))
-		for i, item := range items {
-			c, err := p.decodeChoice(item, fmt.Sprintf("%s[%d]", prefix, i))
-			if err != nil {
-				return nil, err
-			}
-			choices[i] = c
+		choices, err := p.decodeItems(items, prefix)
+		if err != nil {
+			return nil, err
 		}
 		out[name] = choices
 	}
 	return out, nil
+}
+
+// decodeItems flattens a profile's items into choices: a group becomes its
+// members, tagged with the group's id (1, 2, … in file order) and algorithm.
+func (p parser) decodeItems(items []json.RawMessage, prefix string) ([]DocChoice, error) {
+	choices := make([]DocChoice, 0, len(items))
+	group := 0
+	for i, item := range items {
+		at := fmt.Sprintf("%s[%d]", prefix, i)
+		account, isGroup, err := p.itemKeys(item, at)
+		switch {
+		case err != nil:
+			return nil, err
+		case account && isGroup:
+			return nil, p.fail(at, "a choice has account, a group has load_balance and choices: not both")
+		case isGroup:
+			group++
+			members, err := p.decodeGroup(item, at, group)
+			if err != nil {
+				return nil, err
+			}
+			choices = append(choices, members...)
+		case account:
+			c, err := p.decodeChoice(item, at)
+			if err != nil {
+				return nil, err
+			}
+			choices = append(choices, c)
+		default:
+			return nil, p.fail(at, "needs account (a choice) or load_balance (a group)")
+		}
+	}
+	return choices, nil
+}
+
+// itemKeys tells a choice (it has account) from a group (it has load_balance
+// or choices) by the keys present.
+func (p parser) itemKeys(raw json.RawMessage, prefix string) (account, group bool, err error) {
+	var keys map[string]json.RawMessage
+	if err := p.strict(raw, &keys, prefix); err != nil {
+		return false, false, err
+	}
+	_, account = keys["account"]
+	_, lb := keys["load_balance"]
+	_, cs := keys["choices"]
+	return account, lb || cs, nil
+}
+
+type rawGroup struct {
+	LoadBalance *string           `json:"load_balance"`
+	Choices     []json.RawMessage `json:"choices"`
+}
+
+func (p parser) decodeGroup(raw json.RawMessage, prefix string, id int) ([]DocChoice, error) {
+	var rg rawGroup
+	if err := p.strict(raw, &rg, prefix); err != nil {
+		return nil, err
+	}
+	if rg.LoadBalance == nil {
+		return nil, p.fail(join(prefix, "load_balance"), "required")
+	}
+	if len(rg.Choices) < 2 {
+		return nil, p.fail(join(prefix, "choices"), "needs at least 2 members")
+	}
+	members := make([]DocChoice, len(rg.Choices))
+	for j, item := range rg.Choices {
+		at := fmt.Sprintf("%s.choices[%d]", prefix, j)
+		_, isGroup, err := p.itemKeys(item, at)
+		if err != nil {
+			return nil, err
+		}
+		if isGroup {
+			return nil, p.fail(at, "a group cannot be a member of a group")
+		}
+		c, err := p.decodeChoice(item, at)
+		if err != nil {
+			return nil, err
+		}
+		c.Group, c.LoadBalance = id, *rg.LoadBalance
+		members[j] = c
+	}
+	return members, nil
 }
 
 func (p parser) decodeChoice(raw json.RawMessage, prefix string) (DocChoice, error) {
@@ -345,12 +427,33 @@ func encodeRule(lv int, r DocRule) string {
 	return obj(lv, []member{{"days", strs(r.Days)}, {"utc", strs(r.UTC)}})
 }
 
+// encodeProfile writes each group as one item, its members in the choice
+// layout one level deeper.
 func encodeProfile(lv int, choices []DocChoice) string {
-	items := make([]string, len(choices))
-	for i, c := range choices {
-		items[i] = encodeChoice(lv+1, c)
+	groups, lbs := docGroups(choices)
+	var items []string
+	for _, pos := range Positions(groups, lbs) {
+		if groups[pos.Start] == 0 {
+			items = append(items, encodeChoice(lv+1, choices[pos.Start]))
+			continue
+		}
+		members := make([]string, 0, pos.End-pos.Start)
+		for _, c := range choices[pos.Start:pos.End] {
+			members = append(members, encodeChoice(lv+3, c))
+		}
+		items = append(items, obj(lv+1, []member{{"load_balance", quote(pos.LoadBalance)}, {"choices", arrayLines(lv+2, members)}}))
 	}
 	return arrayLines(lv, items)
+}
+
+// docGroups returns each choice's Group and LoadBalance, the input of
+// Positions.
+func docGroups(choices []DocChoice) ([]int, []string) {
+	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
+	for i, c := range choices {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	return groups, lbs
 }
 
 func encodeChoice(lv int, c DocChoice) string {

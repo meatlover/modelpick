@@ -41,6 +41,9 @@ type Choice struct {
 	// AllowDuring: usable only while any listed schedule matches. Never set
 	// together with SkipDuring.
 	AllowDuring []string
+	// Group and LoadBalance: as on DocChoice.
+	Group       int
+	LoadBalance string
 }
 
 // Config is a validated modelpick configuration.
@@ -310,9 +313,13 @@ func (p parser) scheduleRule(rs DocRule, prefix string) (ScheduleRule, error) {
 func (p parser) profiles(docs map[string][]DocChoice, cfg *Config) (map[string][]Choice, error) {
 	out := map[string][]Choice{}
 	for _, name := range sortedKeys(docs) {
+		paths, err := p.groupPaths("profiles."+name, docs[name])
+		if err != nil {
+			return nil, err
+		}
 		choices := make([]Choice, 0, len(docs[name]))
 		for i, d := range docs[name] {
-			c, err := p.choice(d, fmt.Sprintf("profiles.%s[%d]", name, i), cfg)
+			c, err := p.choice(d, paths[i], cfg)
 			if err != nil {
 				return nil, err
 			}
@@ -321,6 +328,29 @@ func (p parser) profiles(docs map[string][]DocChoice, cfg *Config) (map[string][
 		out[name] = choices
 	}
 	return out, nil
+}
+
+// groupPaths checks each group's algorithm against Algorithms and returns
+// where each flat choice sits in the file: profiles.p[2] for a plain choice,
+// profiles.p[1].choices[0] for a group member.
+func (p parser) groupPaths(prefix string, ds []DocChoice) ([]string, error) {
+	groups, lbs := docGroups(ds)
+	paths := make([]string, len(ds))
+	for k, pos := range Positions(groups, lbs) {
+		item := fmt.Sprintf("%s[%d]", prefix, k)
+		if groups[pos.Start] == 0 {
+			paths[pos.Start] = item
+			continue
+		}
+		if _, ok := Algorithms[pos.LoadBalance]; !ok {
+			return nil, p.fail(join(item, "load_balance"), "unknown algorithm %q (known: %s)",
+				pos.LoadBalance, strings.Join(AlgorithmNames(), ", "))
+		}
+		for i := pos.Start; i < pos.End; i++ {
+			paths[i] = fmt.Sprintf("%s.choices[%d]", item, i-pos.Start)
+		}
+	}
+	return paths, nil
 }
 
 func (p parser) choice(d DocChoice, prefix string, cfg *Config) (Choice, error) {
@@ -334,7 +364,8 @@ func (p parser) choice(d DocChoice, prefix string, cfg *Config) (Choice, error) 
 	if d.Model == "" {
 		return c, p.fail(join(prefix, "model"), "required")
 	}
-	c = Choice{Account: d.Account, Model: d.Model, Thinking: d.Thinking, Cap: d.Cap, Capped: d.Capped}
+	c = Choice{Account: d.Account, Model: d.Model, Thinking: d.Thinking, Cap: d.Cap, Capped: d.Capped,
+		Group: d.Group, LoadBalance: d.LoadBalance}
 	return c, p.choiceSchedules(&c, d, prefix, cfg)
 }
 
