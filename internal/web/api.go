@@ -66,6 +66,13 @@
 //     holds for the "one identical choice elsewhere" fallback too). A
 //     group's expect is {"load_balance", "choices": [<choice>, …]}, found
 //     at index or as the one identical group elsewhere.
+//     - member_of: choice.set, choice.remove and choice.move on a member
+//     send member_of, the member's group as the page saw it (a group's
+//     expect, resolved the same way from the member's index; refused when
+//     it resolves to no group). A member's expect then matches only inside
+//     that group, at index or as the one identical member there. Without
+//     member_of a member's expect matches only at index. A plain expect
+//     ignores member_of and may fall back to any plain choice.
 //     - group.create {profile, indexes, expects}: 2+ plain choices; the
 //     group, algorithm random, takes the place of the first in file order.
 //     - group.dissolve {profile, index, expect}: members turn plain in place.
@@ -74,11 +81,14 @@
 //     - choice.add {profile, group?, group_expect?}: with group (any
 //     member's index; group_expect required) a member is appended to that
 //     group on the first unused account of the last member's vendor, else
-//     of any vendor, else the last member's; without, a plain choice as
-//     before (after a trailing group).
-//     - choice.move {profile, from, to, expect, group?, group_expect?}:
-//     without group the card ends plain and may not land strictly inside a
-//     group; with it, it joins that group and lands inside it or at an edge.
+//     of any vendor, else the last member's; without, a plain choice goes
+//     before a trailing position that always wins (an uncapped choice, or
+//     a group with an uncapped member), else last.
+//     - choice.move {profile, from, to, expect, member_of?, group?,
+//     group_expect?}: member_of is the moved member's own group; group and
+//     group_expect the destination's. Without group the card ends plain and
+//     may not land strictly inside a group; with it, it joins that group
+//     and lands inside it or at an edge.
 //     - choice.remove, choice.move, group ops and account.remove
 //     with_choices leave a one-member group plain in place, and drop an
 //     empty one.

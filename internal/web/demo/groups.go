@@ -130,22 +130,26 @@ func sameChoice(a, b web.Choice) bool {
 
 // findChoice resolves a choice addressed by index and sent as expect: the
 // choice at index if identical, else the one identical choice elsewhere,
-// else a refusal. Identity includes membership, so a stale edit never
-// reaches into or out of a group.
-func (d *Demo) findChoice(profile string, index int, expect json.RawMessage) (*web.Profile, int, error) {
+// else a refusal. Identity includes membership, and a member is looked for
+// only inside the group memberOf names (expectScope), so a stale edit never
+// reaches into, out of or across a group.
+func (d *Demo) findChoice(profile string, index int, expect, memberOf json.RawMessage) (*web.Profile, int, error) {
 	p, err := d.profile(profile)
 	if err != nil {
 		return nil, 0, err
 	}
 	cs := p.Choices
 	want, ok := expectedChoice(expect)
+	lo, hi, err := expectScope(p, index, want, memberOf)
+	if err != nil {
+		return nil, 0, err
+	}
 	match := func(i int) bool { return ok && sameStatus(cs[i], want) && sameChoice(cs[i], want) }
-	inRange := index >= 0 && index < len(cs)
-	if inRange && match(index) {
+	if index >= lo && index < hi && match(index) {
 		return p, index, nil
 	}
 	found, n := -1, 0
-	for i := range cs {
+	for i := lo; i < hi; i++ {
 		if match(i) {
 			found, n = i, n+1
 		}
@@ -153,10 +157,27 @@ func (d *Demo) findChoice(profile string, index int, expect json.RawMessage) (*w
 	if n == 1 {
 		return p, found, nil
 	}
-	if !inRange {
+	if index < 0 || index >= len(cs) {
 		return nil, 0, refuse("Profile %s has no choice %d", profile, index+1)
 	}
 	return nil, 0, refuse("Choice %s of %s was changed outside the UI", labels(cs)[index], profile)
+}
+
+// expectScope is the range [lo, hi) findChoice searches: the whole profile
+// for a plain choice; for a member, the group memberOf names, or without
+// memberOf only index itself.
+func expectScope(p *web.Profile, index int, want web.Choice, memberOf json.RawMessage) (int, int, error) {
+	if want.Group == 0 {
+		return 0, len(p.Choices), nil
+	}
+	if len(memberOf) == 0 || strings.TrimSpace(string(memberOf)) == "null" {
+		if index < 0 || index >= len(p.Choices) {
+			return 0, 0, nil
+		}
+		return index, index + 1, nil
+	}
+	g, err := findGroup(p, index, memberOf)
+	return g.start, g.end, err
 }
 
 // expectedGroup decodes a group's expect, {load_balance, choices}.
@@ -287,7 +308,7 @@ func (d *Demo) resolveSelection(a opArgs) (*web.Profile, []int, error) {
 	seen := map[int]bool{}
 	picked := make([]int, 0, len(a.Indexes))
 	for k, index := range a.Indexes {
-		q, i, err := d.findChoice(a.Profile, index, a.Expects[k])
+		q, i, err := d.findChoice(a.Profile, index, a.Expects[k], nil)
 		if err != nil {
 			return nil, nil, err
 		}

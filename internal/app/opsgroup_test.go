@@ -21,6 +21,12 @@ func member(expect string, group int) string {
 	return strings.TrimSuffix(expect, "}") + `,"group":` + itoa(group) + `,"load_balance":"random"}`
 }
 
+// memberOf adds member_of, the group the addressed member belongs to as
+// the page saw it, to an op's arguments.
+func memberOf(args, group string) string {
+	return strings.TrimSuffix(args, "}") + `,"member_of":` + group + `}`
+}
+
 // gmove is choice.move on coder that ends plain (group null).
 func gmove(from, to int, expect string) string {
 	return `{"profile":"coder","from":` + itoa(from) + `,"to":` + itoa(to) + `,"expect":` + expect + `,"group":null}`
@@ -165,13 +171,24 @@ var groupMemberCases = []opCase{
 	{name: "stale does not cross out of a group", doc: base.prof("coder", c1, grp(c0, c2)), op: "choice.remove",
 		args: at("coder", 1, member(e1, 1)), refused: "Choice 2a of coder was changed outside the UI"},
 	{name: "stale follows inside the same group", doc: base.prof("coder", grp(c0, c1, c2)), op: "choice.remove",
-		args: at("coder", 0, member(e1, 1)), want: base.prof("coder", grp(c0, c2))},
+		args: memberOf(at("coder", 0, member(e1, 1)), grp(e0, e1, e2)), want: base.prof("coder", grp(c0, c2))},
+	{name: "a member without member_of has no fallback", doc: base.prof("coder", grp(c0, c1, c2)), op: "choice.remove",
+		args: at("coder", 0, member(e1, 1)), refused: "Choice 1a of coder was changed outside the UI"},
+	// The page saw [group(c0, c1, c3), group(c1, c2)]; another tab moved the
+	// first group's c1 to the front since. The stale remove names the first
+	// group, and must not reach the identical c1 of the other one.
+	{name: "stale does not cross between groups", doc: base.prof("coder", c1, grp(c0, c3), grp(c1, c2)),
+		op: "choice.remove", args: memberOf(at("coder", 1, member(e1, 1)), grp(e0, e1, e3)),
+		refused: "Load balancing group 2 of coder was changed outside the UI"},
 	{name: "set names the member", doc: base.prof("coder", grp(c0, c1)), op: "choice.set",
 		args:    set("coder", 1, member(e1, 1), "thinking", `"max"`),
 		refused: `Profile coder, choice 1b: thinking "max" is not offered by gpt-6.1-sol`},
-	{name: "add after a trailing group", doc: base.prof("coder", c0, grp(c1, c2)), op: "choice.add",
-		args: `{"profile":"coder"}`, want: base.prof("coder", c0, grp(c1, c2),
-			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":[]}`)},
+	{name: "add before a trailing group with an uncapped member", doc: base.prof("coder", c0, grp(c1, c2)), op: "choice.add",
+		args: `{"profile":"coder"}`, want: base.prof("coder", c0,
+			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":[]}`, grp(c1, c2))},
+	{name: "add after a trailing capped group", doc: base.prof("coder", grp(c0, c1)), op: "choice.add",
+		args: `{"profile":"coder"}`, want: base.prof("coder", grp(c0, c1),
+			`{"account":"codex-main","model":"gpt-6.1-sol","thinking":"low","cap":[]}`)},
 	{name: "add member: unused account of the last member's vendor", doc: base.prof("coder", grp(c1, c0), c2),
 		op: "choice.add", args: addMember(0, grp(e1, e0)),
 		want: base.prof("coder", grp(c1, c0, `{"account":"claude-two","model":"claude-haiku-5","thinking":null,"cap":[]}`), c2)},

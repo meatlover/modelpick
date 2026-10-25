@@ -37,6 +37,9 @@ type opArgs struct {
 	// the page saw it.
 	Group       *int            `json:"group"`
 	GroupExpect json.RawMessage `json:"group_expect"`
+	// MemberOf is the group holding the member choice.set, choice.remove
+	// or choice.move addresses, as the page saw it.
+	MemberOf json.RawMessage `json:"member_of"`
 }
 
 type opFunc func(d *Demo, a opArgs) error
@@ -181,9 +184,9 @@ func (d *Demo) opProfileRemove(a opArgs) error {
 	return refuse("Unknown profile %s", a.Name)
 }
 
-// opChoiceAdd copies the last choice's account, before a trailing plain
-// uncapped choice (after a trailing group, as a plain choice); with a.Group
-// it adds a member to that group instead.
+// opChoiceAdd copies the last choice's account, before a trailing position
+// that always wins (an uncapped choice, or a group with an uncapped member),
+// else last; with a.Group it adds a member to that group instead.
 func (d *Demo) opChoiceAdd(a opArgs) error {
 	p, err := d.profile(a.Profile)
 	if err != nil {
@@ -195,11 +198,22 @@ func (d *Demo) opChoiceAdd(a opArgs) error {
 	last := len(p.Choices) - 1
 	c := d.newChoice(p.Choices[last].Account)
 	at := len(p.Choices)
-	if p.Choices[last].Group == 0 && p.Choices[last].Cap == nil {
-		at = last
+	ps := positions(p.Choices)
+	if trailing := ps[len(ps)-1]; alwaysWins(p.Choices[trailing.start:trailing.end]) {
+		at = trailing.start
 	}
 	p.Choices = append(p.Choices[:at], append([]web.Choice{c}, p.Choices[at:]...)...)
 	return nil
+}
+
+// alwaysWins reports whether a position (its choices) has an uncapped one.
+func alwaysWins(position []web.Choice) bool {
+	for _, c := range position {
+		if c.Cap == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // normalized makes nil list fields empty so a page's copy compares equal.
@@ -214,7 +228,7 @@ func normalized(c web.Choice) web.Choice {
 }
 
 func (d *Demo) opChoiceRemove(a opArgs) error {
-	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
@@ -229,7 +243,7 @@ func (d *Demo) opChoiceRemove(a opArgs) error {
 // it. With a.Group it ends a member of that group and must land inside it
 // or at either edge; without, it ends plain and must not land inside one.
 func (d *Demo) opChoiceMove(a opArgs) error {
-	p, i, err := d.findChoice(a.Profile, a.From, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.From, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}

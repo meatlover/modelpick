@@ -91,10 +91,10 @@ func opProfileRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 	return nil
 }
 
-// opChoiceAdd copies the last choice's account; nothing after an uncapped
-// choice can be picked, so the new one goes before a trailing uncapped one
-// (after a trailing group, as a plain choice). With a.Group it adds a
-// member to that group instead.
+// opChoiceAdd copies the last choice's account. Nothing after a position
+// that always wins can be picked, so the new plain choice goes before a
+// trailing uncapped choice or a trailing group with an uncapped member,
+// else last. With a.Group it adds a member to that group instead.
 func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 	cs, ok := doc.Profiles[a.Profile]
 	if !ok {
@@ -112,12 +112,24 @@ func opChoiceAdd(doc *core.Doc, a opArgs, env OpEnv) error {
 		return err
 	}
 	at := len(cs)
-	if cs[last].Group == 0 && !cs[last].Capped {
-		at = last
+	ps := positionsOf(cs)
+	if trailing := ps[len(ps)-1]; alwaysWins(cs[trailing.Start:trailing.End]) {
+		at = trailing.Start
 	}
 	out := append(append(append([]core.DocChoice{}, cs[:at]...), c), cs[at:]...)
 	doc.Profiles[a.Profile] = out
 	return nil
+}
+
+// alwaysWins reports whether a position (its choices) has an uncapped
+// choice, so that no later position is ever picked.
+func alwaysWins(position []core.DocChoice) bool {
+	for _, c := range position {
+		if !c.Capped {
+			return true
+		}
+	}
+	return false
 }
 
 // opProfileFill gives a profile with no choices (not a state the file can
@@ -135,7 +147,7 @@ func opProfileFill(doc *core.Doc, profile string, env OpEnv) error {
 }
 
 func opChoiceRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
@@ -151,7 +163,7 @@ func opChoiceRemove(doc *core.Doc, a opArgs, _ OpEnv) error {
 // group or at either edge; without, it ends plain and must not land inside
 // a group.
 func opChoiceMove(doc *core.Doc, a opArgs, _ OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.From, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
@@ -203,7 +215,7 @@ func checkLanding(rest []core.DocChoice, to, group int, what string) error {
 }
 
 func opChoiceSet(doc *core.Doc, a opArgs, env OpEnv) error {
-	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect)
+	cs, i, err := findChoice(doc, a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}
@@ -429,31 +441,56 @@ func expectedChoice(raw json.RawMessage) (core.DocChoice, bool) {
 // expect (spec §8.4): the choice at index if identical, else the one
 // identical choice in the profile, else a refusal. Identity includes
 // whether the page saw the choice plain or as a member (and the member's
-// algorithm), so a stale edit never reaches into or out of a group (spec
-// §8); group ids are not identity, as they renumber.
-func findChoice(doc *core.Doc, profile string, index int, expect json.RawMessage) ([]core.DocChoice, int, error) {
+// algorithm), and a member is looked for only inside the group memberOf
+// names (expectScope), so a stale edit never reaches into, out of or across
+// a group (spec §8); group ids are not identity, as they renumber.
+func findChoice(doc *core.Doc, profile string, index int, expect, memberOf json.RawMessage) ([]core.DocChoice, int, error) {
 	cs, ok := doc.Profiles[profile]
 	if !ok {
 		return nil, 0, refuse("Unknown profile %s", profile)
 	}
 	want, ok := expectedChoice(expect)
-	inRange := index >= 0 && index < len(cs)
-	if ok && inRange && sameStatus(cs[index], want) && sameChoice(cs[index], want) {
+	lo, hi, err := expectScope(doc, profile, index, want, memberOf)
+	if err != nil {
+		return nil, 0, err
+	}
+	match := func(i int) bool { return ok && sameStatus(cs[i], want) && sameChoice(cs[i], want) }
+	if index >= lo && index < hi && match(index) {
 		return cs, index, nil
 	}
 	found, n := -1, 0
-	for i := range cs {
-		if ok && sameStatus(cs[i], want) && sameChoice(cs[i], want) {
+	for i := lo; i < hi; i++ {
+		if match(i) {
 			found, n = i, n+1
 		}
 	}
 	if n == 1 {
 		return cs, found, nil
 	}
-	if !inRange {
+	if index < 0 || index >= len(cs) {
 		return nil, 0, refuse("Profile %s has no choice %d", profile, index+1)
 	}
 	return nil, 0, refuse("Choice %s of %s was changed outside the UI", label(cs, index), profile)
+}
+
+// expectScope is the flat range [lo, hi) findChoice searches for want: the
+// whole profile for a plain choice (a member never matches it); for a
+// member, the group memberOf names, resolved as group.dissolve resolves its
+// expect, or without memberOf only index itself (spec §8: the fallback
+// stays on the same side of a group boundary).
+func expectScope(doc *core.Doc, profile string, index int, want core.DocChoice, memberOf json.RawMessage) (int, int, error) {
+	cs := doc.Profiles[profile]
+	if want.Group == 0 {
+		return 0, len(cs), nil
+	}
+	if len(memberOf) == 0 || rawText(memberOf) == "null" {
+		if index < 0 || index >= len(cs) {
+			return 0, 0, nil
+		}
+		return index, index + 1, nil
+	}
+	_, p, err := findGroup(doc, profile, index, memberOf)
+	return p.Start, p.End, err
 }
 
 // sameStatus is true when both are plain, or both are members of a group

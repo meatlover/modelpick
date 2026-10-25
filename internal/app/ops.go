@@ -57,6 +57,10 @@ type opArgs struct {
 	// page saw it, checked as group.dissolve's expect.
 	Group       *int            `json:"group"`
 	GroupExpect json.RawMessage `json:"group_expect"`
+	// MemberOf is the group holding the member choice.set, choice.remove
+	// or choice.move addresses, as the page saw it (group_expect's shape):
+	// a member's expect is looked for only inside that group.
+	MemberOf json.RawMessage `json:"member_of"`
 }
 
 type opFunc func(doc *core.Doc, a opArgs, env OpEnv) error

@@ -253,7 +253,7 @@ function ctxFor(profile, index, choice) {
 // what the first left, not from the choice the card was drawn with.
 async function setField(ctx, field, value) {
   const r = await sendOp("choice.set",
-    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.choice, field, value }),
+    () => ({ profile: ctx.profile, index: ctx.index, expect: ctx.choice, member_of: ctx.memberOf(), field, value }),
     { done: (res) => advance(ctx, res) });
   if (!r.ok) paint();
 }
@@ -353,6 +353,25 @@ function groupExpect(v, i) {
   return { load_balance: pos.load_balance, choices: v.ctxs.slice(pos.start, pos.end).map((c) => c.choice) };
 }
 
+// memberOf is the member_of of an op on the card at flat index i: the
+// group holding it (groupExpect, so build it when the op's turn comes), or
+// null for a plain choice. The server looks for a stale member only there.
+function memberOf(v, i) {
+  return v.prof.choices[i].group > 0 ? groupExpect(v, i) : null;
+}
+
+// hookCtxs gives each card's ctx what its ops need from the view, for
+// caps.js and chips.js too: memberOf() builds the op's member_of, and
+// advance(res) moves ctx.choice to what a choice.set left, so a later op's
+// member_of sees the edit before the redraw does.
+function hookCtxs(v) {
+  v.ctxs.forEach((ctx, i) => {
+    ctx.memberOf = () => memberOf(v, i);
+    ctx.advance = (res) => advance(ctx, res);
+  });
+  return v;
+}
+
 // cardPos is a card's position column: its drag handle over its label.
 // While selecting, the handle's place holds the checkbox, or stays empty on
 // a group's member, which cannot be selected.
@@ -379,7 +398,8 @@ function card(v, i, member) {
   h("div", { class: "p-card-side", inert: Boolean(v.lb) },
     h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${label}`,
       "data-key": `c${i}-remove`,
-      onClick: () => sendOp("choice.remove", () => ({ profile: ctx.profile, index: i, expect: ctx.choice })) },
+      onClick: () => sendOp("choice.remove",
+        () => ({ profile: ctx.profile, index: i, expect: ctx.choice, member_of: memberOf(v, i) })) },
     "Remove")));
   if (!v.lb) dragHandle(el, pos.firstChild);
   return el;
@@ -430,7 +450,7 @@ function groupFrame(v, pos, n) {
 async function move(v, from, to, group) {
   focusKey = `card-${to}`;
   const r = await sendOp("choice.move", () => ({ profile: v.prof.name, from, to, expect: v.ctxs[from].choice,
-    group, group_expect: group === null ? null : groupExpect(v, group) }));
+    member_of: memberOf(v, from), group, group_expect: group === null ? null : groupExpect(v, group) }));
   if (r.ok) return;
   focusKey = `card-${from}`;
   paint();
@@ -467,8 +487,8 @@ function firstPick(prof) {
 }
 
 function profileMain(st, prof, red) {
-  const v = { st, prof, red, labels: choiceLabels(prof.choices), lb: selection(prof.name),
-    ctxs: prof.choices.map((c, i) => ctxFor(prof.name, i, c)) };
+  const v = hookCtxs({ st, prof, red, labels: choiceLabels(prof.choices), lb: selection(prof.name),
+    ctxs: prof.choices.map((c, i) => ctxFor(prof.name, i, c)) });
   return h("div", { class: ["p-main", v.lb && "is-selecting"] },
     capRow(st, true),
     lbBar(prof.name, firstPick(prof), repaint),

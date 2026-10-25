@@ -32,7 +32,8 @@ type groupCase struct {
 }
 
 func groupCases() []groupCase {
-	return slices.Concat(groupCreateCases(), groupEditCases(), groupMoveCases(), groupStaleCases(), memberSetCases())
+	return slices.Concat(groupCreateCases(), groupEditCases(), groupMoveCases(), groupStaleCases(),
+		memberOfCases(), memberSetCases())
 }
 
 func groupCreateCases() []groupCase {
@@ -58,7 +59,12 @@ func groupCreateCases() []groupCase {
 
 func groupEditCases() []groupCase {
 	return []groupCase{
-		{name: "plain add after a group", start: "10 [20 30]", op: plainAdd, want: "10 [20 30] _"},
+		{name: "plain add after a capped group", start: "10 [20 30]", op: plainAdd, want: "10 [20 30] _"},
+		// A trailing position that always wins (an uncapped plain choice, or
+		// a group with an uncapped member) stays last.
+		{name: "plain add before an uncapped plain", start: "10 u", op: plainAdd, want: "10 _ u"},
+		{name: "plain add before a group with an uncapped member", start: "10 [u 20]", op: plainAdd, want: "10 _ [u 20]"},
+		{name: "plain add after an uncapped choice that is not last", start: "u [10 20]", op: plainAdd, want: "u [10 20] _"},
 		{name: "member add", start: "10 [20 30] 40", op: memberAdd("20"), want: "10 [20 30 _] 40"},
 		{name: "member add without group_expect", start: "10 [20 30] 40", op: without(memberAdd("20"), "group_expect"),
 			refused: "Bad arguments for choice.add"},
@@ -143,6 +149,36 @@ func groupHandEditCases() []groupCase {
 			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
 		{name: "add member: groups swapped by hand", start: "[30 40] [10 20]",
 			op: withArg(memberAdd("10"), "group", 0), want: "[30 40] [10 20 _]"},
+	}
+}
+
+// memberOfCases: a member's expect is looked for only inside the group
+// member_of names (spec §8: the same side of a group boundary); without
+// member_of only the choice at the index can match.
+func memberOfCases() []groupCase {
+	// Two tabs saw 15 [10 20 25] 30 [10 40]; one moved group 2's 10 out.
+	twoTabs := []step{setCap("11", 10), move("10", 0, "")}
+	staleSet := withArg(withArg(setCap("10", 35), "index", 1), "member_of", groupWith("20", "10", 0))
+	staleRemove := withArg(withArg(remove("10"), "index", 1), "member_of", groupWith("20", "10", 0))
+	for _, st := range []*step{&staleSet, &staleRemove} {
+		*st = withArg(*st, "expect", seenChoice("10", asMember))
+	}
+	return []groupCase{
+		{name: "member_of: a stale set does not reach another group", start: "15 [10 20 25] 30 [11 40]",
+			prep: twoTabs, op: staleSet, refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		{name: "member_of: a stale remove does not reach another group", start: "15 [10 20 25] 30 [11 40]",
+			prep: twoTabs, op: staleRemove, refused: "Load balancing group 2 of wt-g was changed outside the UI"},
+		{name: "member_of: the hit at index must be in the group", start: "[10 20] [11 30]",
+			prep: []step{setCap("11", 10)}, op: withArg(setCap("10", 35), "index", 2), want: "[35 20] [10 30]"},
+		{name: "member_of: the fallback looks only in the group", start: "[10 20] 5 [11 30]",
+			prep: []step{setCap("11", 10)}, op: withArg(setCap("10", 35), "index", 2), want: "[35 20] 5 [10 30]"},
+		{name: "member_of: a stale move finds the member in its group", start: "40 [10 20 30]",
+			op: withArg(move("30", 0, ""), "from", 0), want: "30 40 [10 20]"},
+		{name: "no member_of: no fallback for a member", start: "10 [20 30] 40",
+			op: without(setSeen("30", 0, same, 35), "member_of"), refused: "Choice 1 of wt-g was changed outside the UI"},
+		{name: "member_of names no group", start: "10 [20 30] 40",
+			op:      withArg(setCap("20", 25), "member_of", seenAsGroup("10", "40")),
+			refused: "Load balancing group 2 of wt-g was changed outside the UI"},
 	}
 }
 
@@ -291,7 +327,7 @@ func stateAlgorithms(t *testing.T, h Harness) {
 }
 
 // build makes profile gp as start writes it: each tag is a choice whose
-// cap is [tag], on the first account; brackets are groups.
+// cap is [tag] ("u": uncapped), on the first account; brackets are groups.
 func build(t *testing.T, b web.Backend, start string) {
 	t.Helper()
 	tags, runs := parseShape(start)
@@ -300,10 +336,14 @@ func build(t *testing.T, b web.Backend, start string) {
 		mustApply(t, b, "choice.add", map[string]any{"profile": gp})
 	}
 	for i, tag := range tags {
-		n, _ := strconv.Atoi(tag)
+		var value any // "u": uncapped
+		if tag != "u" {
+			n, _ := strconv.Atoi(tag)
+			value = []any{n}
+		}
 		c := profileChoices(t, b.State(), gp)[i]
 		mustApply(t, b, "choice.set", map[string]any{"profile": gp, "index": i, "expect": c,
-			"field": "cap", "value": []any{n}})
+			"field": "cap", "value": value})
 	}
 	for _, r := range runs {
 		o := create(r...)(t, b.State())
@@ -367,8 +407,12 @@ func shape(t *testing.T, s web.State) string {
 	return strings.Join(parts, " ")
 }
 
-// tag names a choice by its first cap element; "_" when it has none.
+// tag names a choice by its first cap element; "_" when it has none, "u"
+// when it is uncapped.
 func tag(c web.Choice) string {
+	if c.Cap == nil {
+		return "u"
+	}
 	if len(c.Cap) == 0 {
 		return "_"
 	}

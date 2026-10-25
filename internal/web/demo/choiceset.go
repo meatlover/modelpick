@@ -166,7 +166,7 @@ func (d *Demo) setSchedules(c *web.Choice, where, field string, list []string) e
 }
 
 func (d *Demo) opChoiceSet(a opArgs) error {
-	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect)
+	p, i, err := d.findChoice(a.Profile, a.Index, a.Expect, a.MemberOf)
 	if err != nil {
 		return err
 	}

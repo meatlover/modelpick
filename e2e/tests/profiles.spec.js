@@ -901,6 +901,64 @@ test("Load balance right after an edit still applies", async ({ page }) => {
   await expect(page.getByText("changed outside the UI")).toHaveCount(0);
 });
 
+// memberOfs is the member_of of each choice op sent, as "op: account …" (the
+// group's members) or "op: -" without one.
+function memberOfs(sent) {
+  return sent.map((body) => JSON.parse(body)).filter((b) => b.op.startsWith("choice."))
+    .map((b) => `${b.op}: ${b.args.member_of ? b.args.member_of.choices.map((c) => `${c.account}/${c.model}`).join(" ") : "-"}`);
+}
+
+// Every op on a member card names the member's group (member_of), built when
+// the op's turn comes: the server looks for a stale member only inside it.
+test("ops on a member card send member_of, the group as earlier edits left it", async ({ page }) => {
+  await grouped(page);
+  const sent = opsSent(page);
+  const mod = await modKey(page);
+  await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
+  await card(page, "2a").getByRole("button", { name: "No caps" }).click();
+  await expectConfig(server.configPath, (c) => "cap" in coder(c)[1].choices[0], false, "2a uncapped");
+  await attach(page, "2a", "Skip", "night");
+  await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].skip_during, ["night"], "2a skips night");
+  await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
+  await expectConfig(server.configPath, (c) => coder(c)[0].model, "claude-fable-5-1", "choice 1's model");
+  await card(page, "2b").focus();
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1]", "codex-main", "claude-main"], "2b first");
+  await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();
+  await expectConfig(server.configPath, shapeOf, ["claude-main", "go-2", "codex-main", "claude-main"], "2b removed");
+  const go1 = "go-1/opencode-go/deepseek-v4.1";
+  const go2 = "go-2/opencode-go/kimi-k3";
+  expect(memberOfs(sent)).toEqual([
+    `choice.set: ${go1} go-2/opencode-go/deepseek-v4.1`,
+    `choice.set: ${go1} ${go2}`,
+    `choice.set: ${go1} ${go2}`,
+    "choice.set: -",
+    `choice.move: ${go1} ${go2}`,
+    `choice.remove: ${go2} ${go1}`,
+  ]);
+});
+
+// A member's op sent before the redraw of a sibling's cap or schedule edit
+// carries the group as that edit left it.
+for (const [what, edit, done] of [
+  ["cap", (page) => card(page, "2a").getByRole("button", { name: "No caps" }).click(),
+    (c) => !("cap" in coder(c)[1].choices[0])],
+  ["schedule", (page) => attach(page, "2a", "Skip", "night"),
+    (c) => JSON.stringify(coder(c)[1].choices[0].skip_during) === '["night"]'],
+]) {
+  test(`a member's edit right after another member's ${what} edit still applies`, async ({ page }) => {
+    await grouped(page);
+    const release = await holdState(page);
+    await edit(page);
+    await expectConfig(server.configPath, done, true, `2a's ${what}`);
+    await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+    release();
+    await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
+    await expect(page.getByText("changed outside the UI")).toHaveCount(0);
+  });
+}
+
 // This test is its own setup: its page registers the listeners before the
 // login, so the first load and the first render of each tab are watched too.
 test("no console errors on any tab", async ({ context }) => {

@@ -285,6 +285,16 @@ function liveCtx(key) {
   return m ? m.ctx : null;
 }
 
+// setCap sends choice.set of the card's cap: expect is the choice now,
+// member_of (profiles.js) is built when the op's turn comes, and the ctx
+// advances to what the op left, for the ops queued behind it.
+function setCap(ctx, value) {
+  const expect = ctx.choice;
+  return sendOp("choice.set",
+    () => ({ profile: ctx.profile, index: ctx.index, expect, member_of: ctx.memberOf(), field: "cap", value }),
+    { done: (res) => ctx.advance(res) });
+}
+
 // unpend drops the pending text of a box unless a later edit replaced it.
 function unpend(key, p, text) {
   const k = pendKey(key, p);
@@ -292,9 +302,7 @@ function unpend(key, p, text) {
 }
 
 async function send(key, p, value, text) {
-  const ctx = liveCtx(key);
-  const r = await sendOp("choice.set",
-    { profile: ctx.profile, index: ctx.index, expect: ctx.choice, field: "cap", value });
+  const r = await setCap(liveCtx(key), value);
   unpend(key, p, text);
   rerender(key);
   return r;
@@ -581,8 +589,7 @@ function addCaps(ctx) {
     onClick: () => enqueue(key, async () => {
       const now = liveCtx(key);
       if (!now) return;
-      await sendOp("choice.set", { profile: now.profile, index: now.index, expect: now.choice,
-        field: "cap", value: [] });
+      await setCap(now, []);
       focusCard(mounts.get(key).container); // the button is gone after a repaint
     }) }, "+ caps");
 }
@@ -595,8 +602,7 @@ function noCaps(ctx) {
       const now = liveCtx(key);
       if (!now) return;
       edit = null;
-      await sendOp("choice.set", { profile: now.profile, index: now.index, expect: now.choice,
-        field: "cap", value: null });
+      await setCap(now, null);
       focusCard(mounts.get(key).container);
     }) }, "No caps");
 }

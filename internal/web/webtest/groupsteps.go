@@ -140,10 +140,20 @@ func without(st step, key string) step {
 	}
 }
 
+// withMemberOf adds member_of, the group holding tg as the file holds it,
+// when tg is a member: the page sends it with every op on a member card.
+func withMemberOf(t *testing.T, s web.State, tg string, args map[string]any) map[string]any {
+	t.Helper()
+	if _, c := find(t, s, tg); c.Group != 0 {
+		args["member_of"] = groupOf(t, s, tg)
+	}
+	return args
+}
+
 func remove(tg string) step {
 	return func(t *testing.T, s web.State) opCall {
 		i, c := find(t, s, tg)
-		return opCall{"choice.remove", map[string]any{"profile": gp, "index": i, "expect": c}}
+		return opCall{"choice.remove", withMemberOf(t, s, tg, map[string]any{"profile": gp, "index": i, "expect": c})}
 	}
 }
 
@@ -152,7 +162,7 @@ func remove(tg string) step {
 func move(tg string, to int, join string) step {
 	return func(t *testing.T, s web.State) opCall {
 		i, c := find(t, s, tg)
-		args := map[string]any{"profile": gp, "from": i, "to": to, "expect": c, "group": nil}
+		args := withMemberOf(t, s, tg, map[string]any{"profile": gp, "from": i, "to": to, "expect": c, "group": nil})
 		if join != "" {
 			j, _ := find(t, s, join)
 			args["group"], args["group_expect"] = j, groupOf(t, s, join)
@@ -185,12 +195,27 @@ func asMember(c web.Choice) web.Choice {
 }
 
 // setSeen sets tg's cap to [n], addressed by index with the page's view
-// of tg as expect.
+// of tg as expect, and member_of when the page saw tg as the member it is.
 func setSeen(tg string, index int, view seen, n int) step {
 	return func(t *testing.T, s web.State) opCall {
 		_, c := find(t, s, tg)
-		return opCall{"choice.set", map[string]any{"profile": gp, "index": index, "expect": view(c),
-			"field": "cap", "value": []any{n}}}
+		args := map[string]any{"profile": gp, "index": index, "expect": view(c), "field": "cap", "value": []any{n}}
+		if view(c).Group != 0 {
+			args = withMemberOf(t, s, tg, args)
+		}
+		return opCall{"choice.set", args}
+	}
+}
+
+// groupWith is the group holding of as the page saw it before a hand edit
+// or another tab took tg out of it: tg, as a member, at place k.
+func groupWith(of, tg string, k int) arg {
+	return func(t *testing.T, s web.State) any {
+		g := groupOf(t, s, of)
+		_, c := find(t, s, tg)
+		members := g["choices"].([]web.Choice)
+		g["choices"] = slices.Insert(append([]web.Choice{}, members...), k, asMember(c))
+		return g
 	}
 }
 
@@ -207,7 +232,8 @@ func setCap(tg string, n int) step { return setField(tg, "cap", []any{n}) }
 func setField(tg, field string, value any) step {
 	return func(t *testing.T, s web.State) opCall {
 		i, c := find(t, s, tg)
-		return opCall{"choice.set", map[string]any{"profile": gp, "index": i, "expect": c, "field": field, "value": value}}
+		args := map[string]any{"profile": gp, "index": i, "expect": c, "field": field, "value": value}
+		return opCall{"choice.set", withMemberOf(t, s, tg, args)}
 	}
 }
 

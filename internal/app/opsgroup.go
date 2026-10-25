@@ -117,7 +117,7 @@ func resolveSelection(doc *core.Doc, a opArgs) ([]core.DocChoice, []int, error) 
 	seen := map[int]bool{}
 	picked := make([]int, 0, len(a.Indexes))
 	for k, index := range a.Indexes {
-		list, i, err := findChoice(doc, a.Profile, index, a.Expects[k])
+		list, i, err := findChoice(doc, a.Profile, index, a.Expects[k], nil)
 		if err != nil {
 			return nil, nil, err
 		}
