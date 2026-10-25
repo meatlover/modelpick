@@ -346,3 +346,96 @@ func TestDoctorFailedReadingSkippedWhenCheckReportsCause(t *testing.T) {
 		t.Fatalf("findings = %+v, want %+v", got, want)
 	}
 }
+
+// grp is a random load balancing group of the given member objects.
+func grp(members ...string) string {
+	return `{"load_balance":"random","choices":[` + strings.Join(members, ",") + `]}`
+}
+
+func neverAt(subject, j string) app.Finding {
+	return app.Finding{Severity: "warning", Subject: "profile p, choice " + subject,
+		Message: "never picked, choice " + j + " always wins first"}
+}
+
+func TestNeverPickedAfterGroupWithUncappedMember(t *testing.T) {
+	type tc struct {
+		name    string
+		choices []string
+		want    []app.Finding
+	}
+	cases := []tc{
+		{"uncapped member covers a later plain choice",
+			[]string{grp(codexA+`,"cap":[90]}`, claudeA+`}`), codexA + `,"cap":[50]}`},
+			[]app.Finding{neverAt("2", "1")}},
+		{"capped members do not",
+			[]string{grp(codexA+`,"cap":[90]}`, claudeA+`,"cap":[90]}`), codexA + `,"cap":[95]}`}, nil},
+		{"a later group is named once, by its position",
+			[]string{claudeA + `}`, grp(codexA+`,"cap":[80]}`, codexA+`,"cap":[70]}`)},
+			[]app.Finding{neverAt("2", "1")}},
+		{"a later group with one uncovered member is not",
+			[]string{codexA + `,"cap":[90]}`, grp(codexA+`,"cap":[80]}`, claudeA+`,"cap":[80]}`)}, nil},
+	}
+	for _, c := range cases {
+		got := onlyNever(runDoctor(t, docConfig("", c.choices...)))
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestNeverPickedGroupMemberSkipsPeak(t *testing.T) {
+	sch := `"mon":` + mon
+	skip := func(base string) string { return choice(base, `"skip_during":["mon"]`) }
+	got := onlyNever(runDoctor(t, docConfig(sch,
+		grp(skip(codexA+`,"cap":[90]`), skip(claudeA)), codexA+`,"cap":[50]}`)))
+	if len(got) != 0 {
+		t.Fatalf("the uncapped member is idle on mon, the later choice runs then: got %v", got)
+	}
+	got = onlyNever(runDoctor(t, docConfig(sch,
+		grp(skip(codexA+`,"cap":[90]`), skip(claudeA)), skip(codexA+`,"cap":[50]`))))
+	if want := []app.Finding{neverAt("2", "1")}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("control: got %v, want %v", got, want)
+	}
+}
+
+func TestNeverPickedSameAccountCaseKept(t *testing.T) {
+	plain := []string{codexA + `,"cap":[90]}`, codexA + `,"cap":[80]}`}
+	got := onlyNever(runDoctor(t, docConfig("", plain...)))
+	if want := []app.Finding{never("2", "1")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("plain: got %v, want %v", got, want)
+	}
+	got = onlyNever(runDoctor(t, docConfig("",
+		grp(codexA+`,"cap":[50]}`, claudeA+`,"cap":[50]}`), plain[0], plain[1])))
+	if want := []app.Finding{neverAt("3", "2")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("after a group: got %v, want %v", got, want)
+	}
+}
+
+func TestIdenticalMembersWarn(t *testing.T) {
+	got := runDoctor(t, docConfig("",
+		grp(codexA+`,"cap":[90]}`, claudeA+`,"cap":[90]}`, codexA+`,"cap":[90]}`)))
+	want := []app.Finding{{Severity: "warning", Subject: "profile p, choice 1c",
+		Message: "same as choice 1a; doubles its chance in the load balancing group"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	got = runDoctor(t, docConfig("",
+		grp(codexA+`,"cap":[90]}`, strings.Replace(codexA, `"high"`, `"low"`, 1)+`,"cap":[90]}`)))
+	if len(got) != 0 {
+		t.Fatalf("different thinking is not identical: got %v", got)
+	}
+}
+
+func TestDoctorSubjectsUseLabels(t *testing.T) {
+	bad := strings.Replace(claudeA, "null", `"nope"`, 1) + `,"cap":[90]}`
+	got := runDoctor(t, docConfig("", codexA+`,"cap":[90]}`, grp(codexA+`,"cap":[90]}`, bad), codexA+`,"cap":[70]}`))
+	var subjects []string
+	for _, f := range got {
+		if f.Severity == "error" {
+			subjects = append(subjects, f.Subject)
+		}
+	}
+	if want := []string{"profile p, choice 2b"}; !reflect.DeepEqual(subjects, want) {
+		t.Fatalf("error subjects = %q, want %q (all: %v)", subjects, want, got)
+	}
+}

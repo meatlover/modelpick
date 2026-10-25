@@ -16,24 +16,99 @@ func scheduleFindings(cfg *core.Config, add func(sev, subject, msg string)) {
 	}
 }
 
-// neverFindings warns about each choice that an earlier choice always beats
-// (spec §8.4): the later one never gets picked. Only the lowest such j is named.
+// profileLabels names each flat choice of a profile by its position ("1",
+// "2a", "2b", …): the form doctor subjects use.
+func profileLabels(choices []core.Choice) []string {
+	groups := make([]int, len(choices))
+	for i, c := range choices {
+		groups[i] = c.Group
+	}
+	return core.Labels(groups)
+}
+
+// profilePositions folds a profile's choices into positions.
+func profilePositions(choices []core.Choice) []core.Position {
+	groups, lbs := make([]int, len(choices)), make([]string, len(choices))
+	for i, c := range choices {
+		groups[i], lbs[i] = c.Group, c.LoadBalance
+	}
+	return core.Positions(groups, lbs)
+}
+
+// neverFindings warns about each position that an earlier position always
+// beats (spec §8.4, load balancing §7): the later one never gets picked. A
+// plain choice is covered by an earlier position when the members of that
+// position that outrank it can run at every minute it can; a group is covered
+// when every member is. The warning names the lowest covering position (for a
+// group, the highest of its members' lowest ones), once. Members of one group
+// never warn against each other; identicalMemberFindings covers duplicates.
 func neverFindings(cfg *core.Config, profile string, add func(sev, subject, msg string)) {
 	choices := cfg.Profiles[profile]
 	runs := make([]core.Week, len(choices))
 	for i, c := range choices {
 		runs[i] = runTime(cfg, c)
 	}
-	for i := 1; i < len(choices); i++ {
-		for j := 0; j < i; j++ {
-			if !subset(runs[i], runs[j]) || !outranks(cfg, choices[j], choices[i]) {
-				continue
+	positions := profilePositions(choices)
+	for q := 1; q < len(positions); q++ {
+		by := -1
+		for i := positions[q].Start; i < positions[q].End; i++ {
+			p := coveringPosition(cfg, choices, runs, positions[:q], i)
+			if p < 0 {
+				by = -1
+				break
 			}
-			add(sevWarning, fmt.Sprintf("profile %s, choice %d", profile, i+1),
-				fmt.Sprintf("never picked, choice %d always wins first", j+1))
-			break
+			by = max(by, p)
+		}
+		if by >= 0 {
+			add(sevWarning, fmt.Sprintf("profile %s, choice %d", profile, q+1),
+				fmt.Sprintf("never picked, choice %d always wins first", by+1))
 		}
 	}
+}
+
+// coveringPosition is the lowest of the earlier positions whose outranking
+// members together run at every minute choice i can, or -1.
+func coveringPosition(cfg *core.Config, choices []core.Choice, runs []core.Week, earlier []core.Position, i int) int {
+	for p, pos := range earlier {
+		var covered core.Week
+		for j := pos.Start; j < pos.End; j++ {
+			if outranks(cfg, choices[j], choices[i]) {
+				covered = union(covered, runs[j])
+			}
+		}
+		if subset(runs[i], covered) {
+			return p
+		}
+	}
+	return -1
+}
+
+// identicalMemberFindings warns about a group member with the same account,
+// model and thinking as an earlier member of its group: it doubles that
+// model's chance, which is likely a slip.
+func identicalMemberFindings(profile string, choices []core.Choice, add func(sev, subject, msg string)) {
+	labels := profileLabels(choices)
+	for _, pos := range profilePositions(choices) {
+		if pos.LoadBalance == "" {
+			continue
+		}
+		for k := pos.Start + 1; k < pos.End; k++ {
+			for j := pos.Start; j < k; j++ {
+				if sameModelChoice(choices[j], choices[k]) {
+					add(sevWarning, fmt.Sprintf("profile %s, choice %s", profile, labels[k]),
+						fmt.Sprintf("same as choice %s; doubles its chance in the load balancing group", labels[j]))
+					break
+				}
+			}
+		}
+	}
+}
+
+func sameModelChoice(a, b core.Choice) bool {
+	if a.Account != b.Account || a.Model != b.Model || (a.Thinking == nil) != (b.Thinking == nil) {
+		return false
+	}
+	return a.Thinking == nil || *a.Thinking == *b.Thinking
 }
 
 // runTime is the minutes of the UTC week a choice may run: every minute but
