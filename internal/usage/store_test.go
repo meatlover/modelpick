@@ -930,6 +930,50 @@ func TestRenewFailureWithoutReading(t *testing.T) {
 	}
 }
 
+// TestRenewFailureHidesTokens: the reason comes from claude's stderr or
+// codex's answer, so a token-like string in it is replaced before it is
+// stored, warned with or returned.
+func TestRenewFailureHidesTokens(t *testing.T) {
+	secrets := []string{
+		"sk-ant-oat01-AbCdEf123456_-xyz",
+		"eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJl",
+		"Qx7mZp2Lw9Rt4Kv8Nb3Hc6Jd1Fg5Ys0Ua7Ie2Wo9",
+		"tok_9f8e7d6c5b4a",
+	}
+	msg := "exit status 1: bad key " + secrets[0] + ", jwt " + secrets[1] + " id " + secrets[2] + ", Authorization: Bearer " + secrets[3]
+	check := func(where, got string) {
+		t.Helper()
+		for _, sec := range secrets {
+			if strings.Contains(got, sec[:12]) {
+				t.Errorf("%s %q shows %q", where, got, sec[:12])
+			}
+		}
+		if !strings.Contains(got, "exit status 1: bad key [redacted]") {
+			t.Errorf("%s %q lost the rest of the reason", where, got)
+		}
+	}
+
+	s := newStore(t, newClock())
+	f := expiredRenewer(t, s, 30*time.Minute)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New(msg) })
+	r := s.Get(context.Background(), f, acct, false)
+	if len(r.Warnings) != 1 {
+		t.Fatalf("warnings %q; want one", r.Warnings)
+	}
+	check("warning", r.Warnings[0])
+	saved, _ := s.Saved(acct)
+	check("saved error", saved.LastError)
+
+	s = newStore(t, newClock())
+	f = expiredRenewer(t, s, -1)
+	f.setRenew(func(r *renewingAdapter) { r.renewErr = errors.New(msg) })
+	r = s.Get(context.Background(), f, acct, false)
+	if r.Err == nil {
+		t.Fatal("no error without a reading")
+	}
+	check("error", r.Err.Error())
+}
+
 func TestRenewStillExpired(t *testing.T) {
 	s := newStore(t, newClock())
 	f := expiredRenewer(t, s, 30*time.Minute)

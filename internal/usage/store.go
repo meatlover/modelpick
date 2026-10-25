@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -214,7 +215,7 @@ func (s *Store) renew(ctx context.Context, r adapter.Renewer, a adapter.Adapter,
 	var reason string
 	switch {
 	case err != nil:
-		reason = capReason(err.Error())
+		reason = capReason(hideTokens(err.Error()))
 	case a.Credential(acct).Expired:
 		reason = "the login is still expired after renewal"
 	default:
@@ -233,6 +234,28 @@ func (s *Store) renew(ctx context.Context, r adapter.Renewer, a adapter.Adapter,
 	res.Warnings = append(res.Warnings, fmt.Sprintf("%s: renewal failed: %s; using reading from %s (%d min old)",
 		name, reason, stamp(st.LastGood.TakenAt), minutesOld(st.LastGood.TakenAt, now)))
 	return res, true, writeErr
+}
+
+// tokenLike matches what could be a credential in a renewal failure's text:
+// an "Authorization: Bearer" value, an sk- key, a JWT, or any other run of
+// 32 or more key characters. It errs towards hiding: a long request id is
+// hidden too.
+var tokenLike = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(bearer\s+)\S+`),
+	regexp.MustCompile(`sk-[A-Za-z0-9_-]{8,}`),
+	regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]*)?`),
+	regexp.MustCompile(`[A-Za-z0-9_+/=-]{32,}`),
+}
+
+// hideTokens replaces each token-like string in a renewal failure's text
+// with [redacted]. The text comes from claude's stderr or codex's answer,
+// and it is stored in the cache, warned with and shown on the page.
+func hideTokens(reason string) string {
+	reason = tokenLike[0].ReplaceAllString(reason, "${1}[redacted]")
+	for _, re := range tokenLike[1:] {
+		reason = re.ReplaceAllString(reason, "[redacted]")
+	}
+	return reason
 }
 
 // capReason cuts a renewal failure's text to maxReasonBytes, on a rune
