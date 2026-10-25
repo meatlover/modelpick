@@ -3,7 +3,7 @@
 // way a user does and then reads config.json from disk.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login, stateGate, holdState } = require("./helpers");
+const { startServer, login, stateGate, holdState, redrawn } = require("./helpers");
 const { readConfig, expectConfig, expectUnchanged, handEdit, loadBalanceGo } = require("./config");
 
 let server;
@@ -269,7 +269,9 @@ test("cap by drag, fixed and pace", async ({ page }) => {
   const start = firstCap();
   expect(start).toBe(95);
   await capBox(c3).click();
-  await dragRange(page, c3, 0.95, 0.3);
+  // The next drag waits for this one's redraw, which would replace the
+  // slider under it.
+  await redrawn(page, () => dragRange(page, c3, 0.95, 0.3));
   await expect.poll(firstCap).not.toBe(start);
   const fixed = firstCap();
   expect(typeof fixed).toBe("number");
@@ -1063,7 +1065,11 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   await card(page, "2b").focus();
   await page.keyboard.press(`${mod}+ArrowUp`);
   await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1]", "codex-main", "claude-main"], "2b first");
-  await expect(card(page, "2a")).toBeFocused(); // redrawn: 2b is go-1 now
+  // Redrawn by the move: 2a is go-2 now. (Focus alone does not say so: the
+  // reload after choice 1's edit, answered late, also focuses card 2a, in
+  // the view before the move.)
+  await expect(card(page, "2a").getByLabel("Account")).toHaveValue("go-2");
+  await expect(card(page, "2a")).toBeFocused();
   await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();
   await expectConfig(server.configPath, shapeOf, ["claude-main", "go-2", "codex-main", "claude-main"], "2b removed");
   const go1 = "go-1/opencode-go/deepseek-v4.1";

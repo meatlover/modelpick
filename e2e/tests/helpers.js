@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
+const { expect } = require("@playwright/test");
 
 const START_MS = 10000;
 const ANSWER_MS = 5000;
@@ -181,6 +182,27 @@ async function login(page, url) {
   }
 }
 
+// redrawn runs action, an edit that sends one op, and resolves once the
+// page has been redrawn from it: the op's answer, then the state, usage and
+// doctor reads of the reload after it, then two frames. A test that acts
+// on what the edit redraws waits here, as an answer delayed by
+// E2E_OP_DELAY_MS can redraw the page under its next action.
+async function redrawn(page, action) {
+  const done = [];
+  const onDone = (req) => done.push(new URL(req.url()).pathname);
+  page.on("requestfinished", onDone);
+  try {
+    await action();
+    await expect.poll(() => {
+      const op = done.indexOf("/api/op");
+      return op >= 0 && ["/api/state", "/api/usage", "/api/doctor"].every((p) => done.indexOf(p, op) > op);
+    }, { message: "the op answered and the page reloaded", timeout: 10000 }).toBe(true);
+  } finally {
+    page.off("requestfinished", onDone);
+  }
+  await page.evaluate(() => new Promise((go) => requestAnimationFrame(() => requestAnimationFrame(go))));
+}
+
 // stateGate holds back the page's /api/state answers, so the page is not
 // redrawn after an op and the op queue waits on that reload: pass(n) lets
 // the next n through, open() all from then on, held() counts those waiting.
@@ -216,4 +238,4 @@ async function holdState(page) {
   return () => gate.open();
 }
 
-module.exports = { startServer, login, stateGate, holdState };
+module.exports = { startServer, login, stateGate, holdState, redrawn };
