@@ -24,6 +24,9 @@
 ### Changed
 
 - `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which cancels a renewal.
+- The UI no longer refuses an edit as "changed outside the UI" when it was
+  made on a card before the page had redrawn after the card's previous edit
+  (a field, cap or schedule edit made while another was in flight).
 - The live smoke test renews only with `MODELPICK_LIVE_RENEW=1`.
 
 ## v0.2.0 — 2026-10-24

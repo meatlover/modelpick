@@ -102,6 +102,22 @@ function patchSHA(sha) {
   seen.state = JSON.stringify(store.state);
 }
 
+// fieldEdits maps a config's sha256 to the one this page's choice.set made
+// of it. A choice.set changes one choice's fields only: every choice keeps
+// its index and its group.
+const fieldEdits = new Map();
+
+// onlyFieldEdits says whether the state now is the one drawn at sha, or one
+// this page's own choice.sets made of it, so that a choice drawn then is
+// at the same index now, changed only by this page.
+export function onlyFieldEdits(sha) {
+  const now = store.state ? store.state.sha256 : "";
+  for (let s = sha, n = 0; s && n <= fieldEdits.size; s = fieldEdits.get(s), n++) {
+    if (s === now) return true;
+  }
+  return false;
+}
+
 async function attempt(op, args, retry, opts) {
   const base = store.state ? store.state.sha256 : "";
   let r;
@@ -112,6 +128,7 @@ async function attempt(op, args, retry, opts) {
     return { ok: false, reason: "modelpick ui has stopped" };
   }
   if (r.status === 200) {
+    if (op === "choice.set" && base && r.data.sha256) fieldEdits.set(base, r.data.sha256);
     // The new base is known now, even if the reload below fails.
     if (store.state && r.data.sha256) patchSHA(r.data.sha256);
     await reload();

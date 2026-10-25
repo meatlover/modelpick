@@ -162,11 +162,58 @@ function startServer(kind) {
 
 // login visits the token URL, which sets the session cookie and redirects
 // to the page.
+// E2E_OP_DELAY_MS answers every /api/op that many ms late, for CI's second
+// pass: a test that acts again before the page has redrawn after an op
+// shows up there. scripts/check.sh runs with no delay.
+const OP_DELAY_MS = Number(process.env.E2E_OP_DELAY_MS || 0);
+
 async function login(page, url) {
+  if (OP_DELAY_MS > 0) {
+    await page.route("**/api/op", async (route) => {
+      const resp = await route.fetch();
+      await new Promise((ok) => setTimeout(ok, OP_DELAY_MS));
+      await route.fulfill({ response: resp });
+    });
+  }
   const resp = await page.goto(url);
   if (!resp || !resp.ok()) {
     throw new Error(`login: ${url} answered ${resp ? resp.status() : "nothing"}`);
   }
 }
 
-module.exports = { startServer, login };
+// stateGate holds back the page's /api/state answers, so the page is not
+// redrawn after an op and the op queue waits on that reload: pass(n) lets
+// the next n through, open() all from then on, held() counts those waiting.
+async function stateGate(page) {
+  const waiting = [];
+  let credit = 0;
+  let opened = false;
+  await page.route("**/api/state", async (route) => {
+    if (!opened && credit === 0) await new Promise((go) => waiting.push(go));
+    else if (!opened) credit -= 1;
+    await route.continue();
+  });
+  return {
+    held: () => waiting.length,
+    pass(n = 1) {
+      for (let i = 0; i < n; i++) {
+        const go = waiting.shift();
+        if (go) go();
+        else credit += 1;
+      }
+    },
+    open() {
+      opened = true;
+      waiting.splice(0).forEach((go) => go());
+    },
+  };
+}
+
+// holdState holds back every /api/state answer until the returned release()
+// is called.
+async function holdState(page) {
+  const gate = await stateGate(page);
+  return () => gate.open();
+}
+
+module.exports = { startServer, login, stateGate, holdState };
