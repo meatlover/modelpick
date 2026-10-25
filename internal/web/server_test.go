@@ -199,3 +199,87 @@ func TestNewToken(t *testing.T) {
 		t.Errorf("token %q %q %v", a, b, err)
 	}
 }
+
+// A known route asked with the wrong method says so, with Allow, instead of
+// falling through to the file server's 404.
+func TestWrongMethodIs405(t *testing.T) {
+	h := newTestServer(&stub{})
+	cases := []struct{ method, path, allow string }{
+		{"POST", "/api/state", "GET, HEAD"},
+		{"POST", "/api/usage", "GET, HEAD"},
+		{"POST", "/api/doctor", "GET, HEAD"},
+		{"POST", "/api/ping", "GET, HEAD"},
+		{"GET", "/api/op", "POST"},
+		{"GET", "/api/doctor/all", "POST"},
+		{"DELETE", "/api/usage/a/refresh", "POST"},
+	}
+	for _, c := range cases {
+		w := do(t, h, c.method, c.path, goodHost, "http://127.0.0.1:4455", true)
+		if w.Code != 405 || w.Header().Get("Allow") != c.allow {
+			t.Errorf("%s %s: got %d Allow %q, want 405 Allow %q", c.method, c.path, w.Code, w.Header().Get("Allow"), c.allow)
+		}
+	}
+	if w := do(t, h, "HEAD", "/api/state", goodHost, "", true); w.Code != 200 {
+		t.Errorf("HEAD /api/state: got %d, want 200", w.Code)
+	}
+}
+
+func TestOpBodyErrors(t *testing.T) {
+	h := newTestServer(&stub{})
+	post := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://"+goodHost+"/api/op", strings.NewReader(body))
+		r.Host = goodHost
+		r.Header.Set("Origin", "http://127.0.0.1:4455")
+		r.AddCookie(&http.Cookie{Name: cookieName(testPort), Value: testToken})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := post(`{"base":`); w.Code != 400 || strings.TrimSpace(w.Body.String()) != `{"reason":"bad request body"}` {
+		t.Errorf("bad JSON: got %d %s", w.Code, w.Body.String())
+	}
+	big := `{"base":"abc","op":"x","args":{"pad":"` + strings.Repeat("a", 1<<20) + `"}}`
+	if w := post(big); w.Code != 413 || strings.TrimSpace(w.Body.String()) != `{"reason":"request body too large"}` {
+		t.Errorf("over 1 MiB: got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthEdges(t *testing.T) {
+	h := newTestServer(&stub{})
+	req := func(method, target, host, origin, cookie string) int {
+		r := httptest.NewRequest(method, "http://"+goodHost+target, strings.NewReader(`{"base":"abc","op":"x"}`))
+		r.Host = host
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if cookie != "" {
+			r.AddCookie(&http.Cookie{Name: cookieName(testPort), Value: cookie})
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	const origin = "http://127.0.0.1:4455"
+	cases := []struct {
+		name                         string
+		method, target, host, origin string
+		cookie                       string
+		want                         int
+	}{
+		{"wrong cookie", "GET", "/api/state", goodHost, "", "wrong", 401},
+		{"wrong cookie, wrong token on /", "GET", "/?t=wrong", goodHost, "", "wrong", 401},
+		{"wrong cookie, right token on / logs in", "GET", "/?t=" + testToken, goodHost, "", "wrong", 303},
+		{"token on a static file", "GET", "/js/main.js?t=" + testToken, goodHost, "", "", 401},
+		{"token on a POST to /", "POST", "/?t=" + testToken, goodHost, origin, "", 401},
+		{"POST without Origin", "POST", "/api/op", goodHost, "", testToken, 403},
+		{"Host without port", "GET", "/api/state", "127.0.0.1", "", testToken, 403},
+		{"Host on another port", "GET", "/api/state", "127.0.0.1:4456", "", testToken, 403},
+		{"Origin on another port", "POST", "/api/op", goodHost, "http://127.0.0.1:4456", testToken, 403},
+		{"HEAD without Origin", "HEAD", "/api/state", goodHost, "", testToken, 200},
+	}
+	for _, c := range cases {
+		if got := req(c.method, c.target, c.host, c.origin, c.cookie); got != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, got, c.want)
+		}
+	}
+}
