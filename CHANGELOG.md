@@ -13,13 +13,15 @@
   still never writes a vendor file or handles a refresh token. A failed
   renewal counts as an attempt, retried at most once per
   `min_call_interval_minutes`, and shows the old reading with `renewal failed:
-  <reason>`. If the refresh token itself has expired, log in again.
+  <reason>`; anything token-like in the reason reads `[redacted]`. If the
+  refresh token itself has expired, log in again.
 - The page's Refresh button works for an expired account that can be renewed.
 - Load balancing groups: a profile position can hold two or more choices
   (`"load_balance": "random"`), and `pick` takes a random usable member, moving
   on only when none is usable. `pick` JSON gains `load_balance`; `doctor`
   extends never-picked to groups and warns on identical members. The UI
-  creates, edits and dissolves groups (⇉ Load balance…).
+  creates, edits and dissolves groups (⇉ Load balance…, shown while a
+  profile has two or more choices outside groups).
 
 ### Changed
 

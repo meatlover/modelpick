@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -213,7 +214,7 @@ func (p parser) decodeItems(items []json.RawMessage, prefix string) ([]DocChoice
 			}
 			choices = append(choices, c)
 		default:
-			return nil, p.fail(at, "needs account (a choice) or load_balance (a group)")
+			return nil, p.neitherItem(item, at)
 		}
 	}
 	return choices, nil
@@ -230,6 +231,21 @@ func (p parser) itemKeys(raw json.RawMessage, prefix string) (account, group boo
 	_, lb := keys["load_balance"]
 	_, cs := keys["choices"]
 	return account, lb || cs, nil
+}
+
+// neitherItem is the error for an item with no account and no group key.
+// A key that neither a choice nor a group has is most likely a typo of one
+// of them, so it is named, as it was before groups existed.
+func (p parser) neitherItem(raw json.RawMessage, prefix string) error {
+	var either struct {
+		rawChoice
+		rawGroup
+	}
+	var ce *ConfigError
+	if err := p.strict(raw, &either, prefix); errors.As(err, &ce) && ce.Msg == "unknown key" {
+		return err
+	}
+	return p.fail(prefix, "needs account (a choice) or load_balance (a group)")
 }
 
 type rawGroup struct {

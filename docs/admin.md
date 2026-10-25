@@ -145,7 +145,8 @@ Profiles tab can group them (the file form is in the
 - **⇉ Load balance…** above the choice list puts a checkbox on every choice
   not already in a group. Tick two or more and press **Load balance N
   models** (Cancel or Esc backs out). The group appears at the first ticked
-  choice's place and the others join it in their order.
+  choice's place and the others join it in their order. The button is there
+  only while two or more choices are outside groups.
 - A group is a frame around its members, numbered `2a`, `2b`, with the header
   `algorithm: random` and **Stop load balancing**, which turns the members
   back into plain choices in place. **+ Add Model** at the bottom of the frame
