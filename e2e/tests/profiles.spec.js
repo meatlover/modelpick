@@ -296,9 +296,9 @@ test('trash on a box writes "default"', async ({ page }) => {
 });
 
 // An untouched default box has nothing for trash to do, so its editor shows
-// none, and its line says (default). No caps, at the right of the boxes,
+// none, and its line says (default). Remove all caps, at the right of the boxes,
 // makes the choice uncapped.
-test("an untouched default box has no trash; No caps uncaps", async ({ page }) => {
+test("an untouched default box has no trash; Remove all caps uncaps", async ({ page }) => {
   const c4 = card(page, 4);
   await c4.getByRole("button", { name: "Add caps" }).click();
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
@@ -307,10 +307,10 @@ test("an untouched default box has no trash; No caps uncaps", async ({ page }) =
   await expect(c4.locator(".cap-edit-line")).toContainText("(default)");
   await expect(c4.locator(".cap-trash")).toBeHidden();
   await capBox(c4).press("Escape");
-  await c4.getByRole("button", { name: "No caps" }).click();
+  await c4.getByRole("button", { name: "Remove all caps" }).click();
   await expectConfig(server.configPath, (c) => coder(c)[3].cap ?? null, null, "uncapped");
   await expect(c4.getByText("No cap", { exact: true })).toBeVisible();
-  await expect(c4.getByRole("button", { name: "No caps" })).toHaveCount(0);
+  await expect(c4.getByRole("button", { name: "Remove all caps" })).toHaveCount(0);
 });
 
 // Any change to a default box makes it a customized cap, even when the
@@ -1056,7 +1056,7 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   const mod = await modKey(page);
   await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
-  await card(page, "2a").getByRole("button", { name: "No caps" }).click();
+  await card(page, "2a").getByRole("button", { name: "Remove all caps" }).click();
   await expectConfig(server.configPath, (c) => "cap" in coder(c)[1].choices[0], false, "2a uncapped");
   await attach(page, "2a", "Skip", "night");
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].skip_during, ["night"], "2a skips night");
@@ -1087,7 +1087,7 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
 // A member's op sent before the redraw of a sibling's cap or schedule edit
 // carries the group as that edit left it.
 for (const [what, edit, done] of [
-  ["cap", (page) => card(page, "2a").getByRole("button", { name: "No caps" }).click(),
+  ["cap", (page) => card(page, "2a").getByRole("button", { name: "Remove all caps" }).click(),
     (c) => !("cap" in coder(c)[1].choices[0])],
   ["schedule", (page) => attach(page, "2a", "Skip", "night"),
     (c) => JSON.stringify(coder(c)[1].choices[0].skip_during) === '["night"]'],

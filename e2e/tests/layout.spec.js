@@ -60,7 +60,7 @@ test("a card is two rows: dropdowns, then caps and schedules on one line", async
   const c2 = card(page, 2);
   const box = await rect(c2.getByRole("textbox", { name: "5h cap" }));
   const add = await rect(c2.getByRole("button", { name: "+ schedule" }));
-  const nocaps = await rect(c2.getByRole("button", { name: "No caps" }));
+  const nocaps = await rect(c2.getByRole("button", { name: "Remove all caps" }));
   expect(box.height).toBeLessThanOrEqual(32); // the box's value line, inside a 32 px box
   expect(Math.abs(mid(add) - mid(nocaps))).toBeLessThanOrEqual(1);
   const remove = await rect(c2.getByRole("button", { name: "Remove choice 2" }));
@@ -153,7 +153,7 @@ test("member cards keep the single-card layout rules", async ({ page }) => {
   const remove = await rect(m.getByRole("button", { name: "Remove choice 2b" }));
   expect(Math.abs(mid(remove) - mid(await rect(m.getByLabel("Account"))))).toBeLessThanOrEqual(1);
   const add = await rect(m.getByRole("button", { name: "+ schedule" }));
-  const nocaps = await rect(m.getByRole("button", { name: "No caps" }));
+  const nocaps = await rect(m.getByRole("button", { name: "Remove all caps" }));
   expect(Math.abs(mid(add) - mid(nocaps))).toBeLessThanOrEqual(1);
   expect(Math.abs(add.right - remove.right), "+ schedule right-aligned with Remove").toBeLessThanOrEqual(1);
   expect((await rect(m)).height).toBeLessThanOrEqual(110);
@@ -165,4 +165,44 @@ test("member cards keep the single-card layout rules", async ({ page }) => {
   const frame = await rect(card(page, 2));
   expect(frame.left).toBeLessThan(r.left);
   expect(frame.right).toBeGreaterThan(r.right);
+});
+
+// Remove, Remove all caps, + schedule and + caps show only while the
+// pointer is over their card, or focus is inside it (owner, 2026-10-27).
+const opacity = (loc) => () => loc.evaluate((el) => getComputedStyle(el).opacity);
+
+test("a card's Remove, Remove all caps, + schedule and + caps show only on hover or focus", async ({ page }) => {
+  await profiles(page);
+  const c2 = card(page, 2);
+  const c4 = card(page, 4);
+  const onC2 = [
+    c2.getByRole("button", { name: "Remove choice 2" }),
+    c2.getByRole("button", { name: "Remove all caps" }),
+    c2.getByRole("button", { name: "+ schedule" }),
+  ];
+  const addCaps = c4.getByRole("button", { name: "Add caps" });
+  await page.mouse.move(0, 0);
+  for (const b of [...onC2, addCaps]) await expect.poll(opacity(b)).toBe("0");
+  await c2.hover();
+  for (const b of onC2) await expect.poll(opacity(b)).toBe("1");
+  await expect.poll(opacity(addCaps), "another card's + caps stays hidden").toBe("0");
+  await page.mouse.move(0, 0);
+  await c4.focus();
+  await expect.poll(opacity(addCaps), "focus inside the card shows it").toBe("1");
+});
+
+// Every Remove is a danger ghost: red frame and red text, an x before the
+// word. Remove all caps is a plain text link, nothing like a cap box.
+test("Remove is a red ghost button; Remove all caps a text link", async ({ page }) => {
+  await profiles(page);
+  const c2 = card(page, 2);
+  const look = (loc) => loc.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { color: s.color, border: s.borderTopColor, width: s.borderTopWidth, line: s.textDecorationLine,
+      icon: Boolean(el.querySelector("svg")) };
+  });
+  const remove = await look(c2.getByRole("button", { name: "Remove choice 2" }));
+  expect(remove).toMatchObject({ color: "rgb(110, 20, 20)", border: "rgb(155, 44, 44)", icon: true });
+  const all = await look(c2.getByRole("button", { name: "Remove all caps" }));
+  expect(all).toMatchObject({ width: "0px", line: "underline", icon: false });
 });

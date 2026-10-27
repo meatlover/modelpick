@@ -3,7 +3,7 @@
 // unknown), under one row holding the Global default cap and the cap
 // Example. Every edit is one op; a refusal re-renders from the store, which
 // reverts the control.
-import { h, clear, trashIcon } from "./dom.js";
+import { h, clear, trashIcon, removeIcon } from "./dom.js";
 import { store, sendOp, onlyFieldEdits } from "./api.js";
 import { confirmDialog } from "./notice.js";
 import { currentTab } from "./header.js";
@@ -375,7 +375,7 @@ function cols() {
   return h("div", { class: "p-cols", "aria-hidden": "true" },
     h("span", { class: "p-pos" }),
     h("div", { class: "p-cols-names" }, h("span", {}, "Account"), h("span", {}, "Model"), h("span", {}, "Thinking")),
-    h("span", { class: "btn btn-quiet p-cols-side" }, "Remove"));
+    h("span", { class: "btn btn-remove p-cols-side" }, removeIcon(), "Remove"));
 }
 
 function selects(st, ctx) {
@@ -469,11 +469,11 @@ function card(v, i, member) {
   h("div", { class: "p-card-foot", inert: Boolean(v.lb) },
     mount("p-caps", renderCaps, ctx), mount("p-chips", renderChips, ctx)),
   h("div", { class: "p-card-side", inert: Boolean(v.lb) },
-    h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove choice ${label}`,
+    h("button", { type: "button", class: "btn btn-remove", "aria-label": `Remove choice ${label}`,
       "data-key": `c${i}-remove`,
       onClick: () => sendOp("choice.remove",
         () => ({ profile: ctx.profile, index: i, expect: expectOf(ctx), member_of: memberOf(v, i) })) },
-    "Remove")));
+    removeIcon(), "Remove")));
   if (!v.lb) dragHandle(el, pos.firstChild);
   return el;
 }

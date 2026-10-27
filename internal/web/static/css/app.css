@@ -401,6 +401,18 @@ h1 {
   color: var(--danger-text);
 }
 
+/* Every Remove (a choice, an account): red frame, red text, an x before
+   the word (owner, 2026-10-27, option C of the mock). */
+.btn-remove {
+  border-color: var(--danger-edge);
+  background: transparent;
+  color: var(--danger-text);
+}
+
+.btn-remove svg {
+  flex: none;
+}
+
 .btn-trash {
   width: 36px;
   padding: 0;
@@ -432,6 +444,10 @@ h1 {
 .btn-danger:not(:disabled):hover {
   border-color: var(--danger-edge);
   background: var(--danger-edge);
+}
+
+.btn-remove:not(:disabled):hover {
+  background: var(--danger-bg);
 }
 
 /* ---------- inputs ---------- */
@@ -1667,11 +1683,37 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border-radius: 8px;
 }
 
-/* caps.js's "No caps", after a card's boxes: a quiet button like Remove,
-   a 32 px rectangle like the boxes beside it. */
+/* caps.js's "Remove all caps", after a card's boxes: a text link with no
+   frame, so it never reads as one more box (owner, 2026-10-27, option B of
+   the mock). 32 px tall, level with the boxes. */
 .cap-nocaps {
   min-height: 32px;
-  border-radius: 8px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: 400 13px var(--font);
+  text-decoration: underline;
+  text-decoration-color: var(--dashed);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cap-nocaps:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+/* A card's Remove, Remove all caps, + schedule and + caps, and an
+   account's Remove, show only while the pointer is over their card or row,
+   or focus is inside it (owner, 2026-10-27). Hidden by opacity, so they
+   keep their place and stay reachable by Tab; a pointer that cannot hover
+   (touch) always sees them. An open "+ schedule" stays. */
+@media (hover: hover) {
+  .p-card:not(:hover, :focus-within) :is(.btn-remove, .cap-nocaps, .cap-addcaps, .sched-add:not([aria-expanded="true"])),
+  .a-row:not(:hover, :focus-within) .btn-remove {
+    opacity: 0;
+  }
 }
 
 /* "(default)" after "Cap at 95%" on a box that uses the default cap. */
