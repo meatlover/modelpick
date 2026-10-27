@@ -105,17 +105,21 @@ test("a profile left with no choice is named in the dialog and removed too", asy
   await expectConfig(server.configPath, (c) => Object.keys(c.accounts).includes("go-2"), false, "go-2 is gone");
 });
 
-// An account's Remove is the danger ghost and shows only while the pointer
-// is over its row, or focus is inside it (owner, 2026-10-27).
-test("an account's Remove shows on hover or focus, red", async ({ page }) => {
+// An account's Remove is the danger ghost. It rests half transparent and
+// grey, and takes full opacity and its red while the pointer is over its
+// row, or focus is inside it (owner, 2026-10-27).
+test("an account's Remove rests dim and grey, red on hover or focus", async ({ page }) => {
   const btn = page.getByRole("button", { name: "Remove account go-2" });
-  const op = () => btn.evaluate((el) => getComputedStyle(el).opacity);
+  const look = () => btn.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return `${s.opacity} ${s.filter}`;
+  });
   await page.mouse.move(0, 0);
-  await expect.poll(op).toBe("0");
+  await expect.poll(look).toBe("0.5 grayscale(1)");
   await rows(page).filter({ hasText: "go-2" }).hover();
-  await expect.poll(op).toBe("1");
+  await expect.poll(look).toBe("1 none");
   await page.mouse.move(0, 0);
   await btn.focus();
-  await expect.poll(op).toBe("1");
+  await expect.poll(look).toBe("1 none");
   expect(await btn.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(110, 20, 20)");
 });

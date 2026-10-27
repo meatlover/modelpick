@@ -167,11 +167,17 @@ test("member cards keep the single-card layout rules", async ({ page }) => {
   expect(frame.right).toBeGreaterThan(r.right);
 });
 
-// Remove, Remove all caps, + schedule and + caps show only while the
-// pointer is over their card, or focus is inside it (owner, 2026-10-27).
-const opacity = (loc) => () => loc.evaluate((el) => getComputedStyle(el).opacity);
+// Remove, Remove all caps, + schedule and + caps rest half transparent and
+// grey; they take full opacity and their colour while the pointer is over
+// their card, or focus is inside it (owner, 2026-10-27).
+const look = (loc) => () => loc.evaluate((el) => {
+  const s = getComputedStyle(el);
+  return `${s.opacity} ${s.filter}`;
+});
+const REST = "0.5 grayscale(1)";
+const LIVE = "1 none";
 
-test("a card's Remove, Remove all caps, + schedule and + caps show only on hover or focus", async ({ page }) => {
+test("a card's Remove, Remove all caps, + schedule and + caps rest dim and grey, full on hover or focus", async ({ page }) => {
   await profiles(page);
   const c2 = card(page, 2);
   const c4 = card(page, 4);
@@ -182,13 +188,13 @@ test("a card's Remove, Remove all caps, + schedule and + caps show only on hover
   ];
   const addCaps = c4.getByRole("button", { name: "Add caps" });
   await page.mouse.move(0, 0);
-  for (const b of [...onC2, addCaps]) await expect.poll(opacity(b)).toBe("0");
+  for (const b of [...onC2, addCaps]) await expect.poll(look(b)).toBe(REST);
   await c2.hover();
-  for (const b of onC2) await expect.poll(opacity(b)).toBe("1");
-  await expect.poll(opacity(addCaps), "another card's + caps stays hidden").toBe("0");
+  for (const b of onC2) await expect.poll(look(b)).toBe(LIVE);
+  await expect.poll(look(addCaps), "another card's + caps stays at rest").toBe(REST);
   await page.mouse.move(0, 0);
   await c4.focus();
-  await expect.poll(opacity(addCaps), "focus inside the card shows it").toBe("1");
+  await expect.poll(look(addCaps), "focus inside the card shows it").toBe(LIVE);
 });
 
 // Every Remove is a danger ghost: red frame and red text, an x before the
