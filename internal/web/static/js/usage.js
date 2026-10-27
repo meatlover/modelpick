@@ -48,11 +48,32 @@ function errorAccounts() {
   return accountErrorSet(store.doctor ? store.doctor.findings : []);
 }
 
-function windowRow(w) {
+// A scoped window can exhaust one model without exhausting the account.
+// Only general windows select the account's highlighted reset time.
+function fullGeneral(w) {
+  return !w.scope && w.used_pct >= 100;
+}
+
+function nearestFullReset(windows) {
+  let nearest = -1;
+  let time = Infinity;
+  windows.forEach((w, i) => {
+    if (!fullGeneral(w)) return;
+    const at = Date.parse(w.resets_at);
+    if (Number.isFinite(at) && at < time) {
+      nearest = i;
+      time = at;
+    }
+  });
+  return nearest;
+}
+
+function windowRow(w, limited, highlightReset) {
   const used = Math.round(w.used_pct);
   const fill = h("div", { class: "bar-fill" });
   fill.style.width = `${Math.min(100, Math.max(0, used)) * BAR_PX / 100}px`;
-  return h("div", { class: "u-win" },
+  return h("div", { class: ["u-win", limited && (fullGeneral(w) ? "is-full" : "is-limited"),
+    highlightReset && "is-next-reset"] },
     h("span", { class: "mono u-label" }, w.label),
     h("strong", { class: "u-pct" }, `${used}%`),
     h("div", { class: "bar", "aria-hidden": "true" }, fill),
@@ -115,11 +136,15 @@ function refreshButton(row) {
 }
 
 function accountRow(row, red) {
-  const warn = row.state !== "ok";
+  const windows = row.windows || [];
+  const limited = windows.some(fullGeneral);
+  const nextReset = nearestFullReset(windows);
+  const state = row.state === "ok" && limited ? "Limit reached" : stateText(row.state);
+  const warn = state !== "ok";
   return h("div", { class: ["u-grid", "u-row", red.has(row.account) && "is-error"] },
     h("span", { class: "u-name" }, row.account),
-    h("div", {}, h("span", { class: ["chip", warn ? "chip-warn" : "chip-ok"] }, stateText(row.state))),
-    h("div", { class: "u-wins" }, (row.windows || []).map(windowRow)),
+    h("div", {}, h("span", { class: ["chip", warn ? "chip-warn" : "chip-ok"] }, state)),
+    h("div", { class: "u-wins" }, windows.map((w, i) => windowRow(w, limited, i === nextReset))),
     ageCell(row),
     h("div", { class: "u-act" }, refreshButton(row)));
 }

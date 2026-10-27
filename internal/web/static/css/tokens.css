@@ -37,6 +37,8 @@
      usage blue (--fill); owner ruling 2026-10-23, no mockup. */
   --time: #C99A06;
   --time-soft: #F5E7B0;
+  /* Other windows while a general limit is full: the limit orange, heavily darkened. */
+  --usage-other: #612B08;
 
   --chip-bg: #ECEBE6;
   --chip-text: #3A3935;
@@ -100,6 +102,7 @@
     --cell-hover: #3F3F3A;
     --time: #E0B53A;
     --time-soft: #4A3F17;
+    --usage-other: #884D26;
 
     --chip-bg: #33332F;
     --chip-text: #D2D1CA;

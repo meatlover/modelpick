@@ -653,6 +653,7 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 .u-reset {
   color: var(--text-3);
+  justify-self: end;
   text-align: right;
   white-space: nowrap;
 }
@@ -672,6 +673,19 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   bottom: 0;
   border-radius: 5px;
   background: var(--fill);
+}
+
+.u-win.is-full .bar-fill {
+  background: var(--paint);
+}
+
+.u-win.is-limited .bar-fill {
+  background: var(--usage-other);
+}
+
+.u-win.is-next-reset .u-left,
+.u-win.is-next-reset .u-reset {
+  color: var(--paint);
 }
 
 .u-age {
