@@ -104,3 +104,18 @@ test("a profile left with no choice is named in the dialog and removed too", asy
     "tester lost only its second choice");
   await expectConfig(server.configPath, (c) => Object.keys(c.accounts).includes("go-2"), false, "go-2 is gone");
 });
+
+// An account's Remove is the danger ghost and shows only while the pointer
+// is over its row, or focus is inside it (owner, 2026-10-27).
+test("an account's Remove shows on hover or focus, red", async ({ page }) => {
+  const btn = page.getByRole("button", { name: "Remove account go-2" });
+  const op = () => btn.evaluate((el) => getComputedStyle(el).opacity);
+  await page.mouse.move(0, 0);
+  await expect.poll(op).toBe("0");
+  await rows(page).filter({ hasText: "go-2" }).hover();
+  await expect.poll(op).toBe("1");
+  await page.mouse.move(0, 0);
+  await btn.focus();
+  await expect.poll(op).toBe("1");
+  expect(await btn.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(110, 20, 20)");
+});

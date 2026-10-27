@@ -55,3 +55,9 @@ export function trashIcon() {
   return svg(16, "0 0 16 16", { "stroke-width": "1.5", "stroke-linecap": "round" },
     ["path", { d: "M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" }]);
 }
+
+// removeIcon is the x before the word on every Remove button.
+export function removeIcon() {
+  return svg(14, "0 0 16 16", { "stroke-width": "1.6", "stroke-linecap": "round" },
+    ["path", { d: "M4 4l8 8M12 4l-8 8" }]);
+}

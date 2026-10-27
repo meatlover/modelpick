@@ -1,7 +1,7 @@
 // Accounts tab: the Add account form above the account list. account.add and
 // account.remove are single ops; a refusal toasts (api.js) and leaves the
 // typed values and the list as they were.
-import { h, clear } from "./dom.js";
+import { h, clear, removeIcon } from "./dom.js";
 import { store, sendOp } from "./api.js";
 import { currentTab } from "./header.js";
 import { accountErrorSet } from "./subjects.js";
@@ -180,8 +180,8 @@ function row(accounts, i, red) {
       h("span", { class: "mono a-loc" }, a.location),
       h("span", { class: "a-src" }, a.source)),
     h("div", { class: "a-act" },
-      h("button", { type: "button", class: "btn btn-quiet", "aria-label": `Remove account ${a.name}`,
-        "data-key": `rm-${a.name}`, onClick: () => remove(accounts, i) }, "Remove")));
+      h("button", { type: "button", class: "btn btn-remove", "aria-label": `Remove account ${a.name}`,
+        "data-key": `rm-${a.name}`, onClick: () => remove(accounts, i) }, removeIcon(), "Remove")));
 }
 
 function list(accounts, red) {

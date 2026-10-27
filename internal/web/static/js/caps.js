@@ -128,7 +128,7 @@ export function writeCap(cap, pos, value) {
 // becomes the default), "discard" (a default box holding a value typed but
 // not yet saved: trash puts the default back) or null (nothing to do: the
 // editor shows no trash). drafted says the box holds such a value (typed,
-// or sent and not yet answered). No caps, not trash, uncaps.
+// or sent and not yet answered). Remove all caps, not trash, uncaps.
 export function trashAction(cap, pos, drafted = false) {
   if (isSet(cap[pos])) return "default";
   return drafted ? "discard" : null;
@@ -593,14 +593,14 @@ function addCaps(ctx) {
 // noCaps makes the choice uncapped (cap: null), whatever its boxes hold.
 function noCaps(ctx) {
   const key = cardKey(ctx);
-  return h("button", { type: "button", class: "btn btn-quiet cap-nocaps", "data-key": `c${ctx.index}-nocaps`,
+  return h("button", { type: "button", class: "cap-nocaps", "data-key": `c${ctx.index}-nocaps`,
     onClick: () => enqueue(key, async () => {
       const now = liveCtx(key);
       if (!now) return;
       edit = null;
       await setCap(now, null);
       focusCard(mounts.get(key).container);
-    }) }, "No caps");
+    }) }, "Remove all caps");
 }
 
 function fill(container, ctx) {
