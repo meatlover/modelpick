@@ -206,3 +206,45 @@ test("Remove is a red ghost button; Remove all caps a text link", async ({ page 
   const all = await look(c2.getByRole("button", { name: "Remove all caps" }));
   expect(all).toMatchObject({ width: "0px", line: "underline", icon: false });
 });
+
+// The selected card's blue frame shows under the pointer, not after a
+// click; the keyboard still shows it on the card it reaches. Member cards
+// of a group do the same, and a group's frame is grey, not blue (owner,
+// 2026-10-27).
+const frameOf = (loc) => () => loc.evaluate((el) => {
+  const s = getComputedStyle(el);
+  return s.borderTopColor === "rgb(43, 95, 208)" && s.boxShadow.includes("rgb(201, 216, 246)");
+});
+
+test("a card's blue frame shows on hover and keyboard focus, not on a click", async ({ page }) => {
+  await profiles(page);
+  const c1 = card(page, 1);
+  await c1.click({ position: { x: 4, y: 4 } });
+  await expect(c1).toBeFocused();
+  await page.mouse.move(0, 0);
+  await expect.poll(frameOf(c1), "clicked, pointer away: no frame").toBe(false);
+  await c1.hover();
+  await expect.poll(frameOf(c1), "under the pointer").toBe(true);
+  await page.mouse.move(0, 0);
+  await c1.press("ArrowDown");
+  await expect(card(page, 2)).toBeFocused();
+  await expect.poll(frameOf(card(page, 2)), "reached by the keyboard").toBe(true);
+});
+
+test("a member card's frame shows on hover; the group's frame is grey", async ({ page }) => {
+  await login(page, server.url);
+  handEdit(server.configPath, loadBalanceGo);
+  await page.reload();
+  await page.getByRole("link", { name: "Profiles", exact: true }).click();
+  const m = card(page, "2b");
+  await m.click({ position: { x: 4, y: 4 } });
+  await page.mouse.move(0, 0);
+  await expect.poll(frameOf(m), "clicked, pointer away: no frame").toBe(false);
+  await m.hover();
+  await expect.poll(frameOf(m), "under the pointer").toBe(true);
+  const group = await card(page, 2).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { bg: s.backgroundColor, border: s.borderTopColor };
+  });
+  expect(group).toEqual({ bg: "rgb(241, 240, 235)", border: "rgb(222, 221, 215)" });
+});

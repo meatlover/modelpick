@@ -1026,9 +1026,15 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   outline-offset: -2px;
 }
 
-/* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. */
+/* The selected card: keyboard focus, ↑/↓ and ⌘↑/⌘↓ act on it. Its blue
+   frame shows under the pointer and on keyboard focus, not after a click
+   (owner, 2026-10-27). */
 .p-card:focus {
   outline: none;
+}
+
+.p-card:hover,
+.p-card:focus-visible {
   border-color: var(--accent-mid);
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
@@ -1045,7 +1051,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--danger-text);
 }
 
-.p-card.is-error:focus {
+.p-card.is-error:hover,
+.p-card.is-error:focus-visible {
   border-color: var(--danger-edge);
 }
 
@@ -1204,13 +1211,14 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
 
 /* A frame around the member cards. It reaches past the plain cards by its
    border and padding (1 + 10 px) on each side, so a member keeps a plain
-   card's edges and the column names stay over its dropdowns. */
+   card's edges and the column names stay over its dropdowns. Grey, not
+   blue: blue is the selected card's frame (owner, 2026-10-27). */
 .p-group {
   margin: 0 -11px;
   padding: 6px 10px 10px;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: var(--accent-soft);
+  background: var(--sunken);
   display: flex;
   flex-direction: column;
   gap: 8px;
