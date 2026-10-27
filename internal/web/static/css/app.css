@@ -1726,14 +1726,16 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   text-decoration-color: currentColor;
 }
 
-/* A card's Remove, Remove all caps, + schedule and + caps, and an
-   account's Remove, rest half transparent and grey (no red); they take full
-   opacity and their colour while the pointer is over their card or row, or
-   focus is inside it (owner, 2026-10-27). A pointer that cannot hover
-   (touch) always sees them in full. An open "+ schedule" stays full. */
+/* A card's Remove, Remove all caps, + schedule and + caps, an account's
+   Remove, and a Usage row's Refresh rest half transparent and grey (no
+   red); they take full opacity and their colour while the pointer is over
+   their card or row, or focus is inside it (owner, 2026-10-27). A pointer
+   that cannot hover (touch) always sees them in full. An open
+   "+ schedule" and a Refresh in progress stay full. */
 @media (hover: hover) {
   .p-card:not(:hover, :focus-within) :is(.btn-remove, .cap-nocaps, .cap-addcaps, .sched-add:not([aria-expanded="true"])),
-  .a-row:not(:hover, :focus-within) .btn-remove {
+  .a-row:not(:hover, :focus-within) .btn-remove,
+  .u-row:not(:hover, :focus-within) .u-act .btn:not(.is-busy) {
     opacity: 0.5;
     filter: grayscale(1);
   }

@@ -49,3 +49,21 @@ test("Refresh all re-reads the doctor once, after the batch", async ({ page }) =
   await expect(all).toHaveText("Refresh all");
   expect(doctorReads, "GET /api/doctor during Refresh all").toBe(1);
 });
+
+// An account's Refresh rests half transparent and grey, like a card's
+// Remove, and takes full opacity while the pointer is over its row, or
+// focus is inside it (owner, 2026-10-27).
+test("a row's Refresh rests dim and grey, full on hover or focus", async ({ page }) => {
+  const btn = row(page, "codex-main").getByRole("button", { name: "Refresh", exact: true });
+  const look = () => btn.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return `${s.opacity} ${s.filter}`;
+  });
+  await page.mouse.move(0, 0);
+  await expect.poll(look).toBe("0.5 grayscale(1)");
+  await row(page, "codex-main").hover();
+  await expect.poll(look).toBe("1 none");
+  await page.mouse.move(0, 0);
+  await btn.focus();
+  await expect.poll(look).toBe("1 none");
+});
