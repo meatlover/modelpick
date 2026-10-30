@@ -137,7 +137,7 @@ func (e *Editor) Apply(base, op string, args json.RawMessage) (Snapshot, []Findi
 			// The config edit is done; a leftover file is only clutter.
 			store := &usage.Store{Dir: e.cacheDir}
 			if err := store.Remove(account); err != nil {
-				panicLog.Printf("%s: removing its cached state: %v", account, err)
+				errLog.Printf("%s: removing its cached state: %v", account, err)
 			}
 		}
 		if op == "account.add" && e.OnAccountAdded != nil {

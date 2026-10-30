@@ -27,7 +27,7 @@ func SetTestOp(t *testing.T, name string, fn func(doc *core.Doc)) {
 // CapturePanicLog sends the adapter-panic log to w until the test ends.
 func CapturePanicLog(t *testing.T, w io.Writer) {
 	t.Helper()
-	old := panicLog
-	panicLog = log.New(w, "", 0)
-	t.Cleanup(func() { panicLog = old })
+	old := errLog
+	errLog = log.New(w, "", 0)
+	t.Cleanup(func() { errLog = old })
 }
