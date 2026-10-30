@@ -4,6 +4,13 @@
 
 ### New
 
+- Pushing a `vX.Y.Z` tag publishes a GitHub Release: archives for linux and
+  darwin on amd64 and arm64, `SHA256SUMS`, and that version's changelog
+  section as the notes. The job runs `scripts/check.sh` first, refuses a tag
+  whose `internal/cli/version.go` or changelog section disagrees, and runs the
+  built binary to confirm `modelpick version` prints the tag. See
+  `docs/release.md`.
+- The project is MIT licensed (Meatlover LLC).
 - `doctor` (and `doctor all` and the UI's doctor status) warns when a Claude
   login's refresh token expires within `login_expiry_warning_days` (default 7)
   and reports an error once it has expired, naming the UTC time. Renewal never
