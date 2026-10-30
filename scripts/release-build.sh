@@ -77,8 +77,9 @@ for target in $targets; do
   CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w" -o "$pkg/modelpick" ./cmd/modelpick \
     || fail build "go build failed for $target"
   cp README.md CHANGELOG.md LICENSE "$pkg/"
+  cp examples/config.json "$pkg/config.example.json"
   name=modelpick_${version}_${os}_${arch}.tar.gz
-  COPYFILE_DISABLE=1 tar -czf "$stage/$name" -C "$pkg" modelpick README.md CHANGELOG.md LICENSE \
+  COPYFILE_DISABLE=1 tar -czf "$stage/$name" -C "$pkg" modelpick README.md CHANGELOG.md LICENSE config.example.json \
     || fail build "tar failed for $target"
   archives="$archives $name"
 done

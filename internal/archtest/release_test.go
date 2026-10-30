@@ -149,8 +149,20 @@ func TestReleaseBuild(t *testing.T) {
 	dist := filepath.Join(repo, "dist")
 	target := strings.ReplaceAll(hostTarget(t), "/", "_")
 	archive := filepath.Join(dist, "modelpick_0.0.1-test_"+target+".tar.gz")
-	if got := tarNames(t, archive); strings.Join(got, ",") != "CHANGELOG.md,LICENSE,README.md,modelpick" {
-		t.Errorf("archive holds %q, want exactly CHANGELOG.md, LICENSE, README.md, modelpick", got)
+	if got := tarNames(t, archive); strings.Join(got, ",") != "CHANGELOG.md,LICENSE,README.md,config.example.json,modelpick" {
+		t.Errorf("archive holds %q, want exactly CHANGELOG.md, LICENSE, README.md, config.example.json, modelpick", got)
+	}
+	// The example config ships byte for byte as config.example.json.
+	gotExample, err := exec.Command("tar", "-xOzf", archive, "config.example.json").Output()
+	if err != nil {
+		t.Fatalf("extract config.example.json: %v", err)
+	}
+	wantExample, err := os.ReadFile(filepath.Join(repo, "examples", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotExample) != string(wantExample) {
+		t.Errorf("config.example.json differs from examples/config.json")
 	}
 	sums, err := os.ReadFile(filepath.Join(dist, "SHA256SUMS"))
 	if err != nil {
