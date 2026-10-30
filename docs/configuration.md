@@ -8,10 +8,11 @@ modelpick reads one JSON file. Its location is, in order:
 
 The file never holds a secret; it only says where each tool already keeps its
 login. `modelpick doctor` validates the file and everything it depends on, and
-`modelpick config` prints the effective configuration (defaults applied, caps
-shown per window position). You can edit the file by hand or with
-`modelpick ui`, which writes it in a canonical layout (see the
-[admin guide](admin.md#the-ui-modelpick-ui)).
+`modelpick config` prints the effective configuration (defaults applied, paths
+absolute, caps as written). You can edit the file by hand or with
+`modelpick ui`, which writes it in a canonical layout (see
+[the UI](operations.md#the-ui-modelpick-ui)). This guide is a field reference;
+[how modelpick decides](concepts.md) explains what the fields do together.
 
 The running example below is `examples/config.json`; a test keeps the two
 identical. Model names and numbers are illustrative.
@@ -197,6 +198,8 @@ member, for example `profiles.reviewer[0].choices[1].cap`.
 
 Numbers count positions: in `reviewer` the group is 1 and the Claude choice
 is 2. Members are `1a`, `1b`, `1c`; that is how `doctor` and the UI name them.
+A pick of a member says so in its output:
+`"load_balance": {"algorithm": "random", "choice": 1, "member": "1b"}`.
 
 ### Thinking
 
@@ -257,46 +260,15 @@ Array length against the number of windows:
 - **`"cap": null`** is an error ("omit cap for no limit").
 - **`"cap": []`** is capped, with every window at `default_cap`.
 
-Every trim or fill `pick` applies is reported in its `warnings`, because caps
-shift by position if a plan starts reporting a different set of windows. A
-capped choice whose usage is unknown is skipped; unknown usage is never
-treated as 0%. A window whose reset time has passed counts as 0% until the
-next reading.
+Extra values that `pick` ignores, and windows of unknown length, are reported
+in its `warnings` (and by `doctor`), because caps shift by position if a plan
+starts reporting a different set of windows. Missing positions filled with
+`default_cap` are not reported. A capped choice whose usage is unknown is
+skipped; unknown usage is never treated as 0%. A window whose reset time has
+passed counts as 0% until the next reading.
 
-## What `pick` does with a choice
+## What `pick` does with them
 
-For each choice in order: skip if a `skip_during` schedule matches (`in
-schedule <name>`), or if it has `allow_during` and none of those matches
-(`outside schedule <name>`); skip if the account's credential is missing (a local check; an *expired* Claude token does
-not skip here); pick it if it has no `cap`; otherwise read the account's
-usage, skip if unknown, skip if any window is at or over its cap, else pick it.
-Accounts are only read when a choice reaches that step.
-
-At a group, `pick` first runs the schedule and credential checks on every
-member, in file order; a member that fails goes to `skipped` (a credential
-failure also to `errors`). The rest are shuffled and tried in that order with
-the cap and usage steps above, and the first usable one is picked, so only the
-accounts the walk reaches are read. If none is usable, every member is in
-`skipped` with its own reason and the walk goes on to the next position. A
-group's entries in `skipped` are listed in file order, whatever the shuffle. The
-checks before the shuffle keep the status stable: a broken credential gives
-`ok_with_errors` on every run, not only on the runs that happen to try that
-member first. A profile without groups picks exactly as before.
-
-## `pick` status and exit code
-
-The output is always JSON on stdout, with the same fields in the same order:
-`status, profile, vendor, account, model, thinking, account_ref, load_balance,
-reason, skipped, errors, warnings`. `load_balance` is `null` unless the pick
-came from a group, where it says how:
-`{"algorithm": "random", "choice": 2, "member": "2b"}` (the group's position,
-and the member's label).
-
-| `status` | Exit | Meaning |
-|---|---|---|
-| `ok` | 0 | A model was picked and nothing failed along the way. |
-| `ok_with_errors` | 2 | A model was picked, but something failed during this pick (a usage call returned 401/5xx/timeout, a credential could not be read, a response could not be parsed), so a choice was skipped for a reason other than its own usage or schedule. See `errors`. |
-| `failed` | 1 | No model: everything blocked with no usable uncapped choice, an unknown profile, a config error, or any other failure. See `reason`. |
-
-`warnings` never change the status: trimmed or filled caps, unrecognised
-windows, or a reading used past the floor.
+[How modelpick decides](concepts.md#how-pick-walks-a-profile) walks through a
+pick step by step, with a worked example. The output, its `status` values and
+exit codes are in the [reference](reference.md#pick-json).
