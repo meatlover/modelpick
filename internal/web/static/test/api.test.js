@@ -287,6 +287,79 @@ async function doctorAllDown() {
   return document.getElementById("notice-stopped") ? null : "no stopped banner";
 }
 
+// ---------- the settled signal on <body> ----------
+
+const body = () => document.body.dataset;
+const gen = () => Number(body().gen);
+
+async function settledAfterOpReload() {
+  // Each check notes its problem and goes on, so the op always ends and a
+  // failure here does not stall the queue for the cases after it.
+  const problems = [];
+  const want = (ok, msg) => ok || problems.push(msg);
+  const hold = gate();
+  server.op = () => hold.promise.then(() => res(200, { sha256: "s1", findings: [] }));
+  const before = gen();
+  const pending = sendOp("a", {});
+  want(body().settled === "false", `settled ${body().settled} with the op unanswered`);
+  const slow = gate();
+  server.stateDelays = [slow.promise]; // the op's reload, held
+  hold.open();
+  await until(() => server.stateCalls > 0, "the op's reload");
+  want(body().settled === "false", `settled ${body().settled} with the op's reload in flight`);
+  want(gen() === before, `gen ${gen()} before the reload, want ${before}`);
+  slow.open();
+  await pending;
+  want(body().settled === "true", `settled ${body().settled} after the reload`);
+  want(gen() === before + 1, `gen ${gen()} after the reload, want ${before + 1}`);
+  return problems.length ? problems.join(", ") : null;
+}
+
+async function genPerReload() {
+  const before = gen();
+  await reload();
+  if (body().settled !== "true" || gen() !== before + 1) return `after one: ${body().settled} gen ${gen()}`;
+  await reload();
+  return gen() === before + 2 ? null : `gen ${gen()} after two reloads, want ${before + 2}`;
+}
+
+async function settledAfterRefusal() {
+  // A refused op reloads nothing; the page is settled once it is answered.
+  server.op = () => res(422, { reason: "no" });
+  const before = gen();
+  const pending = sendOp("a", {}, { quiet: true });
+  if (body().settled !== "false") return `settled ${body().settled} with the op unanswered`;
+  await pending;
+  if (body().settled !== "true") return `settled ${body().settled} after the refusal`;
+  return gen() > before ? null : `gen ${gen()} did not pass ${before}`;
+}
+
+async function writesCounted() {
+  // Every write counts when sent: an op, a Refresh, a Diagnose.
+  const before = Number(body().writes);
+  const hold = gate();
+  server.op = () => hold.promise.then(() => res(200, { sha256: "s1", findings: [] }));
+  const op = sendOp("a", {});
+  const queued = sendOp("b", {});
+  const n = Number(body().writes) - before;
+  hold.open();
+  await Promise.all([op, queued, refresh("a"), doctorAll()]);
+  if (n !== 2) return `${n} writes counted at send, want 2`;
+  const all = Number(body().writes) - before;
+  return all === 4 ? null : `${all} writes, want 4`;
+}
+
+async function refreshUnsettles() {
+  const slow = gate();
+  server.stateDelays = [slow.promise];
+  const pending = refresh("a");
+  await until(() => server.stateCalls > 0, "the refresh's reload");
+  if (body().settled !== "false") return `settled ${body().settled} with the refresh's reload in flight`;
+  slow.open();
+  await pending;
+  return body().settled === "true" ? null : `settled ${body().settled} after the refresh`;
+}
+
 export const cases = [
   ["an older reload's result is dropped", olderReloadDropped],
   ["a superseded reload's failure shows no banner", olderFailureNoBanner],
@@ -305,6 +378,11 @@ export const cases = [
   ["a refused refresh re-reads the doctor", failedRefreshRereadsDoctor],
   ["a refresh with reload: false leaves the doctor to its caller", batchedRefreshLeavesDoctor],
   ["doctorAll with the server gone shows the stopped banner", doctorAllDown],
+  ["settled is false while an op or its reload is in flight, true once it rendered", settledAfterOpReload],
+  ["the generation goes up once per rendered reload", genPerReload],
+  ["a refused op settles without a reload", settledAfterRefusal],
+  ["ops, Refreshes and Diagnoses count as writes when sent", writesCounted],
+  ["a Refresh is unsettled until its reload rendered", refreshUnsettles],
 ];
 
 async function check([name, fn]) {
