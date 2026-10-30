@@ -66,10 +66,23 @@ one commit:
 3. Turn on private vulnerability reporting in the repository's security
    settings, which [SECURITY.md](../SECURITY.md) points to.
 4. Settle the open items of the pre-public audit:
-   - The design history in `docs/superpowers/` is not published (owner,
-     2026-10-30). It is still in the git history, so the public repository
-     must be made from a history without it; see the owner's decision on
-     how.
+   - The design history that used to live in `docs/superpowers/` is not
+     published (owner, 2026-10-30). It left the tree on 2026-10-30 and now
+     lives in the untracked `.superpowers/`, but every earlier commit still
+     holds it, so the history is rewritten at the flip (owner's decision):
+     1. Make a mirror backup first and check it opens:
+        `git clone --mirror git@github.com:meatlover/modelpick.git
+        ~/modelpick-before-public.git`.
+     2. Delete the throwaway `v0.4.0-rc.1` tag and release if they are
+        still there.
+     3. In a fresh clone: `git filter-repo --path docs/superpowers
+        --invert-paths`. It rewrites every commit and tag; check with
+        `git log --all -- docs/superpowers` (must print nothing) and
+        `go test ./...`.
+     4. Force-push every branch and tag (the owner confirms this step at
+        the time): `git push --force --mirror` to the same remote.
+     5. Re-clone every local checkout and worktree; old clones still hold
+        the history and must not be pushed again.
 5. Add a macOS CI job, which costs nothing for a public repository, and
    remove the matching item from the
    [architecture guide's known limitations](architecture.md#known-limitations).
