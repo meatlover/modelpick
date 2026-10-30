@@ -35,6 +35,12 @@
   doctor`." Other read errors keep their text.
 - Release archives hold `config.example.json` (a copy of
   `examples/config.json`) next to `README.md`.
+- The documentation is reorganised: `docs/install.md` is now
+  `docs/getting-started.md` and `docs/admin.md` is `docs/operations.md`; new
+  are `docs/concepts.md` (how a pick is decided, with a worked example),
+  `docs/reference.md` (every command, output field, exit code and environment
+  variable), `CONTRIBUTING.md` and `SECURITY.md`. Tests keep the docs in step
+  with the code.
 
 ## v0.3.0 — 2026-10-30
 

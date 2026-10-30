@@ -117,10 +117,12 @@ func findWindow(t *testing.T, ws []adapter.Window, length time.Duration, scopeNa
 }
 
 func TestKeychainServiceKnownPairs(t *testing.T) {
-	const home = "/Users/meatlover"
+	// The suffix is the first 8 hex digits of sha256 of the path, computed
+	// outside Go: printf %s /home/u/.claude-work | shasum -a 256.
+	const home = "/home/u"
 	cases := map[string]string{
-		"/Users/meatlover/.claude-rec": "Claude Code-credentials-6a4e8c1e",
-		"/Users/meatlover/.claude":     "Claude Code-credentials",
+		"/home/u/.claude-work": "Claude Code-credentials-9fa37e90",
+		"/home/u/.claude":      "Claude Code-credentials",
 	}
 	for dir, want := range cases {
 		if got := KeychainService(dir, home); got != want {
@@ -130,12 +132,12 @@ func TestKeychainServiceKnownPairs(t *testing.T) {
 }
 
 func TestKeychainServiceNormalisesPath(t *testing.T) {
-	const home = "/Users/meatlover"
+	const home = "/home/u"
 	cases := map[string]string{
-		"/Users/meatlover/.claude-rec/":     "Claude Code-credentials-6a4e8c1e",
-		"/Users/meatlover/x/../.claude-rec": "Claude Code-credentials-6a4e8c1e",
-		"/Users/meatlover/.claude/":         "Claude Code-credentials",
-		"/Users/meatlover/./.claude":        "Claude Code-credentials",
+		"/home/u/.claude-work/":     "Claude Code-credentials-9fa37e90",
+		"/home/u/x/../.claude-work": "Claude Code-credentials-9fa37e90",
+		"/home/u/.claude/":          "Claude Code-credentials",
+		"/home/u/./.claude":         "Claude Code-credentials",
 	}
 	for dir, want := range cases {
 		if got := KeychainService(dir, home); got != want {
@@ -143,7 +145,7 @@ func TestKeychainServiceNormalisesPath(t *testing.T) {
 		}
 	}
 	// A home with a trailing slash still recognises the default dir.
-	if got := KeychainService("/Users/meatlover/.claude", home+"/"); got != "Claude Code-credentials" {
+	if got := KeychainService("/home/u/.claude", home+"/"); got != "Claude Code-credentials" {
 		t.Errorf("home with trailing slash: got %q", got)
 	}
 }

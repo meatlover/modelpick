@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Opt-in local install after a merge or pull to main. Enable per clone:
 #   git config modelpick.autodeploy true
-# Runs scripts/deploy-local.sh, which only installs; see README Development.
+# Runs scripts/deploy-local.sh, which only installs; see CONTRIBUTING.md.
 # $1 is the rewriting command; only a rebase (git pull --rebase) deploys.
 [ "${1:-}" = rebase ] || exit 0
 [ "$(git symbolic-ref --short -q HEAD || true)" = main ] || exit 0
