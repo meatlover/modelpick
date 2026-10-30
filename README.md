@@ -181,6 +181,16 @@ an op, or an edit the page builds on a card drawn before an earlier op was
 answered, fails there. `E2E_OP_DELAY_MS=400 bash scripts/e2e.sh` runs that
 pass locally; `check.sh` does not.
 
+The page says when it is done: `<body>` carries `data-settled` ("true" once
+no op, Refresh or Diagnose and no reload is in flight), `data-gen` (how many
+times it became settled) and `data-writes` (how many of those it sent); see
+`internal/web/static/js/settle.js`. A test step that sends an op and is
+followed by another action goes through `act(page, () => …)` in
+`e2e/tests/helpers.js`, which waits for that signal. Every other action
+first checks the page's count of ops against what the test waited for and
+fails with "acted on an unsettled page" when it is behind, whatever the
+timing; `e2e/tests/guard.spec.js` shows that check failing.
+
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):
 `go test -tags live ./internal/live/ -v`.

@@ -1,7 +1,7 @@
 // The conflict strip and the read-only banner in a real browser.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, answer } = require("./helpers");
 const { readConfig, expectConfig, expectUnchanged, handEdit } = require("./config");
 
 let server;
@@ -25,7 +25,8 @@ test("hand edit while stale shows the conflict strip", async ({ page }) => {
   await expect(strip).toBeVisible();
   // Nothing is written until the user chooses.
   expect(readConfig(server.configPath).accounts["claude-spare"]).toBeDefined();
-  await strip.getByRole("button", { name: "Apply my change on top" }).click();
+  // The removal is in flight until the strip is answered.
+  await answer(page, () => strip.getByRole("button", { name: "Apply my change on top" }).click());
   await expect(strip).toHaveCount(0);
   await expectConfig(server.configPath, (c) => c.accounts["claude-spare"], undefined, "my removal is applied");
   await expectConfig(server.configPath, (c) => c.settings.default_cap, 80, "the hand edit is kept");
