@@ -184,9 +184,11 @@ Each line says what would remove it and why it is deferred.
   `TestImports`/`XTestImports` from `go list`; deferred because no test
   currently crosses a layer.
 - **The Claude Keychain item is read twice per account per pick**
-  (`Credential`, then `Usage`). Removable by passing the loaded credential
-  from `Credential` to `Usage`; deferred because it costs one local `security`
-  call and changes the adapter interface.
+  (`Credential`, then `Usage`), and up to three times per account for
+  `doctor`, whose `CheckCache` also reads `Credential` for the login expiry
+  once per cached Check. Removable by passing the loaded credential from
+  `Credential` to `Usage` and `Check`; deferred because it costs one local
+  `security` call and changes the adapter interface.
 - **State files are keyed by account name only**, so renaming an account
   resets its floor, and two names differing only in case collide on a
   case-insensitive filesystem. Removable by keying on a hash of the account's

@@ -21,7 +21,8 @@ identical. Model names and numbers are illustrative.
   "version": 1,
   "settings": {
     "min_call_interval_minutes": 15,
-    "default_cap": 95
+    "default_cap": 95,
+    "login_expiry_warning_days": 7
   },
   "accounts": {
     "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
@@ -79,12 +80,13 @@ Must be `1`.
 
 ## `settings`
 
-Both keys are optional; the defaults are built into the binary.
+Every key is optional; the defaults are built into the binary.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `min_call_interval_minutes` | `15` | The floor: at most one usage call per account in this many minutes. A younger reading is used as is. `pick --refresh` and `ls --refresh` skip the floor, but never an unexpired server `Retry-After`. Must not be negative. |
 | `default_cap` | `95` | Cap (percent) used for window positions a choice's `cap` array does not cover. 0-100. |
+| `login_expiry_warning_days` | `7` | `doctor` warns when a login's refresh token expires within this many days, and reports an error once it has expired (renewal then fails until you log in again). 0 turns the check off; Codex and OpenCode Go logins have no known expiry and are never reported. Must not be negative. |
 
 ## `accounts`
 

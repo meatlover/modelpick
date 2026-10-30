@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/core"
@@ -130,6 +131,7 @@ func accountFindings(f *findings, cfg *core.Config, d Deps, cache *CheckCache, a
 		}
 		r := cache.check(n, acct, a)
 		checkErr := checkFindings(f, n, r.findings)
+		loginExpiryFinding(f, n, acct.Vendor, r.loginExpires, d.Now(), cfg.Settings.LoginExpiryWarning)
 		checked[n] = len(r.findings) > 0
 		if r.modelsErr != nil {
 			// A Check error (tool or credential missing) is the cause of the
@@ -161,6 +163,37 @@ func checkFindings(f *findings, account string, fs []adapter.Finding) (hasErr bo
 		hasErr = hasErr || sev == sevError
 	}
 	return hasErr
+}
+
+// loginExpiryFinding reports an account whose login (the refresh token, which
+// renewals never extend) has expired or expires within window. A zero expiry
+// is unknown, not a finding; a zero window turns the check off. It is machine
+// state like an adapter Check finding, so the editor's gate ignores it. The
+// message holds the absolute UTC time, never a relative one, because the UI
+// compares findings by subject and message.
+func loginExpiryFinding(f *findings, account, vendor string, expires, now time.Time, window time.Duration) {
+	if window <= 0 || expires.IsZero() {
+		return
+	}
+	tool, ok := toolNames[vendor]
+	if !ok {
+		tool = vendor
+	}
+	at := expires.UTC().Format("2006-01-02 15:04Z")
+	var sev, msg string
+	switch {
+	case !now.Before(expires):
+		sev, msg = sevError, "login expired "+at+"; renewal fails until you log in again in "+tool+" with this account"
+	case expires.Sub(now) <= window:
+		sev, msg = sevWarning, "login expires "+at+"; log in again in "+tool+" with this account before then"
+	default:
+		return
+	}
+	f.add(sev, account, msg)
+	if f.fromCheck == nil {
+		f.fromCheck = map[findingKey]bool{}
+	}
+	f.fromCheck[findingKey{sev, account, msg}] = true
 }
 
 // groupCheckFindings replaces Check findings with the same severity and

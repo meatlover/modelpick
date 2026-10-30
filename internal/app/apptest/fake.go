@@ -28,23 +28,26 @@ var (
 // then. An account missing from Readings and Errs has unknown usage
 // (ErrShape).
 type Fake struct {
-	vendor     string
-	Readings   map[string]adapter.Reading
-	Errs       map[string]error
-	Calls      map[string]int // Usage calls per account
-	Expired    map[string]bool
-	CredCalls  map[string]int
-	ModelList  map[string][]adapter.Model   // Models per account; missing = error
-	Checks     map[string][]adapter.Finding // Check findings per account
-	CheckCalls map[string]int               // Check calls per account
-	ModelCalls map[string]int               // Models calls per account
-	ModelDelay time.Duration                // each Models call takes this long, or until its ctx ends
-	ModelPanic map[string]bool              // Models panics for these accounts
-	ModelDone  map[string]int               // Models calls that ran to the end (not cancelled)
-	ModelEnded map[string]int               // Models calls that returned, cancelled or not
-	UsageDelay time.Duration                // each Usage call takes this long, or until its ctx ends
-	UsageSlow  time.Duration                // a Usage call its ctx ended takes this long more to return
-	usageEnded int                          // Usage calls that returned, cancelled or not
+	vendor   string
+	Readings map[string]adapter.Reading
+	Errs     map[string]error
+	Calls    map[string]int // Usage calls per account
+	Expired  map[string]bool
+	// LoginExpires is the refresh token's expiry Credential reports per
+	// account; missing = unknown (zero).
+	LoginExpires map[string]time.Time
+	CredCalls    map[string]int
+	ModelList    map[string][]adapter.Model   // Models per account; missing = error
+	Checks       map[string][]adapter.Finding // Check findings per account
+	CheckCalls   map[string]int               // Check calls per account
+	ModelCalls   map[string]int               // Models calls per account
+	ModelDelay   time.Duration                // each Models call takes this long, or until its ctx ends
+	ModelPanic   map[string]bool              // Models panics for these accounts
+	ModelDone    map[string]int               // Models calls that ran to the end (not cancelled)
+	ModelEnded   map[string]int               // Models calls that returned, cancelled or not
+	UsageDelay   time.Duration                // each Usage call takes this long, or until its ctx ends
+	UsageSlow    time.Duration                // a Usage call its ctx ended takes this long more to return
+	usageEnded   int                          // Usage calls that returned, cancelled or not
 	// UsageTogether makes each Usage call wait until that many are in
 	// progress at once, or togetherWait passes; a call that gave up is
 	// counted in TogetherMissed. Calls made one after another never meet,
@@ -106,21 +109,22 @@ func (f *Fake) ModelCallCount(account string) int {
 
 func NewFake(vendor string) *Fake {
 	return &Fake{
-		vendor:     vendor,
-		Readings:   map[string]adapter.Reading{},
-		Errs:       map[string]error{},
-		Calls:      map[string]int{},
-		Expired:    map[string]bool{},
-		CredCalls:  map[string]int{},
-		ModelList:  map[string][]adapter.Model{},
-		Checks:     map[string][]adapter.Finding{},
-		CheckCalls: map[string]int{},
-		ModelCalls: map[string]int{},
-		ModelDone:  map[string]int{},
-		ModelEnded: map[string]int{},
-		Renewable:  map[string]bool{},
-		RenewCalls: map[string]int{},
-		RenewErr:   map[string]error{},
+		vendor:       vendor,
+		Readings:     map[string]adapter.Reading{},
+		Errs:         map[string]error{},
+		Calls:        map[string]int{},
+		Expired:      map[string]bool{},
+		LoginExpires: map[string]time.Time{},
+		CredCalls:    map[string]int{},
+		ModelList:    map[string][]adapter.Model{},
+		Checks:       map[string][]adapter.Finding{},
+		CheckCalls:   map[string]int{},
+		ModelCalls:   map[string]int{},
+		ModelDone:    map[string]int{},
+		ModelEnded:   map[string]int{},
+		Renewable:    map[string]bool{},
+		RenewCalls:   map[string]int{},
+		RenewErr:     map[string]error{},
 	}
 }
 
@@ -154,7 +158,7 @@ func (f *Fake) Credential(acct adapter.Account) adapter.CredStatus {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.CredCalls[acct.Name]++
-	return adapter.CredStatus{Present: true, Expired: f.Expired[acct.Name], Source: "fake: " + acct.Name}
+	return adapter.CredStatus{Present: true, Expired: f.Expired[acct.Name], LoginExpires: f.LoginExpires[acct.Name], Source: "fake: " + acct.Name}
 }
 
 func (f *Fake) Usage(ctx context.Context, acct adapter.Account) (adapter.Reading, error) {

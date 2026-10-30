@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### New
+
+- `doctor` (and `doctor all` and the UI's doctor status) warns when a Claude
+  login's refresh token expires within `login_expiry_warning_days` (default 7)
+  and reports an error once it has expired, naming the UTC time. Renewal never
+  extends that date, so only logging in again helps. `0` turns the check off;
+  Codex and OpenCode Go logins have no known expiry and are never reported.
+  These findings do not block config edits.
+
 ## v0.3.0 — 2026-10-30
 
 ### New

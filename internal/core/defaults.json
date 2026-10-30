@@ -1,1 +1,1 @@
-{"min_call_interval_minutes": 15, "default_cap": 95}
+{"min_call_interval_minutes": 15, "default_cap": 95, "login_expiry_warning_days": 7}

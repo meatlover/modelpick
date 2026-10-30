@@ -14,9 +14,11 @@ import (
 )
 
 type accountCheck struct {
-	findings  []adapter.Finding
-	models    []adapter.Model
-	modelsErr error
+	findings []adapter.Finding
+	// loginExpires is the login's expiry as of the cached Check; zero = unknown.
+	loginExpires time.Time
+	models       []adapter.Model
+	modelsErr    error
 }
 
 // checkEntry is one account's cached results. Each part has its own lock,
@@ -29,6 +31,8 @@ type checkEntry struct {
 	checked  bool
 	stale    atomic.Bool // set by ForgetChecks: run Check again on next use
 	findings []adapter.Finding
+	// loginExpires is read with the Check, so both go stale together.
+	loginExpires time.Time
 
 	modelsMu  sync.Mutex
 	relist    atomic.Bool // set by ForgetChecks: list again on next use if the listing failed
@@ -37,7 +41,7 @@ type checkEntry struct {
 	modelsErr error
 }
 
-// CheckCache keeps each account's adapter Check findings and Models result
+// CheckCache keeps each account's adapter Check findings, login expiry and Models result
 // until forgotten, so repeated doctor runs do not repeat vendor-side work.
 // The zero value is ready; it is safe for concurrent use, and its own
 // mutex is never held across an adapter call.
@@ -131,7 +135,7 @@ func (c *CheckCache) WarmModels(ctx context.Context, d Deps, cfg *core.Config, n
 	wg.Wait()
 }
 
-func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []adapter.Finding {
+func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) ([]adapter.Finding, time.Time) {
 	e := c.entry(acct)
 	e.checkMu.Lock()
 	defer e.checkMu.Unlock()
@@ -140,8 +144,12 @@ func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []ad
 		f, ok := callCheck(ctx, acct, a)
 		cancel()
 		e.findings, e.checked = f, ok
+		e.loginExpires = time.Time{}
+		if ok {
+			e.loginExpires = callLoginExpires(acct, a)
+		}
 	}
-	return e.findings
+	return e.findings, e.loginExpires
 }
 
 // check returns the account's cached Check findings and model list. name
@@ -149,7 +157,7 @@ func (c *CheckCache) checkFindings(acct adapter.Account, a adapter.Adapter) []ad
 func (c *CheckCache) check(name string, acct adapter.Account, a adapter.Adapter) accountCheck {
 	acct.Name = name
 	var r accountCheck
-	r.findings = c.checkFindings(acct, a)
+	r.findings, r.loginExpires = c.checkFindings(acct, a)
 	r.models, r.modelsErr = c.Models(acct, a)
 	return r
 }
@@ -186,6 +194,18 @@ func callModels(ctx context.Context, acct adapter.Account, a adapter.Adapter) (m
 	}()
 	ms, err = a.Models(ctx, acct)
 	return ms, err, false
+}
+
+// callLoginExpires is the refresh token expiry a.Credential reports (local
+// only), zero when unknown or when the adapter panics.
+func callLoginExpires(acct adapter.Account, a adapter.Adapter) (t time.Time) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicLog.Printf("%s: reading the credential panicked: %v", acct.Name, r)
+			t = time.Time{}
+		}
+	}()
+	return a.Credential(acct).LoginExpires
 }
 
 // callCheck is a.Check turning a panic into no findings; ok false keeps

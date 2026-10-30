@@ -314,3 +314,33 @@ func TestValidateGroupErrors(t *testing.T) {
 		t.Errorf("choices = %q, want %q", got, want)
 	}
 }
+
+func TestLoginExpiryWarningSetting(t *testing.T) {
+	withSettings := func(s string) string {
+		return strings.Replace(minimal, `"accounts"`, `"settings":{`+s+`},"accounts"`, 1)
+	}
+	cases := []struct {
+		name, settings string
+		want           time.Duration
+	}{
+		{"default 7 days", ``, 7 * 24 * time.Hour},
+		{"explicit 0 turns it off", `"login_expiry_warning_days":0`, 0},
+		{"explicit 3", `"login_expiry_warning_days":3`, 3 * 24 * time.Hour},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := Parse([]byte(withSettings(c.settings)), "c.json", "/h")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Settings.LoginExpiryWarning; got != c.want {
+				t.Errorf("LoginExpiryWarning = %v, want %v", got, c.want)
+			}
+		})
+	}
+	_, err := Parse([]byte(withSettings(`"login_expiry_warning_days":-1`)), "c.json", "/h")
+	var ce *ConfigError
+	if !errors.As(err, &ce) || ce.Field != "settings.login_expiry_warning_days" || ce.Msg != "must not be negative" {
+		t.Errorf("negative: err = %v, want settings.login_expiry_warning_days: must not be negative", err)
+	}
+}

@@ -521,3 +521,23 @@ func TestGateIgnoresGroupedCheckErrors(t *testing.T) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
+
+// An expired login is machine state like the Check findings above: the edit
+// is accepted while the account has the error, and the error is reported.
+func TestApplyExpiredLoginDoesNotGate(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	f.claude.LoginExpires["claude-main"] = apptest.Now.Add(-time.Hour)
+	s := f.load(t)
+	s1, fs, err := f.ed.Apply(s.SHA256, "settings.default_cap", json.RawMessage(`{"value":80}`))
+	if err != nil {
+		t.Fatalf("edit refused while the login is expired: %v", err)
+	}
+	if s1.Config.Settings.DefaultCap != 80 {
+		t.Errorf("default_cap = %v, want 80", s1.Config.Settings.DefaultCap)
+	}
+	want := app.Finding{Severity: "error", Subject: "claude-main",
+		Message: "login expired 2026-10-22 11:00Z; renewal fails until you log in again in Claude Code with this account"}
+	if len(fs) == 0 || !reflect.DeepEqual(fs[0], want) {
+		t.Fatalf("findings = %+v, want %+v first", fs, want)
+	}
+}

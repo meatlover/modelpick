@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
@@ -473,5 +474,95 @@ func TestNeverPickedGroupMembersUnionCovers(t *testing.T) {
 		if got := onlyNever(runDoctor(t, docConfig(sch, g, later))); len(got) != 0 {
 			t.Errorf("%s: got %v", name, got)
 		}
+	}
+}
+
+// loginExpiryFindings runs doctor on a healthy config where claude-main's
+// refresh token expires at expires (zero = unknown), with extra settings.
+func loginExpiryFindings(t *testing.T, settings string, expires time.Time) []app.Finding {
+	t.Helper()
+	cfg := strings.Replace(docConfig("", claudeA+`,"cap":[90]}`), `"settings":{"default_cap":95}`, `"settings":{`+settings+`}`, 1)
+	claude, codex := apptest.DoctorFakes()
+	if !expires.IsZero() {
+		claude.LoginExpires["claude-main"] = expires
+	}
+	return runDoctorWith(t, cfg, claude, codex, &app.CheckCache{})
+}
+
+func TestDoctorLoginExpiry(t *testing.T) {
+	const days = 24 * time.Hour
+	cases := []struct {
+		name     string
+		settings string
+		expires  time.Time
+		want     []app.Finding
+	}{
+		{"3 days left, 7 day window", `"default_cap":95`, apptest.Now.Add(3 * days), []app.Finding{{
+			Severity: "warning", Subject: "claude-main",
+			Message: "login expires 2026-10-25 12:00Z; log in again in Claude Code with this account before then"}}},
+		{"8 days left, 7 day window", `"default_cap":95`, apptest.Now.Add(8 * days), nil},
+		{"exactly at the window", `"default_cap":95`, apptest.Now.Add(7 * days), []app.Finding{{
+			Severity: "warning", Subject: "claude-main",
+			Message: "login expires 2026-10-29 12:00Z; log in again in Claude Code with this account before then"}}},
+		{"expired", `"default_cap":95`, apptest.Now.Add(-time.Hour), []app.Finding{{
+			Severity: "error", Subject: "claude-main",
+			Message: "login expired 2026-10-22 11:00Z; renewal fails until you log in again in Claude Code with this account"}}},
+		{"expires right now", `"default_cap":95`, apptest.Now, []app.Finding{{
+			Severity: "error", Subject: "claude-main",
+			Message: "login expired 2026-10-22 12:00Z; renewal fails until you log in again in Claude Code with this account"}}},
+		{"off: expired", `"default_cap":95,"login_expiry_warning_days":0`, apptest.Now.Add(-time.Hour), nil},
+		{"off: soon", `"default_cap":95,"login_expiry_warning_days":0`, apptest.Now.Add(days), nil},
+		{"window of 2 days, 3 left", `"default_cap":95,"login_expiry_warning_days":2`, apptest.Now.Add(3 * days), nil},
+		{"unknown expiry", `"default_cap":95`, time.Time{}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := loginExpiryFindings(t, c.settings, c.expires); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("findings = %+v, want %+v", got, c.want)
+			}
+		})
+	}
+}
+
+// The message is the same however long before the expiry doctor runs: the UI
+// compares findings by subject and message.
+func TestDoctorLoginExpiryMessageIsClockFree(t *testing.T) {
+	exp := apptest.Now.Add(5 * 24 * time.Hour)
+	a := loginExpiryFindings(t, `"default_cap":95`, exp)
+	d := apptest.Now.Add(24 * time.Hour) // a day later: 4 days left
+	cfg := docConfig("", claudeA+`,"cap":[90]}`)
+	claude, codex := apptest.DoctorFakes()
+	claude.LoginExpires["claude-main"] = exp
+	deps := apptest.NewDeps(t, cfg, claude, codex)
+	deps.Now = func() time.Time { return d }
+	c, err := app.LoadConfig(deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := app.Doctor(c, deps, &app.CheckCache{})
+	if len(a) != 1 || !reflect.DeepEqual(a, b) {
+		t.Fatalf("findings differ between clocks:\n%+v\n%+v", a, b)
+	}
+}
+
+// A login that is about to expire or has expired is machine state: it never
+// stops a config edit, and the cached expiry is read once per Check.
+func TestDoctorLoginExpiryCachedAndForgotten(t *testing.T) {
+	claude, codex := apptest.DoctorFakes()
+	claude.LoginExpires["claude-main"] = apptest.Now.Add(-time.Hour)
+	cache := &app.CheckCache{}
+	cfg := docConfig("", claudeA+`,"cap":[90]}`)
+	for i := 0; i < 3; i++ {
+		if got := runDoctorWith(t, cfg, claude, codex, cache); len(got) != 1 || got[0].Severity != "error" {
+			t.Fatalf("run %d: %+v", i, got)
+		}
+	}
+	if n := claude.CredCalls["claude-main"]; n != 1 {
+		t.Errorf("Credential called %d times over 3 doctor runs, want 1 (cached)", n)
+	}
+	claude.LoginExpires["claude-main"] = time.Time{}
+	cache.ForgetChecks()
+	if got := runDoctorWith(t, cfg, claude, codex, cache); len(got) != 0 {
+		t.Errorf("after ForgetChecks the new (unknown) expiry should apply, got %+v", got)
 	}
 }

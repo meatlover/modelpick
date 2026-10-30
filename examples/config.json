@@ -2,7 +2,8 @@
   "version": 1,
   "settings": {
     "min_call_interval_minutes": 15,
-    "default_cap": 95
+    "default_cap": 95,
+    "login_expiry_warning_days": 7
   },
   "accounts": {
     "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
