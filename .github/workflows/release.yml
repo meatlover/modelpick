@@ -1,0 +1,55 @@
+name: release
+
+# A vX.Y.Z tag runs scripts/check.sh, then builds, self-checks and publishes
+# the release. docs/release.md has the steps and what the job checks.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The browser tests in check.sh need Node, the locked packages and
+      # Playwright's Chromium.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - run: bash scripts/check.sh
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # The full history and tags: Go stamps the version from the tag, and
+      # release-build.sh checks that HEAD is the tag's commit.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: bash scripts/release-build.sh "$GITHUB_REF_NAME" dist
+      - run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS \
+            --notes-file dist/notes.md --verify-tag \
+            --title "modelpick $GITHUB_REF_NAME" "${flags[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}

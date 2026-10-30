@@ -5,7 +5,7 @@ Linux and macOS, on amd64 and arm64. Windows is not supported.
 
 ## Requirements
 
-- **Go 1.24 or newer**, to build it. Prebuilt binaries are not published yet.
+- **Go 1.24 or newer**, to build it. Not needed for a prebuilt binary.
 - **The vendor tools you configure, logged in and on `PATH`.** modelpick reads
   the login those tools already store; it never logs in for you.
   - Claude: `claude` (Claude Code), logged in once per config directory you
@@ -19,6 +19,25 @@ Linux and macOS, on amd64 and arm64. Windows is not supported.
   without them; only `doctor` and `ls models` run them.
 
 ## Install
+
+### Prebuilt binaries
+
+Each release has an archive per platform (`modelpick_X.Y.Z_<os>_<arch>.tar.gz`
+for linux and darwin, amd64 and arm64) and a `SHA256SUMS` file. While the
+repository is private, fetch them with the GitHub CLI:
+
+```
+gh release download v0.4.0 -R meatlover/modelpick -p '*darwin_arm64*' -p SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing
+tar -xzf modelpick_0.4.0_darwin_arm64.tar.gz modelpick
+install -m 755 modelpick ~/.local/bin/modelpick
+```
+
+`shasum -a 256 -c` prints `OK` for the archive; on Linux, `sha256sum -c
+SHA256SUMS --ignore-missing` does the same. The binary is not signed or
+notarized. One fetched with `gh` or `curl` is not quarantined by macOS; one
+downloaded in a browser is, and `xattr -d com.apple.quarantine modelpick`
+clears it. `modelpick version` should print the release tag.
 
 ### From a checkout (works while the repository is private)
 

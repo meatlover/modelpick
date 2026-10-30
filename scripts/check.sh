@@ -21,7 +21,8 @@ go test -race ./cmd/modelpick-e2e-server ./internal/app/apptest
 # The browser tests; a missing Node, package or Chromium fails here too.
 bash scripts/e2e.sh
 
-for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+# scripts/targets is the one list of build targets; release-build.sh reads it too.
+while read -r target; do
   GOOS="${target%/*}" GOARCH="${target#*/}" go build ./...
   echo "build ok: $target"
-done
+done < scripts/targets
