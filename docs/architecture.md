@@ -174,6 +174,10 @@ and CI (`.github/workflows/ci.yml`, Ubuntu only, on branch pushes and pull
 requests) both run it; a release tag runs it in `release.yml` instead. macOS
 is covered by the pre-commit hook on the owner's Mac, not by CI: a macOS
 runner minute costs about 10× a Linux one while the repository is private.
+The hook skips the browser tests (`MODELPICK_CHECK_SKIP_E2E=1`, set only by
+the hook) when no staged path is under `internal/`, `cmd/`, `e2e/`,
+`scripts/`, `.githooks/` or is `go.mod`/`go.sum`
+(`scripts/e2e-needed.sh` decides); CI and the release job never skip.
 
 ## Known limitations
 

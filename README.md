@@ -145,7 +145,10 @@ vendor is your decision. You decide whether to use it.
 Run `git config core.hooksPath .githooks` once after cloning; the pre-commit
 hook then runs `bash scripts/check.sh` (gofmt, vet, including the `live`-tagged
 smoke test, tests, the browser tests, four-target cross-build) and refuses a
-commit that fails.
+commit that fails. When every staged path is outside `internal/`, `cmd/`,
+`e2e/`, `scripts/`, `.githooks/`, `go.mod` and `go.sum` (a docs-only commit),
+the hook skips the browser tests and prints a line saying so; everything else
+still runs, and CI always runs the full script.
 
 `git config modelpick.autodeploy true` turns on an auto-deploy in that clone:
 after a merge or pull (including `git pull --rebase`) on `main`, the
