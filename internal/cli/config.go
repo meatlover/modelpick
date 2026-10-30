@@ -34,6 +34,7 @@ type configGroup struct {
 type configSettings struct {
 	MinCallIntervalMinutes float64 `json:"min_call_interval_minutes"`
 	DefaultCap             float64 `json:"default_cap"`
+	LoginExpiryWarningDays float64 `json:"login_expiry_warning_days"`
 }
 
 type configOutput struct {
@@ -76,6 +77,7 @@ func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		Settings: configSettings{
 			MinCallIntervalMinutes: cfg.Settings.MinCallInterval.Minutes(),
 			DefaultCap:             cfg.Settings.DefaultCap,
+			LoginExpiryWarningDays: cfg.Settings.LoginExpiryWarning.Hours() / 24,
 		},
 		Accounts:  cfg.Accounts,
 		Schedules: written.Schedules,

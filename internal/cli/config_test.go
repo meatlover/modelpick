@@ -87,7 +87,8 @@ func TestConfigOutputGoldenAllowDuring(t *testing.T) {
 	const want = `{
   "settings": {
     "min_call_interval_minutes": 15,
-    "default_cap": 95
+    "default_cap": 95,
+    "login_expiry_warning_days": 7
   },
   "accounts": {
     "codex-main": {

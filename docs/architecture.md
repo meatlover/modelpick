@@ -204,8 +204,9 @@ Each line says what would remove it and why it is deferred.
 - **Empty `opencode models` output counts as an empty model list**, not an
   error, so `doctor` then warns that each configured model is not offered.
 
-## Not in v1
+## Not planned
 
-`rotate` (switching an OpenCode Go key or a login in place) and a web UI for
-editing profiles are planned for later versions. Neither changes the layering:
-both would be new `cli` commands over the same core and adapters.
+`rotate` (switching an OpenCode Go key or a login in place) was dropped on
+2026-10-30. Launchers give each process its own account through the
+environment instead (`modelpick env`, mmm-modelpick sets `CLAUDE_CONFIG_DIR`,
+`CODEX_HOME` or `OPENCODE_AUTH_CONTENT`), so nothing needs swapping in place.
