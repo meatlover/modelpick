@@ -4,6 +4,11 @@
 
 ### New
 
+- `modelpick help`, `--help` and `-h` print the usage, with a line on each
+  command, to stdout and exit 0; `modelpick <command> --help` and
+  `modelpick help <command>` print that command's usage. Before, they exited 1
+  with "unknown command" (`pick --help` printed a failed pick, `ui --help` a
+  flag-package message).
 - `modelpick ui` tells you when a newer `modelpick` is installed under it
   (for example by autodeploy): the page shows a grey note, "A newer modelpick
   is installed. Stop this one (Ctrl-C where you ran `modelpick ui`) and run
@@ -21,6 +26,15 @@
   extends that date, so only logging in again helps. `0` turns the check off;
   Codex and OpenCode Go logins have no known expiry and are never reported.
   These findings do not block config edits.
+
+### Changed
+
+- A config file that does not exist is reported with the path looked for and
+  where to start: "no config file at <path>. Start from the example: … (also
+  in each release archive as config.example.json), then run `modelpick
+  doctor`." Other read errors keep their text.
+- Release archives hold `config.example.json` (a copy of
+  `examples/config.json`) next to `README.md`.
 
 ## v0.3.0 — 2026-10-30
 

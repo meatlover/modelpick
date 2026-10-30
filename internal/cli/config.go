@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
 	"github.com/meatlover/modelpick/internal/adapter"
@@ -44,6 +46,18 @@ type configOutput struct {
 	Profiles  map[string][]any           `json:"profiles"`
 }
 
+// configErrText is the text for a config load error. A config file that does
+// not exist gets the path looked for and how to start one; any other error
+// keeps its own text.
+func configErrText(err error, d app.Deps) string {
+	if errors.Is(err, fs.ErrNotExist) {
+		return "no config file at " + platform.ConfigPath(d.Getenv, d.Home) + ". Start from the example: " +
+			"https://github.com/meatlover/modelpick/blob/main/examples/config.json " +
+			"(also in each release archive as config.example.json), then run `modelpick doctor`."
+	}
+	return err.Error()
+}
+
 // runConfig is `modelpick config`: the effective config as JSON. No network
 // and no store access.
 func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
@@ -57,7 +71,7 @@ func runConfig(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	path := platform.ConfigPath(d.Getenv, d.Home)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "modelpick: read config: %v\n", err)
+		fmt.Fprintf(stderr, "modelpick: %s\n", configErrText(fmt.Errorf("read config: %w", err), d))
 		return 1
 	}
 	cfg, err := core.Parse(data, path, d.Home)

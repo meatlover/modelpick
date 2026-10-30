@@ -63,7 +63,7 @@ func pick(profile string, refresh bool, d app.Deps) core.Result {
 	}
 	cfg, err := core.Load(platform.ConfigPath(d.Getenv, d.Home), d.Home)
 	if err != nil {
-		return core.Failed(profile, err.Error())
+		return core.Failed(profile, configErrText(err, d))
 	}
 	return core.Pick(cfg, profile, d.Now(), app.NewEnv(d, cfg, refresh), d.Shuffle)
 }

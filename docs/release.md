@@ -34,7 +34,8 @@ whose steps each fail naming themselves (`release-build: version gate: …`):
   `## <tag> `.
 - **build**: one `modelpick_X.Y.Z_<os>_<arch>.tar.gz` per line of
   `scripts/targets` (also the list `check.sh` cross-builds), each holding
-  `modelpick`, `README.md`, `CHANGELOG.md` and `LICENSE`. `CGO_ENABLED=0`,
+  `modelpick`, `README.md`, `CHANGELOG.md`, `LICENSE` and `config.example.json`
+  (a copy of `examples/config.json`). `CGO_ENABLED=0`,
   `-trimpath`, `-s -w`.
 - **checksums**: `SHA256SUMS`.
 - **self-check**: the runner's own archive is extracted and its

@@ -13,22 +13,16 @@ import (
 	"github.com/meatlover/modelpick/internal/app"
 )
 
-const usageText = `usage:
-  modelpick pick [<profile>] [--refresh]
-  modelpick env <profile> [--refresh]
-  modelpick ls [<account>…] [--refresh] [--json]
-  modelpick ls models [--json]
-  modelpick config   (alias: conf)
-  modelpick doctor [all]
-  modelpick ui [--port N] [--no-open]
-  modelpick version   (alias: --version)
-`
-
 // Main runs the command in args (without the program name) and returns the
 // process exit code.
 func Main(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	if len(args) == 0 {
 		return badUsage(stderr, "missing command")
+	}
+	if wantsHelp(args) {
+		h, _ := helpFor(args[0])
+		_, _ = io.WriteString(stdout, h.text())
+		return 0
 	}
 	switch args[0] {
 	case "pick", "env", "ls", "doctor":
@@ -67,6 +61,8 @@ func dispatch(args []string, stdout, stderr io.Writer, d app.Deps) int {
 		return runDoctor(args[1:], stdout, stderr, d)
 	case "version", "--version":
 		return runVersion(args[1:], stdout, stderr)
+	case "help", "--help", "-h":
+		return runHelp(args[1:], stdout, stderr)
 	}
 	return badUsage(stderr, fmt.Sprintf("unknown command %q", args[0]))
 }

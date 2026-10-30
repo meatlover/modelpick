@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -22,7 +23,7 @@ func runDoctor(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	}
 	cfg, err := app.LoadConfig(d)
 	if err != nil {
-		return writeReport(stdout, []app.Finding{app.ConfigFinding(err)})
+		return writeReport(stdout, []app.Finding{app.ConfigFinding(errors.New(configErrText(err, d)))})
 	}
 	if all {
 		ctx := d.Ctx

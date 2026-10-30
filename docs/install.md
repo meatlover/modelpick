@@ -39,6 +39,9 @@ notarized. One fetched with `gh` or `curl` is not quarantined by macOS; one
 downloaded in a browser is, and `xattr -d com.apple.quarantine modelpick`
 clears it. `modelpick version` should print the release tag.
 
+Each archive also holds `config.example.json`, the example config to start
+from; see [Configuration](configuration.md).
+
 ### From a checkout (works while the repository is private)
 
 ```
