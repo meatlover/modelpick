@@ -26,18 +26,6 @@ modelpick is one static binary with no third-party dependencies. Install it
 one of three ways, then put it on your `PATH` (`~/.local/bin` below is only an
 example).
 
-> **Until the repository is public.** The repository is private for now.
-> Downloading a release needs the [GitHub CLI](https://cli.github.com/)
-> logged in to an account with access (`gh release download`, as below; a
-> plain `curl` cannot fetch the files). `go install` needs Go told not to use
-> the public module proxy for it, and git able to authenticate to GitHub:
->
-> ```
-> export GOPRIVATE=github.com/meatlover/modelpick
-> ```
->
-> Cloning works with any GitHub access to the repository.
-
 ### A prebuilt release
 
 Each release has an archive per platform, `modelpick_X.Y.Z_<os>_<arch>.tar.gz`
@@ -46,7 +34,8 @@ the latest release on the repository's Releases page; `vX.Y.Z` below stands for
 its tag and `X.Y.Z` for the number. For a Mac with Apple silicon:
 
 ```
-gh release download vX.Y.Z -R meatlover/modelpick -p '*darwin_arm64*' -p SHA256SUMS
+base=https://github.com/meatlover/modelpick/releases/download/vX.Y.Z
+curl -fLO "$base/modelpick_X.Y.Z_darwin_arm64.tar.gz" -fLO "$base/SHA256SUMS"
 shasum -a 256 -c SHA256SUMS --ignore-missing
 tar -xzf modelpick_X.Y.Z_darwin_arm64.tar.gz
 install -m 755 modelpick ~/.local/bin/modelpick

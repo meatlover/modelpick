@@ -211,10 +211,9 @@ redacted, that its parser test reads.
 `scripts/check.sh` is the single gate: `gofmt -l`, `go vet` (also with the
 `live` tag), `go test`, the race detector on the browser tests' server and
 fakes, the browser tests, then a build for linux/darwin × amd64/arm64. The
-pre-commit hook and CI (`.github/workflows/ci.yml`, Ubuntu only, on branch
-pushes and pull requests) both run it; a release tag runs it in
-`release.yml` instead. macOS is covered by the pre-commit hook on a
-developer's Mac, not by CI. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
+pre-commit hook and CI (`.github/workflows/ci.yml`, Ubuntu and macOS, on
+branch pushes and pull requests) both run it; a release tag runs it in
+`release.yml` instead. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
 details.
 
 ## Known limitations
@@ -244,9 +243,7 @@ Each line says what would remove it and why it is deferred.
   5-second context. Harmless for a short-lived CLI; a long-running
   `modelpick ui` keeps the version it found first until restarted.
 - **The Keychain exit-status handling is tested on macOS only**, because the
-  file is built for darwin only, and CI is Linux only, so only the
-  pre-commit hook on a Mac runs it. Removable by a macOS CI job; deferred
-  for cost, and listed in the [public checklist](release.md#making-the-repository-public).
+  file is built for darwin only. CI's macOS job runs it.
 - **Codex JWT `exp` and OpenCode Go percents are not range-checked.** A
   nonsensical value is used as given. Removable by clamping in each parser;
   deferred because no real response has needed it.
