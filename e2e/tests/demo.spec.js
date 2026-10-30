@@ -2,7 +2,7 @@
 // keeps its config in memory, so every case asserts visible text. Its
 // Refresh and Diagnose pretend to wait 600 ms for the vendor.
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, act, answer } = require("./helpers");
 
 let server;
 
@@ -89,14 +89,14 @@ test("Diagnose adds the failed reading", async ({ page }) => {
   const check = page.getByRole("button", { name: /^(Diagnose|Diagnosing…)$/ });
   await check.click();
   await expect(check).toHaveText("Diagnosing…");
-  release();
+  await act(page, release);
   await expect(check).toHaveText("Diagnose");
   await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toBeVisible();
   await page.getByRole("button", { name: "2 warnings" }).click();
   await expect(panel(page)).toContainText(failed);
   await expect(page.getByRole("button", { name: "2 warnings" })).toBeVisible();
   // A good Refresh of codex-main clears the row and the warning.
-  await usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click();
+  await act(page, () => usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click());
   await expect(usageRow(page, "codex-main").getByText("error: usage endpoint returned HTTP 503")).toHaveCount(0);
   // The Refresh re-reads the doctor, so the status follows without a reload.
   // (The click on Refresh, outside the panel, closed it.)
@@ -113,7 +113,7 @@ test("conflict strip after edit", async ({ page }) => {
   await box.press("Enter");
   const strip = page.getByRole("alertdialog", { name: "config.json changed outside the UI" });
   await expect(strip).toBeVisible();
-  await strip.getByRole("button", { name: "Apply my change on top" }).click();
+  await answer(page, () => strip.getByRole("button", { name: "Apply my change on top" }).click());
   await expect(strip).toHaveCount(0);
   await expect(box).toHaveValue("80%");
 });

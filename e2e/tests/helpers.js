@@ -161,14 +161,16 @@ function startServer(kind) {
   });
 }
 
-// login visits the token URL, which sets the session cookie and redirects
-// to the page.
 // E2E_OP_DELAY_MS answers every /api/op that many ms late, for CI's second
-// pass: a test that acts again before the page has redrawn after an op
+// pass: a test that acts again before the page has settled after an op
 // shows up there. scripts/check.sh runs with no delay.
 const OP_DELAY_MS = Number(process.env.E2E_OP_DELAY_MS || 0);
+const SETTLE_MS = 10000;
 
+// login visits the token URL, which sets the session cookie and redirects
+// to the page, and guards the page (see guard below).
 async function login(page, url) {
+  guard(page);
   if (OP_DELAY_MS > 0) {
     await page.route("**/api/op", async (route) => {
       const resp = await route.fetch();
@@ -182,31 +184,169 @@ async function login(page, url) {
   }
 }
 
-// redrawn runs action, an edit that sends one op, and resolves once the
-// page has been redrawn from it: the op's answer, then the state, usage and
-// doctor reads of the reload after it, then two frames. A test that acts
-// on what the edit redraws waits here, as an answer delayed by
-// E2E_OP_DELAY_MS can redraw the page under its next action.
-async function redrawn(page, action) {
-  const done = [];
-  const onDone = (req) => done.push(new URL(req.url()).pathname);
-  page.on("requestfinished", onDone);
+// ---------- waiting for the page to settle ----------
+//
+// The page publishes on <body> (internal/web/static/js/settle.js):
+// data-settled "true" once no write (an op, a Refresh, a Diagnose) and no
+// reload is in flight; data-gen, how many times it became settled;
+// data-writes, how many writes it sent. A test waits on those, never on a
+// guess about the network or the clock.
+
+// readBody returns the page's signal and its document's start time (a new
+// document starts its counts from 0).
+function readBody(page) {
+  return page.evaluate(() => ({
+    settled: document.body.dataset.settled === "true",
+    gen: Number(document.body.dataset.gen || 0),
+    writes: Number(document.body.dataset.writes || 0),
+    doc: performance.timeOrigin,
+  }));
+}
+
+// untilSettled resolves, in the page, once it is settled with a generation
+// above before, then two frames later (so layout and focus are done), with
+// the signal as readBody gives it.
+function untilSettled(page, before) {
+  return page.evaluate((after) => new Promise((done) => {
+    const d = document.body.dataset;
+    const read = () => ({ settled: true, gen: Number(d.gen), writes: Number(d.writes || 0), doc: performance.timeOrigin });
+    const check = () => {
+      if (d.settled !== "true" || !(Number(d.gen) > after)) return false;
+      const got = read();
+      requestAnimationFrame(() => requestAnimationFrame(() => done(got)));
+      return true;
+    };
+    if (check()) return;
+    const watch = new MutationObserver(() => check() && watch.disconnect());
+    watch.observe(document.body, { attributes: true, attributeFilter: ["data-settled", "data-gen"] });
+  }), before);
+}
+
+// settled waits until the page is settled with a generation above before,
+// the data-gen read before the action, and two frames more. Every write it
+// sent so far is then acknowledged: the guard lets the next action through.
+async function settled(page, before) {
+  let timer;
+  const late = new Promise((_, fail) => {
+    timer = setTimeout(async () => {
+      const now = await readBody(page).catch((e) => ({ error: e.message }));
+      fail(new Error(`the page did not settle within ${SETTLE_MS} ms after the action (data-gen was ${before}, ` +
+        `now ${JSON.stringify(now)}): did the action send an op, a Refresh or a Diagnose?`));
+    }, SETTLE_MS);
+  });
+  try {
+    const got = await Promise.race([untilSettled(page, before), late]);
+    const g = guards.get(page);
+    if (g) Object.assign(g, { doc: got.doc, seen: got.writes });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// act runs action, a step that sends an op (or a Refresh or a Diagnose), and
+// resolves once the page has settled after it: the op answered, its reload
+// drawn. Every such step that the test follows with another action goes
+// through act; the guard fails a test that does not.
+async function act(page, action) {
+  const { gen } = await readBody(page);
+  await action();
+  await settled(page, gen);
+}
+
+// answer is act for the one action that must be taken while a write is
+// still in flight, because that write waits for it: the conflict strip's
+// buttons. The guard lets that action through.
+async function answer(page, action) {
+  const g = guards.get(page);
+  const { gen } = await readBody(page);
+  if (g) g.off += 1;
   try {
     await action();
-    await expect.poll(() => {
-      const op = done.indexOf("/api/op");
-      return op >= 0 && ["/api/state", "/api/usage", "/api/doctor"].every((p) => done.indexOf(p, op) > op);
-    }, { message: "the op answered and the page reloaded", timeout: 10000 }).toBe(true);
   } finally {
-    page.off("requestfinished", onDone);
+    if (g) g.off -= 1;
   }
-  await page.evaluate(() => new Promise((go) => requestAnimationFrame(() => requestAnimationFrame(go))));
+  await settled(page, gen);
+}
+
+// ---------- the guard ----------
+//
+// Every user action (a locator's click, fill, press, selectOption, dragTo,
+// focus …; the page's mouse and keyboard) first asks the page how many
+// writes it sent. More than the test has waited for through act or settled
+// fails the action: it would act on a view the reload is about to replace.
+// The count is the page's own, made when the action sends the write, so the
+// guard fails the same way whatever the timing. stateGate turns it off for
+// its page: a test that holds the reloads back acts before them on purpose.
+
+const guards = new WeakMap(); // page → { doc, seen, off }
+const LOCATOR_ACTIONS = ["blur", "check", "clear", "click", "dblclick", "dispatchEvent", "dragTo", "fill", "focus",
+  "hover", "press", "pressSequentially", "selectOption", "selectText", "setChecked", "setInputFiles", "tap", "type",
+  "uncheck"];
+const PAGE_ACTIONS = ["check", "click", "dblclick", "dispatchEvent", "dragAndDrop", "fill", "focus", "hover", "press",
+  "selectOption", "setChecked", "setInputFiles", "tap", "type", "uncheck"];
+const DEVICE_ACTIONS = {
+  mouse: ["click", "dblclick", "down", "move", "up", "wheel"],
+  keyboard: ["down", "insertText", "press", "type", "up"],
+};
+
+// unsettledBy returns why acting on page now is wrong, or "" when it is not.
+async function unsettledBy(page) {
+  const g = guards.get(page);
+  if (!g || g.off > 0) return "";
+  const now = await readBody(page);
+  if (now.doc !== g.doc) Object.assign(g, { doc: now.doc, seen: 0 }); // a reload of the page starts at 0
+  return now.writes > g.seen ? `${now.writes - g.seen} op(s) the test did not wait for` : "";
+}
+
+// wrap makes obj[name] check first. The error carries the stack of the
+// call (taken before any await), so it points at the test's line.
+function wrap(obj, name, page, what) {
+  const orig = obj[name];
+  obj[name] = async function guarded(...args) {
+    const at = {};
+    Error.captureStackTrace(at, guarded);
+    const why = await unsettledBy(page || this.page());
+    if (why) {
+      const step = what ? `${what}(${args.length ? JSON.stringify(args[0]) : ""})` : `${name} on ${this}`;
+      const e = new Error(`acted on an unsettled page: ${step} came after ${why}. ` +
+        "Send the op through act(page, () => …) so that the next action waits for the page to settle.");
+      e.stack = e.stack.split("\n")[0] + "\n" + at.stack.split("\n").slice(1).join("\n");
+      throw e;
+    }
+    return orig.apply(this, args);
+  };
+}
+
+let locatorWrapped = false;
+
+// guard installs the check on page (once) and on every locator (once per
+// run: they share one prototype).
+function guard(page) {
+  if (guards.has(page)) return;
+  guards.set(page, { doc: null, seen: 0, off: 0 });
+  for (const name of PAGE_ACTIONS) wrap(page, name, page, `page.${name}`);
+  for (const [dev, names] of Object.entries(DEVICE_ACTIONS)) {
+    for (const name of names) wrap(page[dev], name, page, `${dev}.${name}`);
+  }
+  if (!locatorWrapped) {
+    const proto = Object.getPrototypeOf(page.locator("body"));
+    for (const name of LOCATOR_ACTIONS) wrap(proto, name, null, null);
+    locatorWrapped = true;
+  }
+}
+
+// unguarded turns the guard off for page from now on.
+function unguarded(page) {
+  const g = guards.get(page);
+  if (g) g.off += 1;
 }
 
 // stateGate holds back the page's /api/state answers, so the page is not
 // redrawn after an op and the op queue waits on that reload: pass(n) lets
 // the next n through, open() all from then on, held() counts those waiting.
+// It turns the guard off: every action after it is before a reload.
 async function stateGate(page) {
+  unguarded(page);
   const waiting = [];
   let credit = 0;
   let opened = false;
@@ -238,4 +378,4 @@ async function holdState(page) {
   return () => gate.open();
 }
 
-module.exports = { startServer, login, stateGate, holdState, redrawn };
+module.exports = { startServer, login, stateGate, holdState, act, answer, settled };
