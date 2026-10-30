@@ -10,11 +10,11 @@ import (
 	"github.com/meatlover/modelpick/internal/app/apptest"
 )
 
-// lsFakes: claude-main ok, claude-rec unauthorized, codex-main ok.
+// lsFakes: claude-main ok, claude-secondary unauthorized, codex-main ok.
 func lsFakes() (*apptest.Fake, *apptest.Fake) {
 	claude := apptest.NewFake("claude")
 	claude.Readings["claude-main"] = apptest.ClaudeReading(40, 10)
-	claude.Errs["claude-rec"] = adapter.ErrUnauthorized
+	claude.Errs["claude-secondary"] = adapter.ErrUnauthorized
 	codex := apptest.NewFake("codex")
 	codex.Readings["codex-main"] = apptest.ClaudeReading(5, 6)
 	return claude, codex
@@ -31,23 +31,23 @@ func TestLsTableHasEveryAccount(t *testing.T) {
 	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "ACCOUNT STATE WINDOW USED RESETS AGE" {
 		t.Fatalf("header = %q", lines[0])
 	}
-	for _, name := range []string{"claude-main", "claude-rec", "codex-main"} {
+	for _, name := range []string{"claude-main", "claude-secondary", "codex-main"} {
 		if !strings.Contains(stdout, name) {
 			t.Errorf("account %s missing:\n%s", name, stdout)
 		}
 	}
 	var recRow string
 	for _, l := range lines {
-		if strings.HasPrefix(l, "claude-rec") {
+		if strings.HasPrefix(l, "claude-secondary") {
 			recRow = l
 			break
 		}
 	}
 	if strings.Fields(recRow)[1] != "error" {
-		t.Errorf("claude-rec row = %q, want STATE error", recRow)
+		t.Errorf("claude-secondary row = %q, want STATE error", recRow)
 	}
-	if last := lines[len(lines)-1]; !strings.HasPrefix(last, "claude-rec: usage endpoint returned HTTP 401; log in to Claude Code") {
-		t.Errorf("last line = %q, want the claude-rec error line", last)
+	if last := lines[len(lines)-1]; !strings.HasPrefix(last, "claude-secondary: usage endpoint returned HTTP 401; log in to Claude Code") {
+		t.Errorf("last line = %q, want the claude-secondary error line", last)
 	}
 	// the account name opens its first line only.
 	if n := strings.Count(stdout, "claude-main"); n != 1 {
@@ -58,14 +58,14 @@ func TestLsTableHasEveryAccount(t *testing.T) {
 	}
 }
 
-const lsGolden = `ACCOUNT      STATE  WINDOW    USED  RESETS                    AGE
-claude-main  ok     5h         31%  in 1h 50m     Thu 13:50Z  4m
-                    7d         58%  in 2d 12h     Sun 00:00Z
-                    7d Fable   12%  in 2d 12h     Sun 00:00Z
-claude-rec   error  -            -  -                         -
-codex-main   ok     7d         41%  in 8d      Oct 30 12:00Z  12m
+const lsGolden = `ACCOUNT           STATE  WINDOW    USED  RESETS                    AGE
+claude-main       ok     5h         31%  in 1h 50m     Thu 13:50Z  4m
+                         7d         58%  in 2d 12h     Sun 00:00Z
+                         7d Fable   12%  in 2d 12h     Sun 00:00Z
+claude-secondary  error  -            -  -                         -
+codex-main        ok     7d         41%  in 8d      Oct 30 12:00Z  12m
 
-claude-rec: usage endpoint returned HTTP 401; log in to Claude Code with this account
+claude-secondary: usage endpoint returned HTTP 401; log in to Claude Code with this account
 `
 
 func TestLsTableGolden(t *testing.T) {
@@ -76,7 +76,7 @@ func TestLsTableGolden(t *testing.T) {
 		{Label: "weekly", Length: wk, UsedPct: 58, ResetsAt: now.Add(60 * time.Hour)},
 		{Label: "weekly", Length: wk, UsedPct: 12, ResetsAt: now.Add(60 * time.Hour), ScopeModelName: "Fable"},
 	}}
-	claude.Errs["claude-rec"] = adapter.ErrUnauthorized
+	claude.Errs["claude-secondary"] = adapter.ErrUnauthorized
 	codex := apptest.NewFake("codex")
 	codex.Readings["codex-main"] = adapter.Reading{TakenAt: now.Add(-12 * time.Minute), Windows: []adapter.Window{
 		{Label: "primary_window", Length: wk, UsedPct: 41, ResetsAt: now.Add(8 * 24 * time.Hour)},
@@ -156,7 +156,7 @@ func TestLsJSONShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, stdout)
 	}
-	if len(got) != 3 || got[0].Account != "claude-main" || got[1].Account != "claude-rec" || got[2].Account != "codex-main" {
+	if len(got) != 3 || got[0].Account != "claude-main" || got[1].Account != "claude-secondary" || got[2].Account != "codex-main" {
 		t.Fatalf("accounts not sorted by name: %+v", got)
 	}
 	main, rec := got[0], got[1]
@@ -169,7 +169,7 @@ func TestLsJSONShape(t *testing.T) {
 		t.Errorf("claude-main windows = %+v", main.Windows)
 	}
 	if rec.AgeSeconds != nil || rec.Windows == nil || len(rec.Windows) != 0 || !strings.HasPrefix(rec.State, "error: ") {
-		t.Errorf("claude-rec = %+v", rec)
+		t.Errorf("claude-secondary = %+v", rec)
 	}
 	if !strings.Contains(stdout, `"reading_age_seconds": null`) {
 		t.Errorf("reading_age_seconds must be an explicit null:\n%s", stdout)
@@ -187,7 +187,7 @@ func TestLsRespectsFloor(t *testing.T) {
 	for _, c := range []struct {
 		f    *apptest.Fake
 		acct string
-	}{{claude, "claude-main"}, {claude, "claude-rec"}, {codex, "codex-main"}} {
+	}{{claude, "claude-main"}, {claude, "claude-secondary"}, {codex, "codex-main"}} {
 		if c.f.Calls[c.acct] != 1 {
 			t.Errorf("%s adapter calls = %d, want 1", c.acct, c.f.Calls[c.acct])
 		}
@@ -197,7 +197,7 @@ func TestLsRespectsFloor(t *testing.T) {
 func TestLsStates(t *testing.T) {
 	claude := apptest.NewFake("claude")
 	claude.Errs["claude-main"] = adapter.ErrTokenExpired
-	claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
+	claude.Errs["claude-secondary"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
 	codex := apptest.NewFake("codex")
 	codex.Readings["codex-main"] = apptest.ClaudeReading(1, 1)
 	d := apptest.NewDeps(t, testConfig, claude, codex)
@@ -210,9 +210,9 @@ func TestLsStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"claude-main": "expired token",
-		"claude-rec":  "rate-limited until 2026-10-22T12:10:00Z",
-		"codex-main":  "ok",
+		"claude-main":      "expired token",
+		"claude-secondary": "rate-limited until 2026-10-22T12:10:00Z",
+		"codex-main":       "ok",
 	}
 	for _, a := range got {
 		if a.State != want[a.Account] {
@@ -225,8 +225,8 @@ func TestLsStates(t *testing.T) {
 	// claude-main shows "error" there and its message in a line below.
 	for _, l := range strings.Split(stdout, "\n") {
 		f := strings.Fields(l)
-		if strings.HasPrefix(l, "claude-rec ") && strings.Join(f[1:3], " ") != "rate-limited until" {
-			t.Errorf("claude-rec STATE column wrong: %q", l)
+		if strings.HasPrefix(l, "claude-secondary ") && strings.Join(f[1:3], " ") != "rate-limited until" {
+			t.Errorf("claude-secondary STATE column wrong: %q", l)
 		}
 		if strings.HasPrefix(l, "claude-main ") && f[1] != "error" {
 			t.Errorf("claude-main STATE column wrong: %q", l)
@@ -235,7 +235,7 @@ func TestLsStates(t *testing.T) {
 	if !strings.Contains(stdout, "\n\nclaude-main: no usage reading; last call at") {
 		t.Errorf("claude-main error line missing below the table:\n%s", stdout)
 	}
-	if strings.Contains(stdout, "claude-rec:") {
+	if strings.Contains(stdout, "claude-secondary:") {
 		t.Errorf("a rate limit produced an error line:\n%s", stdout)
 	}
 }
@@ -245,7 +245,7 @@ func TestLsStates(t *testing.T) {
 func TestLsStatesWithCachedReading(t *testing.T) {
 	claude := apptest.NewFake("claude")
 	claude.Readings["claude-main"] = apptest.ClaudeReading(40, 10)
-	claude.Readings["claude-rec"] = apptest.ClaudeReading(20, 10)
+	claude.Readings["claude-secondary"] = apptest.ClaudeReading(20, 10)
 	codex := apptest.NewFake("codex")
 	codex.Readings["codex-main"] = apptest.ClaudeReading(1, 1)
 	d := apptest.NewDeps(t, testConfig, claude, codex)
@@ -253,7 +253,7 @@ func TestLsStatesWithCachedReading(t *testing.T) {
 		t.Fatalf("first run exit %d", code)
 	}
 	claude.Expired["claude-main"] = true
-	claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
+	claude.Errs["claude-secondary"] = &adapter.HTTPError{Status: 429, RetryAfter: 10 * time.Minute}
 	stdout, _, code := run(d, "ls", "--json", "--refresh")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -263,9 +263,9 @@ func TestLsStatesWithCachedReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"claude-main": "expired token",
-		"claude-rec":  "rate-limited until 2026-10-22T12:10:00Z",
-		"codex-main":  "ok",
+		"claude-main":      "expired token",
+		"claude-secondary": "rate-limited until 2026-10-22T12:10:00Z",
+		"codex-main":       "ok",
 	}
 	for _, a := range got {
 		if a.State != want[a.Account] {
@@ -331,7 +331,7 @@ func TestLsModels(t *testing.T) {
 		t.Errorf("thinking must be [] not null:\n%s", stdout)
 	}
 	if got[1].Error == "" || len(got[1].Models) != 0 {
-		t.Errorf("claude-rec = %+v, want error and no models", got[1])
+		t.Errorf("claude-secondary = %+v, want error and no models", got[1])
 	}
 }
 
@@ -349,8 +349,8 @@ func TestLsNamedAccountsInOrder(t *testing.T) {
 	if len(got) != 2 || got[0].Account != "codex-main" || got[1].Account != "claude-main" {
 		t.Fatalf("accounts = %+v, want [codex-main claude-main]", got)
 	}
-	if claude.Calls["claude-rec"] != 0 {
-		t.Errorf("claude-rec was read %d times", claude.Calls["claude-rec"])
+	if claude.Calls["claude-secondary"] != 0 {
+		t.Errorf("claude-secondary was read %d times", claude.Calls["claude-secondary"])
 	}
 }
 
@@ -358,7 +358,7 @@ func TestLsUnknownAccount(t *testing.T) {
 	claude, codex := lsFakes()
 	d := apptest.NewDeps(t, testConfig, claude, codex)
 	stdout, stderr, code := run(d, "ls", "claude-main", "go-9")
-	want := "modelpick: ls: unknown account \"go-9\"; configured: claude-main, claude-rec, codex-main\n"
+	want := "modelpick: ls: unknown account \"go-9\"; configured: claude-main, claude-secondary, codex-main\n"
 	if code != 1 || stdout != "" || stderr != want {
 		t.Fatalf("code %d stdout %q stderr %q", code, stdout, stderr)
 	}
@@ -382,12 +382,12 @@ func TestLsRefreshOnlyNamed(t *testing.T) {
 	if _, _, code := run(d, "ls"); code != 0 {
 		t.Fatalf("seed exit %d", code)
 	}
-	main0, rec0 := claude.Calls["claude-main"], claude.Calls["claude-rec"]
+	main0, rec0 := claude.Calls["claude-main"], claude.Calls["claude-secondary"]
 	if _, _, code := run(d, "ls", "claude-main", "--refresh"); code != 0 {
 		t.Fatalf("refresh exit %d", code)
 	}
-	if claude.Calls["claude-main"] != main0+1 || claude.Calls["claude-rec"] != rec0 {
-		t.Errorf("calls main %d->%d, rec %d->%d", main0, claude.Calls["claude-main"], rec0, claude.Calls["claude-rec"])
+	if claude.Calls["claude-main"] != main0+1 || claude.Calls["claude-secondary"] != rec0 {
+		t.Errorf("calls main %d->%d, rec %d->%d", main0, claude.Calls["claude-main"], rec0, claude.Calls["claude-secondary"])
 	}
 }
 

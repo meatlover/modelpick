@@ -86,8 +86,8 @@ func (d *Demo) buildAccounts() {
 	d.accounts = []web.Account{
 		acct("claude-main", "claude", "~/.claude", "Keychain: Claude Code-credentials",
 			map[string]any{"config_dir": "~/.claude"}),
-		acct("claude-rec", "claude", "~/.claude-rec", "Keychain: Claude Code-credentials-6a4e8c1e",
-			map[string]any{"config_dir": "~/.claude-rec"}),
+		acct("claude-secondary", "claude", "~/.claude-secondary", "Keychain: Claude Code-credentials-a106ba11",
+			map[string]any{"config_dir": "~/.claude-secondary"}),
 		acct("codex-main", "codex", "~/.codex", "file: ~/.codex/auth.json",
 			map[string]any{"codex_home": "~/.codex"}),
 		goAcct(1), goAcct(2), goAcct(3),
@@ -175,7 +175,7 @@ func (d *Demo) buildProfiles() {
 			ch("claude-main", "claude-opus-5-5", "high", []any{90.0, "pace+10"}),
 			ch("codex-main", "gpt-6.1-sol", "xhigh", []any{"pace+5"}),
 			ch("claude-main", "claude-fable-5-1", "high", []any{90.0, 98.0, 95.0}, peak),
-			ch("claude-rec", "claude-sonnet-5-5", "medium", nil),
+			ch("claude-secondary", "claude-sonnet-5-5", "medium", nil),
 		}},
 		{Name: "tester", Choices: []web.Choice{
 			ch("go-1", flash, "", []any{}, peak),
@@ -206,10 +206,10 @@ func (d *Demo) buildReadings(t0 time.Time) {
 		"claude-main": mk(4*time.Minute, "ok", true,
 			w("5h", 5*time.Hour, 31, at(time.Hour+50*time.Minute)),
 			w("7d", 7*day, 58, at(2*day+11*time.Hour+50*time.Minute)), fable),
-		"claude-rec": {state: "expired token", canRefresh: true}, // Claude Code renews it on refresh
-		"codex-main": mk(12*time.Minute, "ok", true, w("7d", 7*day, 41, at(2*day+50*time.Minute))),
-		"go-1":       mk(9*time.Minute, "ok", true, goWin(0, 62, 95)...),
-		"go-2":       mk(9*time.Minute, "ok", true, goWin(3, 70, 96)...),
+		"claude-secondary": {state: "expired token", canRefresh: true}, // Claude Code renews it on refresh
+		"codex-main":       mk(12*time.Minute, "ok", true, w("7d", 7*day, 41, at(2*day+50*time.Minute))),
+		"go-1":             mk(9*time.Minute, "ok", true, goWin(0, 62, 95)...),
+		"go-2":             mk(9*time.Minute, "ok", true, goWin(3, 70, 96)...),
 		"go-3": mk(38*time.Minute, "rate-limited until "+at(32*time.Minute).UTC().Format(time.RFC3339),
 			false, goWin(0, 100, 81)...),
 	}
@@ -344,7 +344,7 @@ func (d *Demo) findings() []web.Finding {
 		out = append(out, web.Finding{Severity: "error", Subject: strings.Join(gone, ", "),
 			Message: "opencode not found on PATH", Accounts: gone})
 	}
-	out = append(out, web.Finding{Severity: "warning", Subject: "claude-rec",
+	out = append(out, web.Finding{Severity: "warning", Subject: "claude-secondary",
 		Message: "token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login"})
 	// A row whose last call failed is its doctor warning, as in live.
 	for _, a := range d.accounts {

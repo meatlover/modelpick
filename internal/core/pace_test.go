@@ -13,7 +13,7 @@ func paceConfig(t *testing.T, cap string) *Config {
 	t.Helper()
 	return inlineConfig(t, `{"p": [
 		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": `+cap+`},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 }
 
 func paceWin(length time.Duration, used float64, resetsIn time.Duration) adapter.Window {

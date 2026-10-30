@@ -332,17 +332,17 @@ const Config = `{
   "version": 1,
   "accounts": {
     "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
-    "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" },
+    "claude-secondary":  { "vendor": "claude", "config_dir": "~/.claude-secondary" },
     "codex-main":  { "vendor": "codex", "codex_home": "~/.codex" }
   },
   "profiles": {
     "two-claude": [
       { "account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98] },
-      { "account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium" }
+      { "account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium" }
     ],
     "codex-first": [
       { "account": "codex-main", "model": "gpt-6.1-sol", "thinking": "high", "cap": [98] },
-      { "account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium" }
+      { "account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium" }
     ],
     "same-account": [
       { "account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98] },

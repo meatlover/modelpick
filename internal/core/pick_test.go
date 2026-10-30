@@ -83,7 +83,7 @@ func inlineConfig(t *testing.T, profiles string) *Config {
 	data := `{"version": 1,
   "accounts": {
     "claude-main": {"vendor": "claude", "config_dir": "~/.claude"},
-    "claude-rec": {"vendor": "claude", "config_dir": "~/.claude-rec"},
+    "claude-secondary": {"vendor": "claude", "config_dir": "~/.claude-secondary"},
     "go-1": {"vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1}
   },
   "schedules": {"deepseek-peak": {"days": ["mon", "tue", "wed", "thu", "fri"], "utc": ["01:00-04:00", "06:00-10:00"]}},
@@ -129,7 +129,10 @@ type goldenCase struct {
 	exit int
 }
 
-// goldenNames are the goldens in spec §7.1 order: blocks A–H, then I.
+// goldenNames are the goldens: testdata/pick_<name>.json. The files are the
+// specification of what Pick returns for these cases (they began as blocks A–H
+// and then I of the v1 design spec, which is not published); TestPickGolden
+// asserts each byte for byte, so a change to one is a change to the contract.
 var goldenNames = []string{"a", "b", "c", "d", "e", "f", "g", "h", "lb"}
 
 func TestPickGolden(t *testing.T) {
@@ -233,39 +236,6 @@ func exampleGoldenCases() []goldenCase {
 	}
 }
 
-// TestGoldenFilesMatchSpec keeps testdata/pick_*.json byte-equal to the
-// spec's §7.1 blocks A–I, in goldenNames order.
-func TestGoldenFilesMatchSpec(t *testing.T) {
-	spec, err := os.ReadFile("../../docs/superpowers/specs/2026-10-22-modelpick-design.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(spec)
-	start := strings.Index(text, "\n### 7.1 ")
-	end := strings.Index(text, "\n## 8. ")
-	if start < 0 || end < start {
-		t.Fatal("cannot locate §7.1 in the spec")
-	}
-	parts := strings.Split(text[start:end], "```json\n")[1:]
-	if len(parts) != len(goldenNames) {
-		t.Fatalf("§7.1 has %d json blocks, want %d", len(parts), len(goldenNames))
-	}
-	for i, p := range parts {
-		block, _, ok := strings.Cut(p, "```\n")
-		if !ok {
-			t.Fatalf("block %d is not closed", i)
-		}
-		name := "testdata/pick_" + goldenNames[i] + ".json"
-		got, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(got) != block {
-			t.Errorf("%s differs from spec §7.1 block %c", name, 'A'+i)
-		}
-	}
-}
-
 func TestPickIsLazy(t *testing.T) {
 	env := &fakeEnv{usage: map[string]AccountState{
 		"claude-main": {Reading: claudeReading(noon, 40, 50)},
@@ -279,12 +249,12 @@ func TestPickIsLazy(t *testing.T) {
 	}
 
 	cfg := inlineConfig(t, `{"p": [
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"},
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"},
 		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]}]}`)
 	env = &fakeEnv{}
 	r = Pick(cfg, "p", noon, env, nil)
-	if r.Account == nil || *r.Account != "claude-rec" {
-		t.Fatalf("picked %v, want claude-rec", r.Account)
+	if r.Account == nil || *r.Account != "claude-secondary" {
+		t.Fatalf("picked %v, want claude-secondary", r.Account)
 	}
 	if n := env.totalCalls(); n != 0 {
 		t.Errorf("Usage called %d times for an uncapped first choice, want 0", n)
@@ -294,10 +264,10 @@ func TestPickIsLazy(t *testing.T) {
 func TestSkipBeatsUncapped(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
 		{"account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null, "skip_during": ["deepseek-peak"]},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	r := Pick(cfg, "p", peak, &fakeEnv{}, nil)
-	if r.Account == nil || *r.Account != "claude-rec" {
-		t.Fatalf("picked %v, want claude-rec", r.Account)
+	if r.Account == nil || *r.Account != "claude-secondary" {
+		t.Fatalf("picked %v, want claude-secondary", r.Account)
 	}
 	want := []Skip{{Account: "go-1", Model: "opencode-go/deepseek-v4.1", Why: "in schedule deepseek-peak"}}
 	if fmt.Sprint(r.Skipped) != fmt.Sprint(want) {
@@ -356,12 +326,12 @@ func TestScheduleSkipIsNotAnError(t *testing.T) {
 
 func TestExpiredCredentialDoesNotSkipUncapped(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	env := &fakeEnv{creds: map[string]adapter.CredStatus{
-		"claude-rec": {Present: true, Expired: true, Source: "keychain: x"},
+		"claude-secondary": {Present: true, Expired: true, Source: "keychain: x"},
 	}}
 	r := Pick(cfg, "p", noon, env, nil)
-	if r.Status != StatusOK || r.Account == nil || *r.Account != "claude-rec" {
+	if r.Status != StatusOK || r.Account == nil || *r.Account != "claude-secondary" {
 		t.Fatalf("status %s account %v skipped %v", r.Status, r.Account, r.Skipped)
 	}
 }
@@ -370,13 +340,13 @@ func TestMissingCredentialIsAnError(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
 		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high"},
 		{"account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	env := &fakeEnv{creds: map[string]adapter.CredStatus{
 		"claude-main": {Source: "keychain: Claude Code-credentials"},
 		"go-1":        {Present: true, Source: "file", Err: errors.New("key line 1 absent in /home/u/.ssh/opencode-go-api")},
 	}}
 	r := Pick(cfg, "p", noon, env, nil)
-	if r.Status != StatusOKWithErrors || r.ExitCode() != 2 || *r.Account != "claude-rec" {
+	if r.Status != StatusOKWithErrors || r.ExitCode() != 2 || *r.Account != "claude-secondary" {
 		t.Fatalf("status %s account %v", r.Status, r.Account)
 	}
 	wantErrs := []RunError{
@@ -404,7 +374,7 @@ func TestAccountReadOnceAcrossChoices(t *testing.T) {
 		"codex-main":  {Err: errors.New("timeout")},
 	}}
 	r := Pick(exampleConfig(t), "coder-difficult", noon, env, nil)
-	if r.Status != StatusOKWithErrors || *r.Account != "claude-rec" {
+	if r.Status != StatusOKWithErrors || *r.Account != "claude-secondary" {
 		t.Fatalf("status %s account %v", r.Status, r.Account)
 	}
 	if len(r.Errors) != 2 || len(r.Warnings) != 1 || len(r.Skipped) != 3 {
@@ -427,9 +397,9 @@ func TestFailedHasEmptyListsNotNull(t *testing.T) {
 func TestUnknownUsageWithoutErrIsAnError(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
 		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	r := Pick(cfg, "p", noon, &fakeEnv{}, nil) // claude-main: Reading nil, Err nil
-	if r.Status != StatusOKWithErrors || *r.Account != "claude-rec" {
+	if r.Status != StatusOKWithErrors || *r.Account != "claude-secondary" {
 		t.Fatalf("status %s account %v", r.Status, r.Account)
 	}
 	wantSkip := []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "usage unknown (see errors)"}}
@@ -442,7 +412,7 @@ func TestUnknownUsageWithoutErrIsAnError(t *testing.T) {
 func TestFailedCallStillJudgesOlderReading(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
 		{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	older := noon.Add(-hour)
 	cases := []struct {
 		session     float64
@@ -450,7 +420,7 @@ func TestFailedCallStillJudgesOlderReading(t *testing.T) {
 		wantSkipped []Skip
 	}{
 		{40, "claude-main", nil},
-		{92, "claude-rec", []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "5h window 92% >= cap 90"}}},
+		{92, "claude-secondary", []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "5h window 92% >= cap 90"}}},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprint(tc.session), func(t *testing.T) {
@@ -484,10 +454,10 @@ func TestNoApplicableWindowsIsUnknownUsage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cfg := inlineConfig(t, `{"p": [
 				{"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, 98]},
-				{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+				{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 			env := &fakeEnv{usage: map[string]AccountState{"claude-main": {Reading: rd}}}
 			r := Pick(cfg, "p", noon, env, nil)
-			if r.Status != StatusOKWithErrors || *r.Account != "claude-rec" {
+			if r.Status != StatusOKWithErrors || *r.Account != "claude-secondary" {
 				t.Fatalf("status %s account %v", r.Status, r.Account)
 			}
 			wantSkip := []Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "usage unknown (no windows reported)"}}
@@ -504,7 +474,7 @@ func TestNoApplicableWindowsIsUnknownUsage(t *testing.T) {
 
 func TestPickedThinkingIsACopy(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	r := Pick(cfg, "p", noon, &fakeEnv{}, nil)
 	*r.Thinking = "changed"
 	if got := *cfg.Profiles["p"][0].Thinking; got != "medium" {
@@ -516,7 +486,7 @@ func TestAllowDuringSkipReasons(t *testing.T) {
 	cfg := inlineConfig(t, `{"p": [
 		{"account": "go-1", "model": "m1", "thinking": null, "allow_during": ["deepseek-peak"]},
 		{"account": "go-1", "model": "m2", "thinking": null, "allow_during": ["deepseek-peak", "deepseek-peak"]},
-		{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
+		{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium"}]}`)
 	r := Pick(cfg, "p", noon, &fakeEnv{}, nil) // Thursday 12:00 is outside every peak range
 	if len(r.Skipped) != 2 || r.Skipped[0].Why != "outside schedule deepseek-peak" ||
 		r.Skipped[1].Why != "outside schedules deepseek-peak, deepseek-peak" {

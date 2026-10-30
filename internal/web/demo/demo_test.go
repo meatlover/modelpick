@@ -387,7 +387,7 @@ func TestUsageFixture(t *testing.T) {
 
 func TestDoctorAndAddError(t *testing.T) {
 	d := newDemo()
-	if doc := d.Doctor(); doc.Errors != 0 || doc.Warnings != 1 || doc.Findings[0].Subject != "claude-rec" {
+	if doc := d.Doctor(); doc.Errors != 0 || doc.Warnings != 1 || doc.Findings[0].Subject != "claude-secondary" {
 		t.Fatalf("got %+v", doc)
 	}
 	d.AddError()
@@ -529,13 +529,13 @@ func TestNoReadingIsNullAndHasNoWindows(t *testing.T) {
 	d := newDemo()
 	raw := string(mustJSON(t, d.Usage()[1]))
 	if !strings.Contains(raw, `"reading_age_seconds":null`) {
-		t.Fatalf("claude-rec: %s", raw)
+		t.Fatalf("claude-secondary: %s", raw)
 	}
 	must(t, d, "account.add", map[string]any{"name": "go-4", "vendor": "opencode-go",
 		"fields": map[string]any{"key_file": "~/.ssh/opencode-go-api", "key_line": 4}})
 	w := d.State().Windows
-	if _, ok := w["claude-rec"]; ok {
-		t.Error("claude-rec has windows")
+	if _, ok := w["claude-secondary"]; ok {
+		t.Error("claude-secondary has windows")
 	}
 	if _, ok := w["go-4"]; ok {
 		t.Error("new account has windows")
@@ -610,8 +610,8 @@ func usageOf(t *testing.T, d *Demo, name string) web.UsageRow {
 
 func TestNoReadingIsRefreshableUnlessBlocked(t *testing.T) {
 	d := newDemo()
-	if !usageOf(t, d, "claude-rec").CanRefresh {
-		t.Error("expired claude-rec not refreshable, though Claude Code renews it")
+	if !usageOf(t, d, "claude-secondary").CanRefresh {
+		t.Error("expired claude-secondary not refreshable, though Claude Code renews it")
 	}
 	if usageOf(t, d, "go-3").CanRefresh {
 		t.Error("rate-limited go-3 refreshable")
@@ -637,8 +637,8 @@ func TestNoReadingIsRefreshableUnlessBlocked(t *testing.T) {
 	if !ok || strings.Join(w["opencode-go/deepseek-v4.1-flash"], ",") != "5h,7d,30d" {
 		t.Fatalf("windows[go-4] after refresh: %v", d.State().Windows)
 	}
-	if row, err := d.Refresh("claude-rec"); err != nil || row.ReadingAgeSeconds == nil || row.State != "ok" {
-		t.Errorf("claude-rec refreshed: %+v %v", row, err)
+	if row, err := d.Refresh("claude-secondary"); err != nil || row.ReadingAgeSeconds == nil || row.State != "ok" {
+		t.Errorf("claude-secondary refreshed: %+v %v", row, err)
 	}
 }
 

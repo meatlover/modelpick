@@ -2,10 +2,10 @@
   "status": "ok",
   "profile": "p",
   "vendor": "claude",
-  "account": "claude-rec",
+  "account": "claude-secondary",
   "model": "claude-sonnet-5-5",
   "thinking": "medium",
-  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude-rec"},
+  "account_ref": {"vendor": "claude", "config_dir": "/home/u/.claude-secondary"},
   "load_balance": null,
   "reason": null,
   "skipped": [

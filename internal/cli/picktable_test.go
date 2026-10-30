@@ -10,10 +10,10 @@ import (
 
 const pickAllNotice = "For JSON, name a profile: modelpick pick <profile>"
 
-const wantPickAll = `PROFILE       VENDOR  ACCOUNT     MODEL              THINKING
-codex-first   claude  claude-rec  claude-sonnet-5-5  medium
+const wantPickAll = `PROFILE       VENDOR  ACCOUNT           MODEL              THINKING
+codex-first   claude  claude-secondary  claude-sonnet-5-5  medium
 same-account  no choice available
-two-claude    claude  claude-rec  claude-sonnet-5-5  medium
+two-claude    claude  claude-secondary  claude-sonnet-5-5  medium
 
 codex-main: usage endpoint returned HTTP 401; log in to Codex with this account
 
@@ -44,7 +44,7 @@ func TestPickAllExitCodes(t *testing.T) {
 	} {
 		claude, codex := apptest.NewFake("claude"), apptest.NewFake("codex")
 		claude.Readings["claude-main"] = apptest.ClaudeReading(10, 10)
-		claude.Readings["claude-rec"] = apptest.ClaudeReading(10, 10)
+		claude.Readings["claude-secondary"] = apptest.ClaudeReading(10, 10)
 		codex.Readings["codex-main"] = apptest.ClaudeReading(10, 10)
 		if c.codexErr != nil {
 			delete(codex.Readings, "codex-main")

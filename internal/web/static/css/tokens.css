@@ -1,5 +1,5 @@
-/* Every colour the page uses. Light values are the mockups' hexes
-   (docs/superpowers/mockups/2026-10-23-v2), dark values their *Dark boards;
+/* Every colour the page uses. Light values are the v2 design
+   mockups' hexes, dark values their *Dark boards;
    --good-* (the green "config ok", spec 8.3) is a controller ruling, no mockup.
    ::backdrop is listed because older engines do not let it inherit :root. */
 :root,

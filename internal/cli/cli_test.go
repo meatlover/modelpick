@@ -58,14 +58,14 @@ func TestPickEndToEnd(t *testing.T) {
 		t.Fatalf("exit %d, want 0; stderr %q; stdout\n%s", code, stderr, stdout)
 	}
 	p := parsePick(t, stdout)
-	if p.Status != "ok" || p.Account == nil || *p.Account != "claude-rec" {
-		t.Fatalf("want ok/claude-rec, got\n%s", stdout)
+	if p.Status != "ok" || p.Account == nil || *p.Account != "claude-secondary" {
+		t.Fatalf("want ok/claude-secondary, got\n%s", stdout)
 	}
 	if *p.Vendor != "claude" || *p.Model != "claude-sonnet-5-5" || *p.Thinking != "medium" || p.Reason != nil {
 		t.Fatalf("wrong pick fields:\n%s", stdout)
 	}
-	if got := p.AccountRef["config_dir"]; got != "/home/u/.claude-rec" {
-		t.Fatalf("account_ref.config_dir = %v, want /home/u/.claude-rec", got)
+	if got := p.AccountRef["config_dir"]; got != "/home/u/.claude-secondary" {
+		t.Fatalf("account_ref.config_dir = %v, want /home/u/.claude-secondary", got)
 	}
 	wantSkip := []core.Skip{{Account: "claude-main", Model: "claude-opus-5-5", Why: "5h window 92% >= cap 90"}}
 	if len(p.Skipped) != 1 || p.Skipped[0] != wantSkip[0] {
@@ -74,8 +74,8 @@ func TestPickEndToEnd(t *testing.T) {
 	if len(p.Errors) != 0 || len(p.Warnings) != 0 {
 		t.Fatalf("want no errors/warnings, got %+v / %q", p.Errors, p.Warnings)
 	}
-	if claude.Calls["claude-main"] != 1 || claude.Calls["claude-rec"] != 0 {
-		t.Fatalf("usage calls = %v, want claude-main 1 and claude-rec 0 (uncapped)", claude.Calls)
+	if claude.Calls["claude-main"] != 1 || claude.Calls["claude-secondary"] != 0 {
+		t.Fatalf("usage calls = %v, want claude-main 1 and claude-secondary 0 (uncapped)", claude.Calls)
 	}
 
 	keys := []string{"status", "profile", "vendor", "account", "model", "thinking",
@@ -97,18 +97,18 @@ func TestPickEndToEnd(t *testing.T) {
 	}
 }
 
-// lbConfig has profile lb: claude-main and claude-rec in one group.
+// lbConfig has profile lb: claude-main and claude-secondary in one group.
 const lbConfig = `{
   "version": 1,
   "accounts": {
     "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
-    "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" }
+    "claude-secondary":  { "vendor": "claude", "config_dir": "~/.claude-secondary" }
   },
   "profiles": {
     "lb": [
       { "load_balance": "random", "choices": [
         { "account": "claude-main", "model": "claude-sonnet-5-5", "thinking": "medium" },
-        { "account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium" }
+        { "account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium" }
       ] }
     ]
   }
@@ -128,7 +128,7 @@ func TestPickCLIUsesDepsShuffle(t *testing.T) {
 		member  string
 	}{
 		{"fake deps keep file order", nil, "claude-main", "1a"},
-		{"reversed", reverse, "claude-rec", "1b"},
+		{"reversed", reverse, "claude-secondary", "1b"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,9 +152,9 @@ func TestPickCLIUsesDepsShuffle(t *testing.T) {
 func TestPickConfigError(t *testing.T) {
 	bad := strings.Replace(testConfig,
 		`"cap": [90, 98] },
-      { "account": "claude-rec"`,
+      { "account": "claude-secondary"`,
 		`"cap": [90, 98], "skip_during": ["deepseek-peek"] },
-      { "account": "claude-rec"`, 1)
+      { "account": "claude-secondary"`, 1)
 	if bad == testConfig {
 		t.Fatal("test setup: replacement did not apply")
 	}
@@ -206,8 +206,8 @@ func TestPickUnauthorizedIsOkWithErrors(t *testing.T) {
 		t.Fatalf("exit %d, want 2:\n%s", code, stdout)
 	}
 	p := parsePick(t, stdout)
-	if p.Status != "ok_with_errors" || p.Account == nil || *p.Account != "claude-rec" {
-		t.Fatalf("want ok_with_errors/claude-rec:\n%s", stdout)
+	if p.Status != "ok_with_errors" || p.Account == nil || *p.Account != "claude-secondary" {
+		t.Fatalf("want ok_with_errors/claude-secondary:\n%s", stdout)
 	}
 	want := core.RunError{Account: "codex-main", Error: "usage endpoint returned HTTP 401; log in to Codex with this account"}
 	if len(p.Errors) != 1 || p.Errors[0] != want {
