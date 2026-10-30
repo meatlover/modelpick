@@ -80,10 +80,10 @@ func TestUsageStates(t *testing.T) {
 	for _, c := range cases {
 		f := newFixture(t)
 		if c.stored != "" {
-			apptest.WriteStored(t, f.d, "claude-rec", c.stored)
+			apptest.WriteStored(t, f.d, "claude-secondary", c.stored)
 		}
-		f.claude.Expired["claude-rec"] = c.expired
-		r := rowOf(t, f.live().Usage(), "claude-rec")
+		f.claude.Expired["claude-secondary"] = c.expired
+		r := rowOf(t, f.live().Usage(), "claude-secondary")
 		if r.State != c.state || r.CanRefresh != c.canRefresh {
 			t.Errorf("%s: state %q can_refresh %v, want %q %v", c.name, r.State, r.CanRefresh, c.state, c.canRefresh)
 		}
@@ -96,18 +96,18 @@ func TestUsageStates(t *testing.T) {
 func TestRefresh(t *testing.T) {
 	f := newFixture(t)
 	l := f.live()
-	f.claude.Readings["claude-rec"] = apptest.ClaudeReading(5, 6)
-	row, err := l.Refresh("claude-rec")
+	f.claude.Readings["claude-secondary"] = apptest.ClaudeReading(5, 6)
+	row, err := l.Refresh("claude-secondary")
 	if err != nil || row.State != "ok" || row.ReadingAgeSeconds == nil || len(row.Windows) != 2 {
-		t.Fatalf("refresh claude-rec: %+v %v", row, err)
+		t.Fatalf("refresh claude-secondary: %+v %v", row, err)
 	}
 	// Ruling 5: the next State shows the new reading's window labels.
-	if got := mustJSON(t, l.State().Windows["claude-rec"]); got != `{"claude-sonnet-5-5":["5h","7d"]}` {
+	if got := mustJSON(t, l.State().Windows["claude-secondary"]); got != `{"claude-sonnet-5-5":["5h","7d"]}` {
 		t.Errorf("windows after refresh: %s", got)
 	}
-	l.Refresh("claude-rec")
-	if f.claude.Calls["claude-rec"] != 2 {
-		t.Errorf("Refresh bypasses the floor: %d calls, want 2", f.claude.Calls["claude-rec"])
+	l.Refresh("claude-secondary")
+	if f.claude.Calls["claude-secondary"] != 2 {
+		t.Errorf("Refresh bypasses the floor: %d calls, want 2", f.claude.Calls["claude-secondary"])
 	}
 	if row, err := l.Refresh("go-1"); err != nil || len(row.Windows) != 3 || f.goSrv.count() != 1 {
 		t.Errorf("refresh go-1: %+v %v (%d calls)", row, err, f.goSrv.count())
@@ -123,9 +123,9 @@ func TestRefreshOutcomesAreRows(t *testing.T) {
 	l := f.live()
 	f.codex.Expired["codex-main"] = true
 	f.claude.Errs["claude-main"] = errBoom
-	f.claude.Errs["claude-rec"] = &adapter.HTTPError{Status: 429, RetryAfter: time.Hour}
+	f.claude.Errs["claude-secondary"] = &adapter.HTTPError{Status: 429, RetryAfter: time.Hour}
 	want := map[string]string{"codex-main": "expired token", "claude-main": "error: boom",
-		"claude-rec": "rate-limited until 2026-10-22T13:00:00Z"}
+		"claude-secondary": "rate-limited until 2026-10-22T13:00:00Z"}
 	for name, state := range want {
 		row, err := l.Refresh(name)
 		if err != nil || row.State != state {
@@ -152,16 +152,16 @@ func TestRefreshInternalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(app.NewStore(f.d, cfg).Dir, "claude-rec.lock"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(app.NewStore(f.d, cfg).Dir, "claude-secondary.lock"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, err = l.Refresh("claude-rec")
+	_, err = l.Refresh("claude-secondary")
 	var r web.Refused
 	if err == nil || errors.As(err, &r) {
 		t.Errorf("got %#v, want a plain error", err)
 	}
-	if f.claude.Calls["claude-rec"] != 0 {
-		t.Errorf("called without the lock: %d", f.claude.Calls["claude-rec"])
+	if f.claude.Calls["claude-secondary"] != 0 {
+		t.Errorf("called without the lock: %d", f.claude.Calls["claude-secondary"])
 	}
 }
 
@@ -191,7 +191,7 @@ func TestFirstReadingOncePerAccount(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		got[waitFirst(t, f)] = true
 	}
-	if len(got) != 3 || !got["claude-rec"] || !got["codex-main"] || !got["go-1"] {
+	if len(got) != 3 || !got["claude-secondary"] || !got["codex-main"] || !got["go-1"] {
 		t.Fatalf("first readings at New: %v", got)
 	}
 	s := l.State()
@@ -203,7 +203,7 @@ func TestFirstReadingOncePerAccount(t *testing.T) {
 		t.Fatalf("after account.add: %s", n)
 	}
 	l.maybeFirst("claude-new")
-	l.maybeFirst("claude-rec")
+	l.maybeFirst("claude-secondary")
 	l.maybeFirst("claude-main")
 	l.Usage()
 	l.State()
@@ -220,16 +220,16 @@ func TestReadFirstHonoursTheStore(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		waitFirst(t, f)
 	}
-	f.claude.Readings["claude-rec"] = apptest.ClaudeReading(5, 6)
+	f.claude.Readings["claude-secondary"] = apptest.ClaudeReading(5, 6)
 	f.codex.Expired["codex-main"] = true
-	l.readFirst(context.Background(), "claude-rec")
-	l.readFirst(context.Background(), "claude-rec")
+	l.readFirst(context.Background(), "claude-secondary")
+	l.readFirst(context.Background(), "claude-secondary")
 	l.readFirst(context.Background(), "codex-main")
-	if f.claude.Calls["claude-rec"] != 1 || f.codex.Calls["codex-main"] != 0 {
-		t.Errorf("calls: claude-rec %d (want 1), codex-main %d (want 0)",
-			f.claude.Calls["claude-rec"], f.codex.Calls["codex-main"])
+	if f.claude.Calls["claude-secondary"] != 1 || f.codex.Calls["codex-main"] != 0 {
+		t.Errorf("calls: claude-secondary %d (want 1), codex-main %d (want 0)",
+			f.claude.Calls["claude-secondary"], f.codex.Calls["codex-main"])
 	}
-	if r := rowOf(t, l.Usage(), "claude-rec"); r.State != "ok" || r.ReadingAgeSeconds == nil {
+	if r := rowOf(t, l.Usage(), "claude-secondary"); r.State != "ok" || r.ReadingAgeSeconds == nil {
 		t.Errorf("after the first reading: %+v", r)
 	}
 }
@@ -237,7 +237,7 @@ func TestReadFirstHonoursTheStore(t *testing.T) {
 // New with no trigger takes the readings itself, in the background.
 func TestNewTakesFirstReadings(t *testing.T) {
 	f := newFixture(t)
-	apptest.WriteStored(t, f.d, "claude-rec", claudeStored)
+	apptest.WriteStored(t, f.d, "claude-secondary", claudeStored)
 	apptest.WriteStored(t, f.d, "codex-main", claudeStored)
 	l := New(f.d, f.path)
 	defer l.Close() // before TempDir cleanup: the reading may still be unlocking

@@ -43,7 +43,7 @@ type CredStatus struct {
 	LoginExpires time.Time // refresh token's expiry; zero = unknown
 	Present      bool
 	Expired      bool
-	Source       string // human description, e.g. "keychain: Claude Code-credentials-6a4e8c1e", never the secret
+	Source       string // human description, e.g. "keychain: Claude Code-credentials-a106ba11", never the secret
 	Err          error  // non-nil when the source exists but cannot be read/parsed
 }
 

@@ -374,7 +374,7 @@ func TestForeignSurfaceDropped(t *testing.T) {
 
 func TestCredentialFileFallbackAndExpiry(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".claude-rec")
+	dir := filepath.Join(home, ".claude-secondary")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -646,11 +646,11 @@ func TestUserAgentProbeNotCachedOnFailure(t *testing.T) {
 
 func TestIsDefaultConfigDir(t *testing.T) {
 	for dir, want := range map[string]bool{
-		"/home/u/.claude":      true,
-		"/home/u/.claude/":     true,
-		"/home/u/x/../.claude": true,
-		"/home/u/.claude-rec":  false,
-		"/other/.claude":       false,
+		"/home/u/.claude":           true,
+		"/home/u/.claude/":          true,
+		"/home/u/x/../.claude":      true,
+		"/home/u/.claude-secondary": false,
+		"/other/.claude":            false,
 	} {
 		if got := IsDefaultConfigDir(dir, "/home/u"); got != want {
 			t.Errorf("IsDefaultConfigDir(%q) = %v, want %v", dir, got, want)

@@ -14,7 +14,7 @@ func TestExampleConfigParses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cfg.Accounts["claude-rec"].ConfigDir; got != "/home/u/.claude-rec" {
+	if got := cfg.Accounts["claude-secondary"].ConfigDir; got != "/home/u/.claude-secondary" {
 		t.Errorf("ConfigDir = %q", got)
 	}
 	if cfg.Accounts["go-2"].Name != "go-2" || cfg.Accounts["go-2"].KeyLine != 2 {

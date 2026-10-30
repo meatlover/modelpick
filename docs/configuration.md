@@ -27,7 +27,7 @@ identical. Model names and numbers are illustrative.
   },
   "accounts": {
     "claude-main": { "vendor": "claude", "config_dir": "~/.claude" },
-    "claude-rec":  { "vendor": "claude", "config_dir": "~/.claude-rec" },
+    "claude-secondary":  { "vendor": "claude", "config_dir": "~/.claude-secondary" },
     "codex-main":  { "vendor": "codex", "codex_home": "~/.codex" },
     "go-1": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 1 },
     "go-2": { "vendor": "opencode-go", "key_file": "~/.ssh/opencode-go-api", "key_line": 2 },
@@ -44,7 +44,7 @@ identical. Model names and numbers are illustrative.
       { "account": "claude-main", "model": "claude-opus-5-5",  "thinking": "high", "cap": [90, 98] },
       { "account": "claude-main", "model": "claude-fable-5-1", "thinking": "high", "cap": [90, 98, 95] },
       { "account": "codex-main",  "model": "gpt-6.1-sol",      "thinking": "high", "cap": [98] },
-      { "account": "claude-rec",  "model": "claude-sonnet-5-5", "thinking": "medium" }
+      { "account": "claude-secondary",  "model": "claude-sonnet-5-5", "thinking": "medium" }
     ],
     "tester": [
       { "account": "go-1", "model": "opencode-go/deepseek-v4.1", "thinking": null,

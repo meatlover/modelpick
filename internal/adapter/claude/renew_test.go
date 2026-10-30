@@ -70,13 +70,13 @@ func TestRenewArgv(t *testing.T) {
 
 func TestRenewNonDefaultDirSetsConfigDir(t *testing.T) {
 	f := newRenewFixture(t, "", nil, []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/elsewhere"})
-	if err := f.a.Renew(context.Background(), f.acct(".claude-rec/")); err != nil {
+	if err := f.a.Renew(context.Background(), f.acct(".claude-secondary/")); err != nil {
 		t.Fatal(err)
 	}
 	if n := envCount(f.got.Env, "CLAUDE_CONFIG_DIR"); n != 1 {
 		t.Fatalf("want exactly one CLAUDE_CONFIG_DIR, got %d in %v", n, f.got.Env)
 	}
-	want := "CLAUDE_CONFIG_DIR=" + filepath.Join(f.home, ".claude-rec")
+	want := "CLAUDE_CONFIG_DIR=" + filepath.Join(f.home, ".claude-secondary")
 	found := false
 	for _, e := range f.got.Env {
 		found = found || e == want
@@ -87,7 +87,7 @@ func TestRenewNonDefaultDirSetsConfigDir(t *testing.T) {
 }
 
 func TestRenewDefaultDirUnsetsInheritedConfigDir(t *testing.T) {
-	env := []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/x/.claude-rec"}
+	env := []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/x/.claude-secondary"}
 	for _, v := range authVars {
 		env = append(env, v+"=secret")
 	}

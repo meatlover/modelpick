@@ -17,10 +17,10 @@ const wantEnvWithErrors = `printf '%s\n' 'modelpick: codex-main: usage endpoint 
 export MODELPICK_STATUS='ok_with_errors'
 export MODELPICK_PROFILE='codex-first'
 export MODELPICK_VENDOR='claude'
-export MODELPICK_ACCOUNT='claude-rec'
+export MODELPICK_ACCOUNT='claude-secondary'
 export MODELPICK_MODEL='claude-sonnet-5-5'
 export MODELPICK_THINKING='medium'
-export CLAUDE_CONFIG_DIR='/home/u/.claude-rec'
+export CLAUDE_CONFIG_DIR='/home/u/.claude-secondary'
 unset MODELPICK_KEY_FILE
 unset MODELPICK_KEY_LINE
 `
@@ -236,7 +236,7 @@ func TestEnvEvalInShell(t *testing.T) {
 	quotedOut, _ := envQuotedDir(t)
 	cases := []struct{ name, script, pre, show, want string }{
 		{"ok", okOut, "MODELPICK_KEY_FILE=old", "$CLAUDE_CONFIG_DIR|$MODELPICK_ACCOUNT|${MODELPICK_KEY_FILE-unset}",
-			"rc=0 /home/u/.claude-rec|claude-rec|unset"},
+			"rc=0 /home/u/.claude-secondary|claude-secondary|unset"},
 		{"failed", failOut, "MODELPICK_ACCOUNT=old", "${MODELPICK_ACCOUNT-unset}", "rc=1 unset"},
 		{"opencode", goOut, "MODELPICK_KEY_FILE=old", "$MODELPICK_KEY_FILE|$MODELPICK_KEY_LINE", "rc=0 /home/u/.ssh/k|2"},
 		{"quoted", quotedOut, "CLAUDE_CONFIG_DIR=old", "$CLAUDE_CONFIG_DIR", "rc=0 /home/u/it's here"},

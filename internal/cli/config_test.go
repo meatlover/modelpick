@@ -43,8 +43,8 @@ func TestConfigOutput(t *testing.T) {
 	if got.Settings.DefaultCap != 95 || got.Settings.Minutes != 15 {
 		t.Errorf("settings = %+v", got.Settings)
 	}
-	if p := got.Accounts["claude-rec"]["config_dir"]; p != "/home/u/.claude-rec" {
-		t.Errorf("claude-rec config_dir = %v, want absolute", p)
+	if p := got.Accounts["claude-secondary"]["config_dir"]; p != "/home/u/.claude-secondary" {
+		t.Errorf("claude-secondary config_dir = %v, want absolute", p)
 	}
 	if s := got.Schedules["deepseek-peak"]; len(s.Days) != 5 || s.UTC[1] != "06:00-10:00" {
 		t.Errorf("schedule as written lost: %+v", s)

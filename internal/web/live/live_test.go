@@ -34,11 +34,11 @@ const configTmpl = `{
     "codex-main": {"vendor": "codex", "codex_home": "~/.codex"},
     "claude-main": {"vendor": "claude", "config_dir": "~/.claude"},
     "go-1": {"vendor": "opencode-go", "key_file": %q, "key_line": 1},
-    "claude-rec": {"vendor": "claude", "config_dir": "~/.claude-rec"}
+    "claude-secondary": {"vendor": "claude", "config_dir": "~/.claude-secondary"}
   },
   "schedules": {"night": {"days": ["mon"], "utc": ["00:00-02:30"]}},
   "profiles": {
-    "rec": [{"account": "claude-rec", "model": "claude-sonnet-5-5", "thinking": "medium", "cap": []}],
+    "rec": [{"account": "claude-secondary", "model": "claude-sonnet-5-5", "thinking": "medium", "cap": []}],
     "coder": [
       {"account": "claude-main", "model": "claude-opus-5-5", "thinking": "high", "cap": [90, "default", "pace+10", "default"]},
       {"account": "go-1", "model": "opencode-go/deepseek-v4.1-flash", "thinking": null, "skip_during": ["night"]},
@@ -94,7 +94,7 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture { return newFixtureRenewing(t, false) }
 
 // newFixtureRenewing is newFixture whose Claude adapter can renew logins
-// (claude-rec's), which NewDeps decides when it wraps the fake.
+// (claude-secondary's), which NewDeps decides when it wraps the fake.
 func newFixtureRenewing(t *testing.T, renewing bool) *fixture {
 	t.Helper()
 	keyFile := filepath.Join(t.TempDir(), "go-keys")
@@ -107,9 +107,9 @@ func newFixtureRenewing(t *testing.T, renewing bool) *fixture {
 	fable := adapter.Model{ID: "claude-fable-5-1", Thinking: []string{"high"}}
 	sonnet := adapter.Model{ID: "claude-sonnet-5-5", Thinking: []string{"medium"}}
 	f.claude.ModelList["claude-main"] = []adapter.Model{opus, fable}
-	f.claude.ModelList["claude-rec"] = []adapter.Model{sonnet}
+	f.claude.ModelList["claude-secondary"] = []adapter.Model{sonnet}
 	if renewing {
-		f.claude.Renewable["claude-rec"] = true
+		f.claude.Renewable["claude-secondary"] = true
 	}
 	f.claude.Readings["claude-main"] = apptest.ClaudeReading(30, 50)
 	f.codex.ModelList["codex-main"] = []adapter.Model{{ID: "gpt-6.1-sol", Thinking: []string{"low", "high"}}}
@@ -151,11 +151,11 @@ func TestConformance(t *testing.T) {
 	webtest.Run(t, webtest.Harness{
 		New: func(t *testing.T) web.Backend {
 			f = newFixtureRenewing(t, true)
-			// claude-rec: an expired login Claude Code can renew, with a
+			// claude-secondary: an expired login Claude Code can renew, with a
 			// saved reading; its row is refreshable though the state is
 			// "expired token".
-			f.claude.Expired["claude-rec"] = true
-			apptest.WriteStored(t, f.d, "claude-rec", claudeStored)
+			f.claude.Expired["claude-secondary"] = true
+			apptest.WriteStored(t, f.d, "claude-secondary", claudeStored)
 			var err error
 			if orig, err = os.ReadFile(f.path); err != nil {
 				t.Fatal(err)
@@ -185,7 +185,7 @@ func TestConformance(t *testing.T) {
 		Algorithms:  core.AlgorithmNames(),
 		UsageCalls:  func() int { return f.usageCalls() },
 		MissingTool: func(*testing.T) []string {
-			names := []string{"claude-main", "claude-rec"}
+			names := []string{"claude-main", "claude-secondary"}
 			for _, n := range names {
 				f.claude.Checks[n] = []adapter.Finding{{Severity: adapter.SeverityError, Account: n,
 					Message: "claude not found on PATH"}}
@@ -218,12 +218,12 @@ func postDoctorAll(t *testing.T, l *Live) web.Doctor {
 }
 
 // TestLiveDoctorAllCallsStaleAccount: claude-main's reading is 20 minutes
-// old, past the 15-minute floor, so Check all calls it; claude-rec's is 5
+// old, past the 15-minute floor, so Check all calls it; claude-secondary's is 5
 // minutes old and is not called. Plain doctor first calls nobody.
 func TestLiveDoctorAllCallsStaleAccount(t *testing.T) {
 	f := newFixture(t)
 	apptest.WriteStored(t, f.d, "claude-main", strings.Replace(claudeStored, "11:50:00Z", "11:40:00Z", 1))
-	apptest.WriteStored(t, f.d, "claude-rec", strings.Replace(claudeStored, "11:50:00Z", "11:55:00Z", 1))
+	apptest.WriteStored(t, f.d, "claude-secondary", strings.Replace(claudeStored, "11:50:00Z", "11:55:00Z", 1))
 	l := f.live()
 	l.Doctor()
 	if n := f.claude.TotalUsage(); n != 0 {
@@ -285,7 +285,7 @@ func TestCloseWaitsForDoctorAll(t *testing.T) {
 
 // TestConcurrentDoctorAllShareOneRun: a Check all sent while one runs (a
 // second tab) waits for it and answers its result, so each account due a
-// call gets one. claude-rec, codex-main and go-1 have no reading;
+// call gets one. claude-secondary, codex-main and go-1 have no reading;
 // claude-main's is fresh.
 func TestConcurrentDoctorAllShareOneRun(t *testing.T) {
 	f := newFixture(t)
@@ -298,10 +298,10 @@ func TestConcurrentDoctorAllShareOneRun(t *testing.T) {
 		defer wg.Done()
 		got[0] = l.DoctorAll()
 	}()
-	waitFor(t, "claude-rec's call", func() bool { return f.claude.TotalUsage() > 0 })
+	waitFor(t, "claude-secondary's call", func() bool { return f.claude.TotalUsage() > 0 })
 	got[1] = l.DoctorAll()
 	wg.Wait()
-	calls := map[string]int{"claude-rec": f.claude.TotalUsage(), "codex-main": f.codex.TotalUsage(), "go-1": f.goSrv.count()}
+	calls := map[string]int{"claude-secondary": f.claude.TotalUsage(), "codex-main": f.codex.TotalUsage(), "go-1": f.goSrv.count()}
 	for n, c := range calls {
 		if c != 1 {
 			t.Errorf("%s: %d usage calls over two concurrent Check alls, want 1", n, c)
@@ -326,7 +326,7 @@ func TestStateAccounts(t *testing.T) {
 	s := f.live().State()
 	keyFile := strings.Split(strings.Split(mustJSON(t, s.Accounts[3].Fields), `"key_file":"`)[1], `"`)[0]
 	want := `[{"name":"claude-main","vendor":"claude","fields":{"config_dir":"~/.claude"},"location":"~/.claude","source":"fake: claude-main"},` +
-		`{"name":"claude-rec","vendor":"claude","fields":{"config_dir":"~/.claude-rec"},"location":"~/.claude-rec","source":"fake: claude-rec"},` +
+		`{"name":"claude-secondary","vendor":"claude","fields":{"config_dir":"~/.claude-secondary"},"location":"~/.claude-secondary","source":"fake: claude-secondary"},` +
 		`{"name":"codex-main","vendor":"codex","fields":{"codex_home":"~/.codex"},"location":"~/.codex","source":"fake: codex-main"},` +
 		`{"name":"go-1","vendor":"opencode-go","fields":{"key_file":"` + keyFile + `","key_line":1},"location":"` + keyFile + `","source":"key line 1 of 1"}]`
 	if got := mustJSON(t, s.Accounts); got != want {
@@ -351,7 +351,7 @@ func TestStateModelsWindowsSchedulesProfiles(t *testing.T) {
 			`{"account":"claude-main","model":"claude-opus-5-5","thinking":"high","cap":[90,"default","pace+10"],"skip_during":[],"allow_during":[],"group":0,"load_balance":null},` +
 			`{"account":"go-1","model":"opencode-go/deepseek-v4.1-flash","thinking":null,"cap":null,"skip_during":["night"],"allow_during":[],"group":0,"load_balance":null},` +
 			`{"account":"codex-main","model":"gpt-6.1-sol","thinking":"high","cap":null,"skip_during":[],"allow_during":[],"group":0,"load_balance":null}]},` +
-			`{"name":"rec","choices":[{"account":"claude-rec","model":"claude-sonnet-5-5","thinking":"medium","cap":[],"skip_during":[],"allow_during":[],"group":0,"load_balance":null}]}]`,
+			`{"name":"rec","choices":[{"account":"claude-secondary","model":"claude-sonnet-5-5","thinking":"medium","cap":[],"skip_during":[],"allow_during":[],"group":0,"load_balance":null}]}]`,
 	}
 	if got := mustJSON(t, s.Windows); got != checks["windows"] {
 		t.Errorf("windows: %s", got)
@@ -360,7 +360,7 @@ func TestStateModelsWindowsSchedulesProfiles(t *testing.T) {
 		t.Errorf("profiles:\n got %s\nwant %s", got, checks["profiles"])
 	}
 	wantModels := `{"claude-main":[{"id":"claude-opus-5-5","thinking":["low","high"]},{"id":"claude-fable-5-1","thinking":["high"]}],` +
-		`"claude-rec":[{"id":"claude-sonnet-5-5","thinking":["medium"]}],"codex-main":[{"id":"gpt-6.1-sol","thinking":["low","high"]}],` +
+		`"claude-secondary":[{"id":"claude-sonnet-5-5","thinking":["medium"]}],"codex-main":[{"id":"gpt-6.1-sol","thinking":["low","high"]}],` +
 		`"go-1":[{"id":"opencode-go/deepseek-v4.1-flash","thinking":[]}]}`
 	if checks["models"] != wantModels {
 		t.Errorf("models:\n got %s\nwant %s", checks["models"], wantModels)
