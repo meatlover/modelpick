@@ -28,6 +28,9 @@ var defaultsJSON []byte
 type Settings struct {
 	MinCallInterval time.Duration
 	DefaultCap      float64
+	// LoginExpiryWarning: doctor warns when a login expires within this long;
+	// 0 turns the check off.
+	LoginExpiryWarning time.Duration
 }
 
 // Choice is one ranked entry of a profile.
@@ -176,10 +179,10 @@ func (p parser) validate(doc *Doc, home string) (*Config, error) {
 
 func (p parser) settings(set map[string]float64) (Settings, error) {
 	var d rawSettings
-	if err := json.Unmarshal(defaultsJSON, &d); err != nil || d.MinCallIntervalMinutes == nil || d.DefaultCap == nil {
+	if err := json.Unmarshal(defaultsJSON, &d); err != nil || d.MinCallIntervalMinutes == nil || d.DefaultCap == nil || d.LoginExpiryWarningDays == nil {
 		panic("core: embedded defaults.json is malformed")
 	}
-	minutes, capPct := *d.MinCallIntervalMinutes, *d.DefaultCap
+	minutes, capPct, warnDays := *d.MinCallIntervalMinutes, *d.DefaultCap, *d.LoginExpiryWarningDays
 	if v, ok := set["min_call_interval_minutes"]; ok {
 		if v < 0 {
 			return Settings{}, p.fail("settings.min_call_interval_minutes", "must not be negative")
@@ -192,7 +195,17 @@ func (p parser) settings(set map[string]float64) (Settings, error) {
 		}
 		capPct = v
 	}
-	return Settings{MinCallInterval: time.Duration(minutes * float64(time.Minute)), DefaultCap: capPct}, nil
+	if v, ok := set["login_expiry_warning_days"]; ok {
+		if v < 0 {
+			return Settings{}, p.fail("settings.login_expiry_warning_days", "must not be negative")
+		}
+		warnDays = v
+	}
+	return Settings{
+		MinCallInterval:    time.Duration(minutes * float64(time.Minute)),
+		DefaultCap:         capPct,
+		LoginExpiryWarning: time.Duration(warnDays * float64(24*time.Hour)),
+	}, nil
 }
 
 func (p parser) accounts(docs map[string]DocAccount, home string) (map[string]adapter.Account, error) {

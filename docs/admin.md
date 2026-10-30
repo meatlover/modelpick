@@ -282,6 +282,8 @@ shows `error` there, and its message is on a line below the table
 | `no credential: not found: <codex_home>/auth.json` | No Codex login there. | `CODEX_HOME=<codex_home> codex login`. |
 | `credential unreadable (...)` | The login exists but is not in the expected shape, or the Keychain lookup failed or timed out. | Log in again with the tool. On macOS, check for a Keychain permission prompt. |
 | `token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login` (or Codex) | The stored token is past its expiry. | Nothing yet: the next due call renews it. If `renewal failed: <reason>` shows, log in again (`/login` in Claude Code, `codex login`). |
+| `login expires <time>; log in again in Claude Code with this account before then` (warning) | The refresh token, which renewal never extends, expires within `login_expiry_warning_days` (default 7). `<time>` is UTC. Only Claude logins report an expiry. | Log in again in Claude Code (`/login`) with this account before then. |
+| `login expired <time>; renewal fails until you log in again in Claude Code with this account` (error) | The refresh token has expired, so renewing the access token fails. It does not block config edits. | Log in again in Claude Code (`/login`) with this account. |
 | `usage endpoint returned HTTP 401; log in to <tool> with this account` | The vendor rejected the login. | Log in again. |
 | `usage endpoint returned HTTP <n>` | Any other HTTP failure, including a refused redirect (3xx). | Usually transient; the next call after the floor retries. |
 | `rate-limited until <time>` | The server sent `Retry-After`. | Wait; `--refresh` does not override it. |

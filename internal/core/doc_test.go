@@ -348,3 +348,13 @@ func TestParseDocGroupErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestDocKeepsLoginExpiryWarningDays(t *testing.T) {
+	src := strings.Replace(minimalConfig(t), `"accounts"`, `"settings":{"login_expiry_warning_days":3},"accounts"`, 1)
+	if out := string(mustDoc(t, src).Encode()); !strings.Contains(out, `"login_expiry_warning_days": 3`) {
+		t.Errorf("key dropped by ParseDoc/Encode:\n%s", out)
+	}
+	if out := string(mustDoc(t, minimalConfig(t)).Encode()); strings.Contains(out, "login_expiry_warning_days") {
+		t.Errorf("key added to a file without it:\n%s", out)
+	}
+}

@@ -184,9 +184,11 @@ Each line says what would remove it and why it is deferred.
   `TestImports`/`XTestImports` from `go list`; deferred because no test
   currently crosses a layer.
 - **The Claude Keychain item is read twice per account per pick**
-  (`Credential`, then `Usage`). Removable by passing the loaded credential
-  from `Credential` to `Usage`; deferred because it costs one local `security`
-  call and changes the adapter interface.
+  (`Credential`, then `Usage`), and up to three times per account for
+  `doctor`, whose `CheckCache` also reads `Credential` for the login expiry
+  once per cached Check. Removable by passing the loaded credential from
+  `Credential` to `Usage` and `Check`; deferred because it costs one local
+  `security` call and changes the adapter interface.
 - **State files are keyed by account name only**, so renaming an account
   resets its floor, and two names differing only in case collide on a
   case-insensitive filesystem. Removable by keying on a hash of the account's
@@ -202,8 +204,9 @@ Each line says what would remove it and why it is deferred.
 - **Empty `opencode models` output counts as an empty model list**, not an
   error, so `doctor` then warns that each configured model is not offered.
 
-## Not in v1
+## Not planned
 
-`rotate` (switching an OpenCode Go key or a login in place) and a web UI for
-editing profiles are planned for later versions. Neither changes the layering:
-both would be new `cli` commands over the same core and adapters.
+`rotate` (switching an OpenCode Go key or a login in place) was dropped on
+2026-10-30. Launchers give each process its own account through the
+environment instead (`modelpick env`, mmm-modelpick sets `CLAUDE_CONFIG_DIR`,
+`CODEX_HOME` or `OPENCODE_AUTH_CONTENT`), so nothing needs swapping in place.

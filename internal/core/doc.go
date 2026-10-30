@@ -50,6 +50,7 @@ func ParseDoc(data []byte) (*Doc, error) { return parser{}.decodeDoc(data) }
 type rawSettings struct {
 	MinCallIntervalMinutes *float64 `json:"min_call_interval_minutes"`
 	DefaultCap             *float64 `json:"default_cap"`
+	LoginExpiryWarningDays *float64 `json:"login_expiry_warning_days"`
 }
 
 type rawChoice struct {
@@ -85,6 +86,9 @@ func (p parser) decodeDoc(data []byte) (*Doc, error) {
 		}
 		if v := top.Settings.DefaultCap; v != nil {
 			d.Settings["default_cap"] = *v
+		}
+		if v := top.Settings.LoginExpiryWarningDays; v != nil {
+			d.Settings["login_expiry_warning_days"] = *v
 		}
 	}
 	var err error

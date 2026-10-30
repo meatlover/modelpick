@@ -40,14 +40,18 @@ func credentialsFile(configDir string) string {
 // credential is the in-memory login. token never leaves this package except
 // in the Authorization header of the usage request.
 type credential struct {
-	token   string
-	expires time.Time // zero = unknown
+	token        string
+	expires      time.Time // access token's expiry; zero = unknown
+	loginExpires time.Time // refresh token's expiry; zero = unknown
 }
 
 type credFile struct {
 	ClaudeAiOauth *struct {
 		AccessToken string `json:"accessToken"`
 		ExpiresAt   int64  `json:"expiresAt"` // epoch milliseconds
+		// RefreshTokenExpiresAt is the refresh token's expiry, fixed at
+		// sign-in. Only the date is read; the refresh token itself is not.
+		RefreshTokenExpiresAt int64 `json:"refreshTokenExpiresAt"` // epoch milliseconds, optional
 	} `json:"claudeAiOauth"`
 }
 
@@ -66,6 +70,9 @@ func parseCredential(blob []byte) (credential, error) {
 	c := credential{token: f.ClaudeAiOauth.AccessToken}
 	if ms := f.ClaudeAiOauth.ExpiresAt; ms > 0 {
 		c.expires = time.UnixMilli(ms)
+	}
+	if ms := f.ClaudeAiOauth.RefreshTokenExpiresAt; ms > 0 {
+		c.loginExpires = time.UnixMilli(ms)
 	}
 	return c, nil
 }
@@ -102,7 +109,7 @@ func (a *Adapter) status(source string, blob []byte) (credential, adapter.CredSt
 		return credential{}, adapter.CredStatus{Source: source, Err: err}
 	}
 	expired := !c.expires.IsZero() && !a.o.Now().Before(c.expires)
-	return c, adapter.CredStatus{Present: true, Expired: expired, Source: source}
+	return c, adapter.CredStatus{Present: true, Expired: expired, LoginExpires: c.loginExpires, Source: source}
 }
 
 // Credential reports where the login is and whether it has expired. Local

@@ -655,3 +655,33 @@ func TestIsDefaultConfigDir(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialLoginExpires(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/credentials_refresh_expiry.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		blob string
+		want time.Time
+	}{
+		{"present", string(fixture), time.UnixMilli(1795000000000)},
+		{"absent", credJSON(fakeToken, testNow.Add(time.Hour)), time.Time{}},
+		{"zero", `{"claudeAiOauth":{"accessToken":"` + fakeToken + `","refreshTokenExpiresAt":0}}`, time.Time{}},
+		{"negative", `{"claudeAiOauth":{"accessToken":"` + fakeToken + `","refreshTokenExpiresAt":-5}}`, time.Time{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, serveBody(200, "{}"))
+			f.a.o.Keychain = keychainWith(c.blob, true, nil, nil)
+			st := f.a.Credential(f.acct)
+			if !st.Present || st.Err != nil {
+				t.Fatalf("credential: %+v", st)
+			}
+			if !st.LoginExpires.Equal(c.want) {
+				t.Errorf("LoginExpires = %v, want %v", st.LoginExpires, c.want)
+			}
+		})
+	}
+}
