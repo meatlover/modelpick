@@ -180,3 +180,7 @@ pass locally; `check.sh` does not.
 An opt-in smoke test against your real accounts, which makes real usage calls
 (never forced past the floor):
 `go test -tags live ./internal/live/ -v`.
+
+## License
+
+MIT, copyright Meatlover LLC. See [LICENSE](LICENSE).
