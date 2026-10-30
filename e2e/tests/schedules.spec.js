@@ -3,7 +3,7 @@
 // way a user does and then reads config.json from disk.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, act } = require("./helpers");
 const { readConfig, expectConfig, expectUnchanged } = require("./config");
 
 let server;
@@ -60,10 +60,10 @@ test("create a schedule", async ({ page }) => {
 
 test("paint and erase a cell", async ({ page }) => {
   await pick(page, "night");
-  await cellAt(page, "night", 1, 10).click();
+  // The grid takes no click while a paint is pending: act waits for it.
+  await act(page, () => cellAt(page, "night", 1, 10).click());
   await expectConfig(server.configPath, cellsIn("night"), ["mon 10", ...NIGHT], "Mon 10:00 UTC is on");
   await expect(page.getByText("Mon 10:00–11:00")).toBeVisible();
-  // The grid takes no click while a paint is pending: wait for it to settle.
   await expect(cellAt(page, "night", 1, 10)).not.toHaveClass(/is-preview/);
   await cellAt(page, "night", 1, 10).click();
   await expectConfig(server.configPath, cellsIn("night"), NIGHT, "Mon 10:00 UTC is off again");
@@ -120,7 +120,8 @@ test("delete an unused schedule", async ({ page }) => {
 test("deleting a used schedule is refused", async ({ page }) => {
   const before = fs.readFileSync(server.configPath, "utf8");
   await page.getByRole("link", { name: "deepseek-peak", exact: true }).hover();
-  await page.getByRole("button", { name: "Delete schedule deepseek-peak" }).click();
+  // The first remove is refused (in use); the dialog asks after it.
+  await act(page, () => page.getByRole("button", { name: "Delete schedule deepseek-peak" }).click());
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText(/Schedule deepseek-peak is used by .+/);
   await dialog.getByRole("button", { name: "Cancel" }).click();

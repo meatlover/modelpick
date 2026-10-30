@@ -1,5 +1,6 @@
 // The page's only path to the server, and the store every tab reads.
 import { toast, conflictDialog, stopped } from "./notice.js";
+import { track } from "./settle.js";
 
 const listeners = [];
 let seen = { state: "", usage: "", doctor: "" };
@@ -85,7 +86,7 @@ async function reloadAs(mine) {
 // server is gone. It resolves true when the store was reloaded.
 export function reload() {
   generation += 1;
-  newest = reloadAs(generation);
+  newest = track("reload", reloadAs(generation));
   return newest;
 }
 
@@ -176,7 +177,7 @@ export function sendOp(op, args, opts = {}) {
       return r;
     });
   queue = run;
-  return run;
+  return track("write", run);
 }
 
 // refresh calls the vendor for one account and replaces its usage row.
@@ -185,7 +186,11 @@ export function sendOp(op, args, opts = {}) {
 // opts.reload === false skips that, for a caller that refreshes several
 // accounts and reloads once after them (each doctor read re-runs every
 // account's Check). A server that is gone reloads nothing.
-export async function refresh(account, opts = {}) {
+export function refresh(account, opts = {}) {
+  return track("write", refreshNow(account, opts));
+}
+
+async function refreshNow(account, opts) {
   let r;
   try {
     r = await postJSON(`/api/usage/${encodeURIComponent(account)}/refresh`);
@@ -210,7 +215,11 @@ export async function refresh(account, opts = {}) {
 // it holds findings plain doctor does not make (cannot update stored usage,
 // cannot read stored usage for a file the call repaired). The next focus or
 // 60 s reload shows plain doctor again.
-export async function doctorAll() {
+export function doctorAll() {
+  return track("write", doctorAllNow());
+}
+
+async function doctorAllNow() {
   let r;
   try {
     r = await postJSON("/api/doctor/all");

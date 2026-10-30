@@ -3,7 +3,7 @@
 // way a user does and then reads config.json from disk.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login, stateGate, holdState, redrawn } = require("./helpers");
+const { startServer, login, stateGate, holdState, act } = require("./helpers");
 const { readConfig, expectConfig, expectUnchanged, handEdit, loadBalanceGo } = require("./config");
 
 let server;
@@ -32,7 +32,7 @@ const ORIGINAL = [
 ];
 
 test("add and remove a choice", async ({ page }) => {
-  await page.getByRole("button", { name: "+ Add Model" }).click();
+  await act(page, () => page.getByRole("button", { name: "+ Add Model" }).click());
   // The last choice is the uncapped fallback, so a new choice goes before it.
   await expectConfig(server.configPath, (c) => coder(c).length, 5, "a fifth choice is written");
   await expectConfig(server.configPath, (c) => coder(c)[4].model, "claude-sonnet-5-5", "the fallback stays last");
@@ -45,9 +45,9 @@ test("add and remove a choice", async ({ page }) => {
 
 test("change account, model and thinking", async ({ page }) => {
   const c4 = card(page, 4);
-  await c4.getByLabel("Account").selectOption("claude-spare");
+  await act(page, () => c4.getByLabel("Account").selectOption("claude-spare"));
   await expectConfig(server.configPath, (c) => coder(c)[3].account, "claude-spare", "account");
-  await c4.getByLabel("Model").selectOption("claude-fable-5-1");
+  await act(page, () => c4.getByLabel("Model").selectOption("claude-fable-5-1"));
   await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "model");
   await c4.getByLabel("Thinking").selectOption("low");
   await expectConfig(
@@ -79,15 +79,11 @@ test("no thinking levels shows a ghost box", async ({ page }) => {
 // it must still apply, on the choice as the first edit left it.
 test("a second edit before the redraw still applies", async ({ page }) => {
   const c4 = card(page, 4);
-  let hold = true;
-  await page.route("**/api/state", async (route) => {
-    while (hold) await new Promise((ok) => setTimeout(ok, 50));
-    await route.continue();
-  });
+  const release = await holdState(page);
   await c4.getByLabel("Model").selectOption("claude-fable-5-1");
   await expectConfig(server.configPath, (c) => coder(c)[3].model, "claude-fable-5-1", "model");
   await c4.getByLabel("Thinking").selectOption("low");
-  hold = false;
+  release();
   await expectConfig(server.configPath, (c) => coder(c)[3].thinking, "low", "thinking, sent on the stale card");
   await expect(page.getByText("changed outside the UI")).toHaveCount(0);
 });
@@ -196,7 +192,7 @@ for (const [what, edit, back] of [
     const before = coder(readConfig(server.configPath))[3];
     await page.route("**/api/op", (route) => route.fulfill({ status: 422, contentType: "application/json",
       body: JSON.stringify({ reason: "refused by the test" }) }), { times: 1 });
-    await edit(page);
+    await act(page, () => edit(page));
     await expect(page.getByText("refused by the test")).toBeVisible();
     await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
     await expectConfig(server.configPath, (c) => coder(c)[0].model, "claude-fable-5-1", "choice 1's model");
@@ -235,7 +231,7 @@ test("cap by typing, fixed and pace", async ({ page }) => {
   const c3 = card(page, 3);
   await capBox(c3).click();
   await capBox(c3).fill("90");
-  await capBox(c3).press("Enter");
+  await act(page, () => capBox(c3).press("Enter"));
   await expectConfig(server.configPath, (c) => coder(c)[2].cap, [90, 95, 98], "fixed 90 in the first window");
   await capBox(c3).click();
   await c3.getByRole("button", { name: "Time elapsed + N" }).click();
@@ -271,7 +267,7 @@ test("cap by drag, fixed and pace", async ({ page }) => {
   await capBox(c3).click();
   // The next drag waits for this one's redraw, which would replace the
   // slider under it.
-  await redrawn(page, () => dragRange(page, c3, 0.95, 0.3));
+  await act(page, () => dragRange(page, c3, 0.95, 0.3));
   await expect.poll(firstCap).not.toBe(start);
   const fixed = firstCap();
   expect(typeof fixed).toBe("number");
@@ -300,7 +296,7 @@ test('trash on a box writes "default"', async ({ page }) => {
 // makes the choice uncapped.
 test("an untouched default box has no trash; Remove all caps uncaps", async ({ page }) => {
   const c4 = card(page, 4);
-  await c4.getByRole("button", { name: "Add caps" }).click();
+  await act(page, () => c4.getByRole("button", { name: "Add caps" }).click());
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
   await capBox(c4).click();
   await expect(capBox(c4)).toBeFocused();
@@ -317,7 +313,7 @@ test("an untouched default box has no trash; Remove all caps uncaps", async ({ p
 // value or the mode ends where the default was; trash makes it default again.
 test("a touched default box is saved as set, even at the default value", async ({ page }) => {
   const c4 = card(page, 4);
-  await c4.getByRole("button", { name: "Add caps" }).click();
+  await act(page, () => c4.getByRole("button", { name: "Add caps" }).click());
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
   await capBox(c4).click();
   await capBox(c4).fill("80");
@@ -325,7 +321,7 @@ test("a touched default box is saved as set, even at the default value", async (
   await expect(c4.locator(".cap-trash")).toBeVisible();
   await capBox(c4).fill("95");
   await expect(c4.locator(".cap-trash")).toBeVisible();
-  await capBox(c4).press("Enter");
+  await act(page, () => capBox(c4).press("Enter"));
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [95], "95 typed is saved as 95");
   // The open editor floats over the boxes to its right: leave it first.
   await page.locator("body").click({ position: { x: 5, y: 5 } });
@@ -335,7 +331,7 @@ test("a touched default box is saved as set, even at the default value", async (
   await c4.getByRole("button", { name: "Time elapsed + N" }).click();
   await c4.getByRole("button", { name: "%", exact: true }).click();
   await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
-  await second.press("Enter");
+  await act(page, () => second.press("Enter"));
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [95, 95], "a mode switched there and back is saved");
   await capBox(c4).click();
   await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
@@ -347,7 +343,7 @@ test("a touched default box is saved as set, even at the default value", async (
 // where it started: the handle is pressed at 95, moved away and brought back.
 test("a drag on a default box saves it as set", async ({ page }) => {
   const c4 = card(page, 4);
-  await c4.getByRole("button", { name: "Add caps" }).click();
+  await act(page, () => c4.getByRole("button", { name: "Add caps" }).click());
   await expectConfig(server.configPath, (c) => coder(c)[3].cap, [], "every position default");
   await capBox(c4).click();
   const r = await c4.getByRole("slider").boundingBox();
@@ -404,7 +400,7 @@ test("reorder by mouse drag", async ({ page }) => {
 test("reorder by keyboard", async ({ page }) => {
   const mod = (await page.evaluate(() => navigator.platform)).startsWith("Mac") ? "Meta" : "Control";
   await card(page, 2).focus();
-  await page.keyboard.press(`${mod}+ArrowDown`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowDown`));
   await expectConfig(
     server.configPath,
     accountsOf,
@@ -412,7 +408,7 @@ test("reorder by keyboard", async ({ page }) => {
     "the second choice moved down one",
   );
   await expect(card(page, 3)).toBeFocused();
-  await page.keyboard.press(`${mod}+ArrowUp`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowUp`));
   await expectConfig(
     server.configPath,
     accountsOf,
@@ -437,7 +433,7 @@ async function attach(page, n, side, name) {
 }
 
 test("attach a skip chip and an allow chip", async ({ page }) => {
-  await attach(page, 4, "Skip", "night");
+  await act(page, () => attach(page, 4, "Skip", "night"));
   await expectConfig(server.configPath, (c) => coder(c)[3].skip_during, ["night"], "skip_during");
   await expect(card(page, 4).getByTitle("Skip during night")).toBeVisible();
   await attach(page, 2, "Allow", "night");
@@ -693,7 +689,7 @@ test("keyboard: a member not at an edge moves within its group", async ({ page }
   await grouped(page, withThird);
   const mod = await modKey(page);
   await card(page, "2a").focus();
-  await page.keyboard.press(`${mod}+ArrowDown`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowDown`));
   await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1 claude-spare]", "codex-main",
     "claude-main"], "go-1 second, still a member");
   await expect(card(page, "2b")).toBeFocused();
@@ -707,12 +703,12 @@ test("keyboard: a plain card moves past a whole group, never into it", async ({ 
   await grouped(page);
   const mod = await modKey(page);
   await card(page, 1).focus();
-  await page.keyboard.press(`${mod}+ArrowDown`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowDown`));
   await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "claude-main", "codex-main", "claude-main"],
     "opus past the group");
   await expect(card(page, 2)).toBeFocused();
   await expect(card(page, 2).getByLabel("Model")).toHaveValue("claude-opus-5-5");
-  await page.keyboard.press(`${mod}+ArrowUp`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowUp`));
   await expectConfig(server.configPath, shapeOf, GROUPED, "back above it");
   await expect(card(page, 1)).toBeFocused();
   await card(page, 3).focus();
@@ -727,13 +723,13 @@ test("keyboard: a focused group frame moves by a position", async ({ page }) => 
   const mod = await modKey(page);
   await card(page, 2).focus();
   await expect(card(page, 2)).toBeFocused();
-  await page.keyboard.press(`${mod}+ArrowDown`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowDown`));
   await expectConfig(server.configPath, shapeOf, ["claude-main", "codex-main", "random[go-1 go-2]", "claude-main"],
     "the group down one");
   await expect(card(page, 3)).toBeFocused();
-  await page.keyboard.press(`${mod}+ArrowUp`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowUp`));
   await expectConfig(server.configPath, shapeOf, GROUPED, "back");
-  await expect(card(page, 2)).toBeFocused(); // redrawn: the next key moves the group from 2
+  await expect(card(page, 2)).toBeFocused();
   await page.keyboard.press(`${mod}+ArrowUp`);
   await expectConfig(server.configPath, shapeOf, ["random[go-1 go-2]", "claude-main", "codex-main", "claude-main"],
     "to the top");
@@ -1054,20 +1050,18 @@ test("ops on a member card send member_of, the group as earlier edits left it", 
   await grouped(page);
   const sent = opsSent(page);
   const mod = await modKey(page);
-  await card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3");
+  await act(page, () => card(page, "2b").getByLabel("Model").selectOption("opencode-go/kimi-k3"));
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[1].model, "opencode-go/kimi-k3", "2b's model");
-  await card(page, "2a").getByRole("button", { name: "Remove all caps" }).click();
+  await act(page, () => card(page, "2a").getByRole("button", { name: "Remove all caps" }).click());
   await expectConfig(server.configPath, (c) => "cap" in coder(c)[1].choices[0], false, "2a uncapped");
-  await attach(page, "2a", "Skip", "night");
+  await act(page, () => attach(page, "2a", "Skip", "night"));
   await expectConfig(server.configPath, (c) => coder(c)[1].choices[0].skip_during, ["night"], "2a skips night");
-  await card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1");
+  await act(page, () => card(page, 1).getByLabel("Model").selectOption("claude-fable-5-1"));
   await expectConfig(server.configPath, (c) => coder(c)[0].model, "claude-fable-5-1", "choice 1's model");
   await card(page, "2b").focus();
-  await page.keyboard.press(`${mod}+ArrowUp`);
+  await act(page, () => page.keyboard.press(`${mod}+ArrowUp`));
   await expectConfig(server.configPath, shapeOf, ["claude-main", "random[go-2 go-1]", "codex-main", "claude-main"], "2b first");
-  // Redrawn by the move: 2a is go-2 now. (Focus alone does not say so: the
-  // reload after choice 1's edit, answered late, also focuses card 2a, in
-  // the view before the move.)
+  // Redrawn by the move: 2a is go-2 now.
   await expect(card(page, "2a").getByLabel("Account")).toHaveValue("go-2");
   await expect(card(page, "2a")).toBeFocused();
   await card(page, "2b").getByRole("button", { name: "Remove choice 2b" }).click();

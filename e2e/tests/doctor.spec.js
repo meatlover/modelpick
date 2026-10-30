@@ -1,7 +1,7 @@
 // Doctor findings in a real browser: the status panel, the red states they
 // set on cards, links and rows, each finding's Go to, and Diagnose.
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, act } = require("./helpers");
 const { handEdit } = require("./config");
 
 let server;
@@ -50,7 +50,7 @@ test("a missing tool shows once and reddens each account", async ({ page }) => {
 test("a stored failed reading shows", async ({ page }) => {
   await login(page, server.url);
   await server.send("fail codex-main boom");
-  await usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click();
+  await act(page, () => usageRow(page, "codex-main").getByRole("button", { name: "Refresh", exact: true }).click());
   await expect(usageRow(page, "codex-main").getByText("error: boom")).toBeVisible();
   // The Refresh re-reads the doctor: no page reload.
   await page.getByRole("button", { name: "1 warning" }).click();
@@ -191,7 +191,7 @@ test("Diagnose runs doctor all and updates the status", async ({ page }) => {
   await btn.click();
   await expect(btn).toHaveText("Diagnosing…");
   await expect(btn).toHaveAttribute("aria-disabled", "true");
-  release();
+  await act(page, release);
   await expect(btn).toHaveText("Diagnose");
   await expect(btn).not.toHaveAttribute("aria-disabled", "true");
   const status = page.getByRole("button", { name: "1 warning" });
@@ -206,7 +206,7 @@ test("Diagnose from the keyboard keeps the focus", async ({ page }) => {
   await page.keyboard.press("Tab");
   const btn = diagnose(page);
   await expect(btn).toBeFocused();
-  await page.keyboard.press("Enter");
+  await act(page, () => page.keyboard.press("Enter"));
   await expect(btn).toHaveText("Diagnose");
   await expect(btn).toBeFocused();
   await page.keyboard.press("Tab");
