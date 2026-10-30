@@ -14,7 +14,7 @@ import (
 // next number with -dev. -ldflags "-X github.com/meatlover/modelpick/internal/cli.Version=…"
 // still overrides it. It goes into the User-Agent of usage calls; `modelpick
 // version` reports the build instead (buildVersion).
-var Version = "0.3.0-dev"
+var Version = "0.4.0-dev"
 
 // pseudoVersion matches the timestamp and commit of a Go pseudo-version
 // (v0.2.1-0.20261024221604-54fbf8226dff), which a build of an untagged commit

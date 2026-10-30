@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.3.0 — 2026-10-30
+
 ### New
 
 - `modelpick version` (alias `--version`) names the build: the release tag it
@@ -30,6 +32,15 @@
   which read as "check every problem", is now **Diagnose** (`doctor all`),
   in the header left of the status instead of inside its panel.
 - A choice card's schedules end under Remove's right edge.
+- An account whose general (not model-scoped) window is at 100% reads
+  **Limit reached** instead of ok; that window's bar and the nearest reset
+  time are orange.
+- "No caps" is now **Remove all caps**, a text link. Every Remove is red.
+  A card's actions (Remove, Remove all caps, + schedule, + caps), an
+  account's Remove and a Usage row's Refresh rest half transparent and grey,
+  and show in full under the pointer or with focus inside the card or row.
+- A card's blue frame shows on hover and keyboard focus, not after a click.
+  A load balancing group's frame is grey.
 - `ls`, `pick`, `env` and `doctor` exit 130 on Ctrl-C, which cancels a renewal.
 - The UI no longer refuses an edit as "changed outside the UI" when it was
   made on a card before the page had redrawn after the card's previous edit

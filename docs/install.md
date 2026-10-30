@@ -25,7 +25,7 @@ Linux and macOS, on amd64 and arm64. Windows is not supported.
 ```
 git clone git@github.com:meatlover/modelpick.git
 cd modelpick
-git checkout v0.2.0
+git checkout v0.3.0
 go build -o ~/.local/bin/modelpick ./cmd/modelpick
 ```
 
@@ -42,10 +42,10 @@ To keep a checkout's install current, set `git config modelpick.autodeploy true`
 ### With `go install`
 
 ```
-go install github.com/meatlover/modelpick/cmd/modelpick@v0.2.0
+go install github.com/meatlover/modelpick/cmd/modelpick@v0.3.0
 ```
 
-This needs the `v0.2.0` tag on GitHub. It installs into
+This needs the `v0.3.0` tag on GitHub. It installs into
 `$(go env GOPATH)/bin`. While the repository is private, Go
 must be told not to use the public module proxy for it, and git must be able
 to authenticate to GitHub:
