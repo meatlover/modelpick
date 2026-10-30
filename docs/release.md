@@ -47,12 +47,38 @@ tagged, clean checkout: `bash scripts/release-build.sh vX.Y.Z /tmp/dist`.
 
 ## Downloading
 
-While the repository is private, use the GitHub CLI:
+[Getting started](getting-started.md#a-prebuilt-release) shows how to download
+an archive, check it against `SHA256SUMS` and install it.
 
-```
-gh release download vX.Y.Z -R meatlover/modelpick -p '*darwin_arm64*'
-gh release download vX.Y.Z -R meatlover/modelpick -p SHA256SUMS
-shasum -a 256 -c SHA256SUMS --ignore-missing
-```
+## Making the repository public
 
-See [the installation guide](install.md#prebuilt-binaries) for unpacking.
+The repository is private until the owner makes it public. At the flip, in
+one commit:
+
+1. Delete the "Until the repository is public" note in
+   [getting started](getting-started.md#install). It is the only place the
+   docs mention `GOPRIVATE` or the private repository; a docs test fails if
+   that text appears anywhere else.
+2. Check that the README's install line, `go install
+   github.com/meatlover/modelpick/cmd/modelpick@latest`, works from a machine
+   with no GitHub login and no `GOPRIVATE`, and that `curl` can download a
+   release asset.
+3. Turn on private vulnerability reporting in the repository's security
+   settings, which [SECURITY.md](../SECURITY.md) points to.
+4. Settle the open items of the pre-public audit:
+   - `docs/superpowers/` (design specs, plans and mockups) holds the
+     author's home path, profile directory names and an internal tool's name.
+     Keep it, scrub those strings, or remove it; removing it means moving the
+     test in `internal/core/pick_test.go` that reads a spec, and the two CSS
+     comments that cite the mockups.
+   - The account name `claude-rec` in `examples/config.json` (and so in the
+     configuration guide), the core tests and the UI demo, and the Keychain
+     item name derived from the author's path in `internal/adapter/adapter.go`
+     and `internal/web/demo/demo.go`: rename to neutral values or accept.
+   - The key file name `~/.ssh/opencode-go-api` in examples and fixtures:
+     rename or accept.
+5. Add a macOS CI job, which costs nothing for a public repository, and
+   remove the matching item from the
+   [architecture guide's known limitations](architecture.md#known-limitations).
+
+Later: a Homebrew tap, once there is a release to point it at.

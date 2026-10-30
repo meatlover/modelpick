@@ -17,7 +17,7 @@ import (
 // web or cli; deferred because apptest is imported only by _test.go files
 // and by cmd/modelpick-e2e-server, the browser tests' server, which only
 // scripts/e2e.sh builds, into a temp dir: no release or install path does
-// (the README and docs/install.md build and install ./cmd/modelpick only,
+// (the README and docs/getting-started.md build and install ./cmd/modelpick only,
 // and check.sh's `go build ./...` writes no binary), so it never ships, and
 // its imports follow whatever the app, cli, web/live and e2e suites need
 // next.
