@@ -38,3 +38,18 @@ func TestCIWorkflowSkipsTags(t *testing.T) {
 		t.Fatal("ci.yml: `on: push:` must be limited to `branches: ['**']`, so a tag push does not run it")
 	}
 }
+
+// TestCIWorkflowIsLinuxOnly: ci.yml runs no macOS job. A macOS minute costs
+// about 10× a Linux one on a private repo, and the pre-commit hook already
+// runs check.sh on the owner's Mac before every commit. Removable once the
+// repository is public (standard runners are then free); deferred because
+// it is private today (owner, 2026-10-30).
+func TestCIWorkflowIsLinuxOnly(t *testing.T) {
+	b, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(b)), "macos") {
+		t.Fatal("ci.yml: names a macOS runner; CI is Linux only (see the test's comment)")
+	}
+}

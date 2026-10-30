@@ -170,8 +170,10 @@ redacted, that its parser test reads.
 `scripts/check.sh` is the single gate: `gofmt -l`, `go vet`, `go test`, then a
 build for linux/darwin × amd64/arm64. The pre-commit hook
 (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`)
-and CI (`.github/workflows/ci.yml`, Ubuntu and macOS, on branch pushes and
-pull requests) both run it; a release tag runs it in `release.yml` instead.
+and CI (`.github/workflows/ci.yml`, Ubuntu only, on branch pushes and pull
+requests) both run it; a release tag runs it in `release.yml` instead. macOS
+is covered by the pre-commit hook on the owner's Mac, not by CI: a macOS
+runner minute costs about 10× a Linux one while the repository is private.
 
 ## Known limitations
 
@@ -198,7 +200,10 @@ Each line says what would remove it and why it is deferred.
   call's context. Harmless for a short-lived CLI; removable by probing
   without a request context if modelpick ever runs as a server (v2 web UI).
 - **The Keychain exit-status handling is tested on macOS only**, because the
-  file is built for darwin only. CI's macOS job covers it.
+  file is built for darwin only, and CI is Linux only, so only the
+  pre-commit hook on a Mac runs it. Removable by a macOS CI job once the
+  repository is public (free runners); deferred for cost while it is
+  private.
 - **Codex JWT `exp` and OpenCode Go percents are not range-checked.** A
   nonsensical value is used as given. Removable by clamping in each parser;
   deferred because no real response has needed it.
