@@ -14,6 +14,7 @@ import (
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
+	"github.com/meatlover/modelpick/internal/usage"
 )
 
 // Snapshot is config.json as read at one moment. ReadOnly is the parse error
@@ -132,6 +133,13 @@ func (e *Editor) Apply(base, op string, args json.RawMessage) (Snapshot, []Findi
 	}
 	if account != "" {
 		e.checks.Forget(account)
+		if op == "account.remove" {
+			// The config edit is done; a leftover file is only clutter.
+			store := &usage.Store{Dir: e.cacheDir}
+			if err := store.Remove(account); err != nil {
+				errLog.Printf("%s: removing its cached state: %v", account, err)
+			}
+		}
 		if op == "account.add" && e.OnAccountAdded != nil {
 			go e.OnAccountAdded(account)
 		}

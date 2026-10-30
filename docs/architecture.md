@@ -195,7 +195,9 @@ Each line says what would remove it and why it is deferred.
 - **State files are keyed by account name only**, so renaming an account
   resets its floor, and two names differing only in case collide on a
   case-insensitive filesystem. Removable by keying on a hash of the account's
-  locator fields; deferred until the first report.
+  locator fields; deferred until the first report. Removing an account in
+  the UI deletes its `<name>.json` and `<name>.lock`; a hand-edited removal or
+  rename leaves them, and they are safe to delete.
 - **The Claude User-Agent version is probed once per process** with the first
   call's context. Harmless for a short-lived CLI; removable by probing
   without a request context if modelpick ever runs as a server (v2 web UI).

@@ -402,3 +402,35 @@ func (s *Store) write(name string, st state) error {
 	}
 	return platform.WriteFileAtomic(s.statePath(name), b)
 }
+
+// Remove deletes the account's state file and then its lock file, for an
+// account that no longer exists. It holds the lock while it removes the state
+// file, so a Get of the same account is not mid-write; the lock file goes
+// last. A file already missing is not an error, and a cache dir that does not
+// exist is not created. It returns the first failure, after trying both.
+func (s *Store) Remove(name string) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	lock := s.lockPath(name)
+	if _, err := os.Stat(lock); errors.Is(err, os.ErrNotExist) {
+		return ignoreMissing(os.Remove(s.statePath(name)))
+	}
+	unlock, err := platform.LockFile(lock)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	stateErr := ignoreMissing(os.Remove(s.statePath(name)))
+	if err := ignoreMissing(os.Remove(lock)); err != nil && stateErr == nil {
+		stateErr = err
+	}
+	return stateErr
+}
+
+func ignoreMissing(err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}

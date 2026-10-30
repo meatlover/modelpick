@@ -98,7 +98,9 @@ func cleanEnv() []string {
 // gitIn runs git in dir with the owner's git config hidden and a test identity.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	// No detached auto-maintenance: it can still be writing .git/objects
+	// when the test's TempDir cleanup runs ("directory not empty").
+	cmd := exec.Command("git", append([]string{"-c", "maintenance.auto=false", "-c", "gc.auto=0"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(cleanEnv(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")

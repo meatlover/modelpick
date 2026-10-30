@@ -1102,3 +1102,37 @@ func TestRenewOnceUnderContention(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveDeletesStateAndLockOnly(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	for _, n := range []string{"a.json", "a.lock", "b.json", "b.lock"} {
+		if err := os.WriteFile(filepath.Join(s.Dir, n), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Remove("a"); err != nil {
+		t.Fatal(err)
+	}
+	for n, want := range map[string]bool{"a.json": false, "a.lock": false, "b.json": true, "b.lock": true} {
+		if _, err := os.Stat(filepath.Join(s.Dir, n)); (err == nil) != want {
+			t.Errorf("%s exists = %v, want %v", n, err == nil, want)
+		}
+	}
+}
+
+func TestRemoveMissingFilesIsNotAnError(t *testing.T) {
+	s := &Store{Dir: filepath.Join(t.TempDir(), "nope")}
+	if err := s.Remove("a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(s.Dir); err == nil {
+		t.Error("Remove created the cache dir")
+	}
+}
+
+func TestRemoveRejectsBadName(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	if err := s.Remove("../x"); err == nil {
+		t.Fatal("Remove accepted a name with a path separator")
+	}
+}

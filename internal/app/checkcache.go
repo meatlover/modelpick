@@ -180,15 +180,16 @@ func (c *CheckCache) warmChecks(e *Env, names []string) {
 	wg.Wait()
 }
 
-// panicLog receives adapter panics, which the page is not shown.
-var panicLog = log.New(os.Stderr, "modelpick: ", log.LstdFlags)
+// errLog receives problems the page is not shown: adapter panics and a
+// removed account's state files that could not be deleted.
+var errLog = log.New(os.Stderr, "modelpick: ", log.LstdFlags)
 
 // callModels is a.Models turning a panic into an error (panicked), so one broken
 // adapter fails its own listing (not cached) instead of the server.
 func callModels(ctx context.Context, acct adapter.Account, a adapter.Adapter) (ms []adapter.Model, err error, panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			panicLog.Printf("%s: listing models panicked: %v", acct.Name, r)
+			errLog.Printf("%s: listing models panicked: %v", acct.Name, r)
 			ms, err, panicked = nil, fmt.Errorf("listing models panicked: %v", r), true
 		}
 	}()
@@ -201,7 +202,7 @@ func callModels(ctx context.Context, acct adapter.Account, a adapter.Adapter) (m
 func callLoginExpires(acct adapter.Account, a adapter.Adapter) (t time.Time) {
 	defer func() {
 		if r := recover(); r != nil {
-			panicLog.Printf("%s: reading the credential panicked: %v", acct.Name, r)
+			errLog.Printf("%s: reading the credential panicked: %v", acct.Name, r)
 			t = time.Time{}
 		}
 	}()
@@ -213,7 +214,7 @@ func callLoginExpires(acct adapter.Account, a adapter.Adapter) (t time.Time) {
 func callCheck(ctx context.Context, acct adapter.Account, a adapter.Adapter) (f []adapter.Finding, ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			panicLog.Printf("%s: check panicked: %v", acct.Name, r)
+			errLog.Printf("%s: check panicked: %v", acct.Name, r)
 			f, ok = nil, false
 		}
 	}()

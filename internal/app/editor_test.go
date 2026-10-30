@@ -541,3 +541,107 @@ func TestApplyExpiredLoginDoesNotGate(t *testing.T) {
 		t.Fatalf("findings = %+v, want %+v first", fs, want)
 	}
 }
+
+// seedState writes an account's state and lock files in the cache dir.
+func (f editorFx) seedState(t *testing.T, name string) (state, lock string) {
+	t.Helper()
+	if err := os.MkdirAll(f.cacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	state, lock = filepath.Join(f.cacheDir(), name+".json"), filepath.Join(f.cacheDir(), name+".lock")
+	for _, p := range []string{state, lock} {
+		if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return state, lock
+}
+
+func exists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func TestRemoveDeletesAccountState(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	cState, cLock := f.seedState(t, "claude-main")
+	xState, xLock := f.seedState(t, "codex-main")
+	s, err := f.ed.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.ed.Apply(s.SHA256, "account.remove", json.RawMessage(`{"name":"claude-main","with_choices":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if exists(cState) || exists(cLock) {
+		t.Errorf("removed account's files remain: state %v, lock %v", exists(cState), exists(cLock))
+	}
+	if !exists(xState) || !exists(xLock) {
+		t.Errorf("an unrelated account's files were touched: state %v, lock %v", exists(xState), exists(xLock))
+	}
+}
+
+func TestRefusedRemoveKeepsAccountState(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	state, lock := f.seedState(t, "claude-main")
+	s, err := f.ed.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = f.ed.Apply(s.SHA256, "account.remove", json.RawMessage(`{"name":"claude-main"}`))
+	var r *app.Refused
+	if !errors.As(err, &r) {
+		t.Fatalf("err = %v, want *Refused (account still used)", err)
+	}
+	if !exists(state) || !exists(lock) {
+		t.Errorf("a refused remove deleted files: state %v, lock %v", exists(state), exists(lock))
+	}
+}
+
+func TestRemoveWithoutStateFilesSucceeds(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	s, err := f.ed.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.ed.Apply(s.SHA256, "account.remove", json.RawMessage(`{"name":"claude-main","with_choices":true}`)); err != nil {
+		t.Fatalf("remove with no state files: %v", err)
+	}
+}
+
+func TestFailedWriteKeepsAccountState(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	state, lock := f.seedState(t, "claude-main")
+	// A directory where the safety copy goes makes the write fail.
+	if err := os.Mkdir(filepath.Join(f.cacheDir(), "config.before-ui.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, err := f.ed.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.ed.Apply(s.SHA256, "account.remove", json.RawMessage(`{"name":"claude-main","with_choices":true}`)); err == nil {
+		t.Fatal("remove succeeded; the test needs the write to fail")
+	}
+	if !exists(state) || !exists(lock) {
+		t.Errorf("a failed write deleted files: state %v, lock %v", exists(state), exists(lock))
+	}
+}
+
+func TestRemoveStateFailureIsLoggedNotFatal(t *testing.T) {
+	f := newEditorFx(t, editorConfig(goodFirst))
+	// A non-empty directory where the state file goes cannot be removed.
+	dir := filepath.Join(f.cacheDir(), "claude-main.json")
+	if err := os.MkdirAll(filepath.Join(dir, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	app.CapturePanicLog(t, &log)
+	s, err := f.ed.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.ed.Apply(s.SHA256, "account.remove", json.RawMessage(`{"name":"claude-main","with_choices":true}`)); err != nil {
+		t.Fatalf("a failed state delete failed the op: %v", err)
+	}
+	if !strings.Contains(log.String(), "claude-main") {
+		t.Errorf("log = %q, want it to name the account", log.String())
+	}
+}
