@@ -28,7 +28,10 @@ type uiEnv struct {
 	Open     func(url string) error
 	Signal   func() (<-chan os.Signal, func()) // the stop request, and its release
 	PidAlive func(pid int) bool
-	Pid      int
+	// BinaryReplaced says whether the running executable was replaced on disk
+	// since start; nil means never.
+	BinaryReplaced func() bool
+	Pid            int
 }
 
 // uiState is the content of <cache>/ui.json.
@@ -48,8 +51,9 @@ func realUIEnv() uiEnv {
 			signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 			return ch, func() { signal.Stop(ch) }
 		},
-		PidAlive: pidAlive,
-		Pid:      os.Getpid(),
+		PidAlive:       pidAlive,
+		BinaryReplaced: binaryReplacedFunc(executablePath, os.Stat),
+		Pid:            os.Getpid(),
 	}
 }
 
@@ -140,7 +144,7 @@ func serveUI(ln net.Listener, file string, stdout, stderr io.Writer, d app.Deps,
 		fmt.Fprintf(stderr, "modelpick: ui: write %s: %v\n", file, err)
 		return 1
 	}
-	backend := live.New(d, platform.ConfigPath(d.Getenv, d.Home))
+	backend := live.New(d, platform.ConfigPath(d.Getenv, d.Home), live.WithBinaryCheck(env.BinaryReplaced))
 	srv := &http.Server{Handler: web.NewServer(backend, port, token), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,7 +73,7 @@ func TestCommands(t *testing.T) {
 	}
 	in := "fail codex-main boom bang\nfail nobody x\ntool opencode-go missing\nfrobnicate\n"
 	var out bytes.Buffer
-	readCommands(strings.NewReader(in), &out, d, fakes)
+	readCommands(strings.NewReader(in), &out, d, fakes, new(atomic.Bool))
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 4 || lines[0] != "ok" || !strings.HasPrefix(lines[1], "error ") ||
 		lines[2] != "ok" || !strings.HasPrefix(lines[3], "error unknown command") {
@@ -93,7 +94,7 @@ func TestCommands(t *testing.T) {
 	}
 
 	out.Reset()
-	readCommands(strings.NewReader("clear codex-main\ntool opencode-go present\n"), &out, d, fakes)
+	readCommands(strings.NewReader("clear codex-main\ntool opencode-go present\n"), &out, d, fakes, new(atomic.Bool))
 	if out.String() != "ok\nok\n" {
 		t.Fatalf("answers: %q", out.String())
 	}
@@ -141,9 +142,28 @@ func TestCommandsBesideCalls(t *testing.T) {
 	}()
 	in := strings.Repeat("fail codex-main boom\nclear codex-main\ntool opencode-go missing\ntool opencode-go present\n", 50)
 	var out bytes.Buffer
-	readCommands(strings.NewReader(in), &out, d, fakes)
+	readCommands(strings.NewReader(in), &out, d, fakes, new(atomic.Bool))
 	<-done
 	if n := strings.Count(out.String(), "ok\n"); n != 200 {
 		t.Fatalf("want 200 ok, got %d: %q", n, out.String())
+	}
+}
+
+func TestBinaryCommandFlipsTheReportedValue(t *testing.T) {
+	d, fakes, err := setup(t.TempDir(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replaced atomic.Bool
+	var out bytes.Buffer
+	readCommands(strings.NewReader("binary replaced\n"), &out, d, fakes, &replaced)
+	if out.String() != "ok\n" || !replaced.Load() {
+		t.Fatalf("binary replaced: answer %q, flag %v", out.String(), replaced.Load())
+	}
+	out.Reset()
+	readCommands(strings.NewReader("binary current\nbinary sideways\n"), &out, d, fakes, &replaced)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || lines[0] != "ok" || !strings.HasPrefix(lines[1], "error unknown command") || replaced.Load() {
+		t.Fatalf("binary current: answers %q, flag %v", lines, replaced.Load())
 	}
 }

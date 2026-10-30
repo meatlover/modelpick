@@ -4,6 +4,10 @@
 
 ### New
 
+- `modelpick ui` tells you when a newer `modelpick` is installed under it
+  (for example by autodeploy): the page shows a grey note, "A newer modelpick
+  is installed. Stop this one (Ctrl-C where you ran `modelpick ui`) and run
+  `modelpick ui` again.", and `/api/state` carries `binary_replaced`.
 - Pushing a `vX.Y.Z` tag publishes a GitHub Release: archives for linux and
   darwin on amd64 and arm64, `SHA256SUMS`, and that version's changelog
   section as the notes. The job runs `scripts/check.sh` first, refuses a tag

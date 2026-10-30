@@ -13,12 +13,14 @@ function region(id, attrs) {
   return el;
 }
 
-// banner shows (text non-empty) or removes the red strip with this id.
-function banner(id, text) {
+// banner shows (text non-empty) or removes the strip with this id: red with
+// role alert, or with kind "note" neutral with role status (nothing is wrong).
+function banner(id, text, kind) {
   const old = document.getElementById(id);
   if (old) old.remove();
   if (!text) return;
-  const strip = h("div", { id, class: "banner", role: "alert" },
+  const note = kind === "note";
+  const strip = h("div", { id, class: note ? "banner banner-note" : "banner", role: note ? "status" : "alert" },
     h("div", { class: "banner-in" }, h("strong", {}, text)));
   region("notices").append(strip);
 }
@@ -38,6 +40,15 @@ export function readOnly(text) {
   const shown = text ? `Cannot edit — ${text}` : "";
   if (old && old.textContent === shown) return;
   banner("notice-readonly", shown);
+}
+
+const NEWER_BINARY = "A newer modelpick is installed. Stop this one (Ctrl-C where you ran `modelpick ui`) and run `modelpick ui` again.";
+
+// newerBinary shows state.binary_replaced: the executable this server runs
+// from was replaced on disk. A neutral note; edits keep working.
+export function newerBinary(on) {
+  if (Boolean(on) === Boolean(document.getElementById("notice-newer"))) return;
+  banner("notice-newer", on ? NEWER_BINARY : "", "note");
 }
 
 let toastTimer = 0;

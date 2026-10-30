@@ -110,6 +110,15 @@ page works only in a browser that opened that URL.
   A clean exit removes the file. Two `modelpick ui` started at the same moment
   can both serve; the one that wrote `ui.json` last is the one later starts
   reuse.
+- **A newer install.** If `modelpick` is replaced on disk while the UI runs
+  (for example by `git config modelpick.autodeploy true` after a merge), the
+  running UI keeps the old code. It re-checks its own executable file each
+  time the page reads its state; once the file is gone, or is a different
+  file, size or modification time than at start, the page shows a grey note,
+  `A newer modelpick is installed`, for the rest of that run. Stop it with
+  Ctrl-C where you ran `modelpick ui` and run `modelpick ui` again. Nothing is
+  locked: edits keep working while the note shows. If the executable cannot be
+  checked, no note appears.
 
 **Usage.** Opening or reloading the page shows the saved readings only, as the
 last `pick`, `ls` or Refresh stored them; it calls no vendor. Three things
