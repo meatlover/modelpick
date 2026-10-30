@@ -58,6 +58,34 @@ go install github.com/meatlover/modelpick/cmd/modelpick@latest
 Linux and macOS, amd64 and arm64. Prebuilt archives, building from a checkout,
 and a first config are in [getting started](docs/getting-started.md).
 
+## Design decisions
+
+- **No background polling.** modelpick reads an account's usage only when a
+  command needs it (in the UI: Refresh, Diagnose, or the first reading of an
+  account that has none), and at most once per account per 15 minutes.
+  Between calls it answers from the last reading and says how old it is.
+  See [the call floor](docs/concepts.md#the-call-floor).
+- **It only answers.** It never starts, stops or reconfigures Claude Code,
+  Codex or OpenCode. Whoever calls it acts on the JSON.
+- **No stored credentials.** Logins are read in memory, only for the usage
+  call. modelpick never writes a vendor's files and never handles a refresh
+  token; an expired login is renewed by the vendor's own tool. See
+  [Terms and credentials](#terms-and-credentials).
+- **No automatic re-login.** A Claude login lasts until a date fixed when you
+  logged in, and only an interactive `/login` extends it. `doctor` warns
+  before that date; it cannot log in for you. See
+  [expired logins](docs/concepts.md#expired-logins).
+- **Each pick stands alone.** A pick keeps no state from earlier picks. A
+  [load balancing group](docs/concepts.md#load-balancing-groups) picks a
+  usable member at random; weighting by usage was considered and dropped.
+- **No switching a running tool's login.** A launcher gives each process its
+  own account through the environment instead; see
+  [building a launcher](docs/reference.md#building-a-launcher).
+- **Network calls go only to the vendors.** One usage call per account to
+  its vendor, and no telemetry. The vendor tools modelpick runs (`opencode
+  models`, a login renewal) contact their own vendor. See
+  [what it sends](SECURITY.md#what-it-sends-and-to-whom).
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md): requirements, install, first config, first pick, uninstall.
