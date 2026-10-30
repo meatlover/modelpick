@@ -43,6 +43,10 @@
 
 ### Changed
 
+- Removing an account in the UI now also deletes its cached state
+  (`<account>.json` and `<account>.lock` in the cache dir), so adding an
+  account of the same name later starts with no inherited reading or floor.
+  A hand-edited removal or rename leaves the files; they are safe to delete.
 - The UI's doctor status lists each problem with a Go to that opens the tab
   holding its item, scrolls to it and lights it up for a moment. Check all,
   which read as "check every problem", is now **Diagnose** (`doctor all`),

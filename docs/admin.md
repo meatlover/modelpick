@@ -10,7 +10,7 @@ config format is in the [configuration guide](configuration.md).
 | Path | modelpick | Holds |
 |---|---|---|
 | The config file (see [location](configuration.md)) | reads; `ui` writes it | Accounts, schedules, profiles. Never a secret. |
-| `~/.cache/modelpick/` (or `$XDG_CACHE_HOME/modelpick/`) | reads and writes; created `0700` | One `<account>.json` state file (`0600`) and one `<account>.lock` per account. While `modelpick ui` runs, `ui.json` (`0600`); after its first edit, `config.before-ui.json`. |
+| `~/.cache/modelpick/` (or `$XDG_CACHE_HOME/modelpick/`) | reads and writes; created `0700` | One `<account>.json` state file (`0600`) and one `<account>.lock` per account; removing an account in the UI deletes both, a hand edit leaves them (safe to delete). While `modelpick ui` runs, `ui.json` (`0600`); after its first edit, `config.before-ui.json`. |
 | Claude: Keychain item `Claude Code-credentials[-<8 hex>]`, else `<config_dir>/.credentials.json` | reads only | The Claude Code login. |
 | Codex: `<codex_home>/auth.json`, `<codex_home>/models_cache.json` | reads only | The Codex login; the model list. |
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
@@ -245,7 +245,9 @@ after it; append instead.
 
 **Remove an account.** Remove it from `accounts` and from every profile
 (`pick` rejects a reference to a missing account), then delete its
-`<account>.json` and `<account>.lock`.
+`<account>.json` and `<account>.lock`. (Removing an account in the UI
+deletes both for you; a hand-edited removal or rename leaves them, and they
+are safe to delete.)
 
 **Change caps or order.** Edit the profile. `modelpick config` shows the
 effective result, and `doctor` warns when a cap array no longer matches the
