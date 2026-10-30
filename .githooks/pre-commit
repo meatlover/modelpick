@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # Blocks a commit unless the single gate passes. Enable once per clone:
 #   git config core.hooksPath .githooks
+# The browser tests (the slowest stage) are skipped when no staged path can
+# affect them; see scripts/e2e-needed.sh. Only this hook sets the knob.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+unset MODELPICK_CHECK_SKIP_E2E
+# --no-renames lists both sides of a rename; -z keeps odd file names intact.
+if ! git diff --cached --name-only -z --no-renames | bash scripts/e2e-needed.sh; then
+  echo "pre-commit: browser tests skipped: nothing staged under internal/ cmd/ e2e/ scripts/ .githooks/, no go.mod/go.sum change"
+  export MODELPICK_CHECK_SKIP_E2E=1
+fi
 bash scripts/check.sh
