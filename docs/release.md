@@ -86,5 +86,11 @@ one commit:
 5. Add a macOS CI job, which costs nothing for a public repository, and
    remove the matching item from the
    [architecture guide's known limitations](architecture.md#known-limitations).
+6. Prove the release job end to end; it has never run on GitHub (Actions
+   was unavailable while the repository was private). Push a throwaway
+   pre-release tag such as `v0.4.0-rc.1` from a commit whose version.go and
+   CHANGELOG.md name it, check that the Release appears with four archives,
+   `SHA256SUMS` and the notes, download one archive and run its
+   `modelpick version`, then delete the tag and the Release.
 
 Later: a Homebrew tap, once there is a release to point it at.
