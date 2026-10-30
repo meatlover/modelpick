@@ -54,7 +54,7 @@ func runLs(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	}
 	cfg, err := app.LoadConfig(d)
 	if err != nil {
-		fmt.Fprintf(stderr, "modelpick: %v\n", err)
+		fmt.Fprintf(stderr, "modelpick: %s\n", configErrText(err, d))
 		return 1
 	}
 	names, err := lsNames(cfg, named)
@@ -246,7 +246,7 @@ func runLsModels(args []string, stdout, stderr io.Writer, d app.Deps) int {
 	}
 	cfg, err := app.LoadConfig(d)
 	if err != nil {
-		fmt.Fprintf(stderr, "modelpick: %v\n", err)
+		fmt.Fprintf(stderr, "modelpick: %s\n", configErrText(err, d))
 		return 1
 	}
 	e := app.NewEnv(d, cfg, false)

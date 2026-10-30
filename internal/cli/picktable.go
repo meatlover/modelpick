@@ -15,7 +15,7 @@ import (
 func runPickAll(refresh bool, stdout, stderr io.Writer, d app.Deps) int {
 	cfg, err := app.LoadConfig(d)
 	if err != nil {
-		fmt.Fprintf(stderr, "modelpick: %v\n", err)
+		fmt.Fprintf(stderr, "modelpick: %s\n", configErrText(err, d))
 		return 1
 	}
 	env := app.NewEnv(d, cfg, refresh)

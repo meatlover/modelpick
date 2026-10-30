@@ -41,6 +41,7 @@ modelpick ls models [--json]                     models each configured account'
 modelpick config                                 the effective configuration. No network; alias: modelpick conf.
 modelpick doctor [all]                           validates the config and everything it depends on. No usage calls, unless `all`.
 modelpick ui [--port N] [--no-open]              a local page to read usage and edit the config
+modelpick help [<command>]                       this list, or one command's usage. Also: <command> --help.
 modelpick version                                 the build: its tag (v0.2.0), else the commit's UTC date and hash (20261024-54fbf8). Alias: --version.
 ```
 
