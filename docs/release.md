@@ -66,17 +66,10 @@ one commit:
 3. Turn on private vulnerability reporting in the repository's security
    settings, which [SECURITY.md](../SECURITY.md) points to.
 4. Settle the open items of the pre-public audit:
-   - `docs/superpowers/` (design specs, plans and mockups) holds the
-     author's home path, profile directory names and an internal tool's name.
-     Keep it, scrub those strings, or remove it; removing it means moving the
-     test in `internal/core/pick_test.go` that reads a spec, and the two CSS
-     comments that cite the mockups.
-   - The account name `claude-rec` in `examples/config.json` (and so in the
-     configuration guide), the core tests and the UI demo, and the Keychain
-     item name derived from the author's path in `internal/adapter/adapter.go`
-     and `internal/web/demo/demo.go`: rename to neutral values or accept.
-   - The key file name `~/.ssh/opencode-go-api` in examples and fixtures:
-     rename or accept.
+   - The design history in `docs/superpowers/` is not published (owner,
+     2026-10-30). It is still in the git history, so the public repository
+     must be made from a history without it; see the owner's decision on
+     how.
 5. Add a macOS CI job, which costs nothing for a public repository, and
    remove the matching item from the
    [architecture guide's known limitations](architecture.md#known-limitations).
