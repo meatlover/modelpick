@@ -79,8 +79,10 @@ one commit:
         --invert-paths`. It rewrites every commit and tag; check with
         `git log --all -- docs/superpowers` (must print nothing) and
         `go test ./...`.
-     4. Force-push every branch and tag (the owner confirms this step at
-        the time): `git push --force --mirror` to the same remote.
+     4. Force-push `main` and every tag (the owner confirms this step at
+        the time): `git push --force origin main` and `git push --force
+        origin --tags`. Not `--mirror`, which would also push a clone's
+        `refs/remotes/`.
      5. Re-clone every local checkout and worktree; old clones still hold
         the history and must not be pushed again.
 5. Add a macOS CI job, which costs nothing for a public repository, and

@@ -10,10 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  # Linux only: the pre-commit hook runs check.sh on the owner's Mac before every
-  # commit (internal/archtest TestCIWorkflowIsLinuxOnly says why).
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
