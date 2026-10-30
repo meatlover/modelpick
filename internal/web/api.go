@@ -102,15 +102,19 @@ import "encoding/json"
 
 // State is GET /api/state.
 type State struct {
-	SHA256     string                         `json:"sha256"`
-	Path       string                         `json:"path"`
-	ReadOnly   string                         `json:"read_only"`
-	DefaultCap float64                        `json:"default_cap"`
-	Accounts   []Account                      `json:"accounts"`
-	Models     map[string][]Model             `json:"models"`
-	Windows    map[string]map[string][]string `json:"windows"`
-	Schedules  []Schedule                     `json:"schedules"`
-	Profiles   []Profile                      `json:"profiles"`
+	SHA256   string `json:"sha256"`
+	Path     string `json:"path"`
+	ReadOnly string `json:"read_only"`
+	// BinaryReplaced is true once the modelpick executable this server runs
+	// from has been replaced or removed on disk (a newer one is installed);
+	// it stays true for the run. False also means "unknown".
+	BinaryReplaced bool                           `json:"binary_replaced"`
+	DefaultCap     float64                        `json:"default_cap"`
+	Accounts       []Account                      `json:"accounts"`
+	Models         map[string][]Model             `json:"models"`
+	Windows        map[string]map[string][]string `json:"windows"`
+	Schedules      []Schedule                     `json:"schedules"`
+	Profiles       []Profile                      `json:"profiles"`
 	// Algorithms are the load balancing algorithms a group can name,
 	// sorted (core.AlgorithmNames).
 	Algorithms []string `json:"algorithms"`

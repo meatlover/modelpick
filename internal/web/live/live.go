@@ -29,10 +29,11 @@ var errorLog = log.New(os.Stderr, "modelpick ui: ", log.LstdFlags)
 // app.Editor of the run (the safety copy is written once per run). Close
 // ends the background work and any Check all still running.
 type Live struct {
-	d     app.Deps
-	path  string
-	ed    *app.Editor
-	first func(ctx context.Context, account string) // takes an account's first reading; blocks
+	d              app.Deps
+	path           string
+	ed             *app.Editor
+	first          func(ctx context.Context, account string) // takes an account's first reading; blocks
+	binaryReplaced func() bool                               // nil: never replaced; see WithBinaryCheck
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -55,10 +56,23 @@ var _ web.Backend = (*Live)(nil)
 // New serves the config file at path. Every account without a saved
 // reading gets its first reading in the background, now or when it is
 // added, until Close.
-func New(d app.Deps, path string) *Live {
+func New(d app.Deps, path string, opts ...Option) *Live {
 	l := newLive(d, path, nil)
+	for _, o := range opts {
+		o(l)
+	}
 	l.startPrefetch()
 	return l
+}
+
+// Option configures New.
+type Option func(*Live)
+
+// WithBinaryCheck sets the func State asks whether the running executable
+// has been replaced on disk (State.BinaryReplaced). The caller owns the OS
+// work; the func is called on every State, from any goroutine.
+func WithBinaryCheck(replaced func() bool) Option {
+	return func(l *Live) { l.binaryReplaced = replaced }
 }
 
 // startPrefetch lists every account's models in the background, through the
@@ -209,6 +223,12 @@ func (l *Live) unreadable(err error) string {
 
 // State is the config as the page needs it, recomputed on every call.
 func (l *Live) State() web.State {
+	s := l.configState()
+	s.BinaryReplaced = l.binaryReplaced != nil && l.binaryReplaced()
+	return s
+}
+
+func (l *Live) configState() web.State {
 	snap, err := l.ed.Load()
 	if err != nil {
 		sum := sha256.Sum256(nil)

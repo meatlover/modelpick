@@ -275,12 +275,22 @@ a:hover {
   color: var(--warn-note);
 }
 
-/* ---------- banners (stopped, read-only, conflict) ---------- */
+/* ---------- banners (stopped, read-only, conflict, newer binary) ---------- */
 
 .banner {
   background: var(--danger-bg);
   border-bottom: 1px solid var(--danger-border);
   padding: 12px 32px;
+}
+
+/* A note, not an alert: nothing is wrong (a newer modelpick is installed). */
+.banner-note {
+  background: var(--chip-bg);
+  border-bottom-color: var(--border);
+}
+
+.banner-note .banner-in {
+  color: var(--chip-text);
 }
 
 .banner-in {

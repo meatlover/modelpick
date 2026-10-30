@@ -15,9 +15,12 @@ const testToken = "tok123"
 type stub struct {
 	applyErr error
 	applyRes OpResult
+	replaced bool
 }
 
-func (s *stub) State() State { return State{SHA256: "abc", Accounts: []Account{}} }
+func (s *stub) State() State {
+	return State{SHA256: "abc", Accounts: []Account{}, BinaryReplaced: s.replaced}
+}
 func (s *stub) Usage() []UsageRow {
 	return []UsageRow{{Account: "a"}}
 }
@@ -280,6 +283,20 @@ func TestAuthEdges(t *testing.T) {
 	for _, c := range cases {
 		if got := req(c.method, c.target, c.host, c.origin, c.cookie); got != c.want {
 			t.Errorf("%s: got %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestStateCarriesBinaryReplaced(t *testing.T) {
+	for _, want := range []bool{false, true} {
+		w := do(t, newTestServer(&stub{replaced: want}), "GET", "/api/state", goodHost, "", true)
+		var got map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatalf("%v: %s", err, w.Body.String())
+		}
+		v, ok := got["binary_replaced"]
+		if !ok || v != want {
+			t.Errorf("want binary_replaced %v, got %v (present %v) in %s", want, v, ok, w.Body.String())
 		}
 	}
 }

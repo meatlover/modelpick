@@ -753,3 +753,9 @@ func TestNewRefusesNoAlgorithms(t *testing.T) {
 		}()
 	}
 }
+
+func TestDemoNeverReportsAReplacedBinary(t *testing.T) {
+	if newDemo().State().BinaryReplaced {
+		t.Fatal("the demo reports binary_replaced")
+	}
+}

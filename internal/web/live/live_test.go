@@ -420,3 +420,25 @@ func TestInvalidConfigKeepsLists(t *testing.T) {
 }
 
 var errBoom = errors.New("boom")
+
+func TestStateBinaryReplacedFollowsTheInjectedCheck(t *testing.T) {
+	f := newFixture(t)
+	replaced := false
+	l := newLive(f.d, f.path, f.first)
+	t.Cleanup(l.Close)
+	l.binaryReplaced = func() bool { return replaced }
+	if l.State().BinaryReplaced {
+		t.Fatal("binary_replaced true before the check says so")
+	}
+	replaced = true
+	if !l.State().BinaryReplaced {
+		t.Fatal("binary_replaced false after the check says true")
+	}
+}
+
+func TestStateBinaryReplacedWithoutACheckIsFalse(t *testing.T) {
+	f := newFixture(t)
+	if f.live().State().BinaryReplaced {
+		t.Fatal("binary_replaced true with no check injected")
+	}
+}

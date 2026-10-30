@@ -2,7 +2,7 @@
 import { clear } from "./dom.js";
 import { reload, ping, store } from "./api.js";
 import { renderHeader, currentTab } from "./header.js";
-import { stopped, readOnly } from "./notice.js";
+import { stopped, readOnly, newerBinary } from "./notice.js";
 import { onZone, tick } from "./time.js";
 import * as usage from "./usage.js";
 import * as profiles from "./profiles.js";
@@ -53,6 +53,7 @@ function lock(on) {
 function applyReadOnly() {
   const text = store.state ? store.state.read_only : "";
   readOnly(text);
+  newerBinary(store.state && store.state.binary_replaced);
   if (text) document.body.dataset.readonly = "1";
   else delete document.body.dataset.readonly;
   locker.disconnect();

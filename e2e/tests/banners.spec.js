@@ -49,3 +49,20 @@ test("broken file is read-only, fixing it clears the banner", async ({ page }) =
   await expect(page.getByText("Cannot edit — ")).toHaveCount(0);
   await expect(add.getByRole("button", { name: "Add", exact: true })).toHaveJSProperty("inert", false);
 });
+
+const NEWER = "A newer modelpick is installed. Stop this one (Ctrl-C where you ran `modelpick ui`) and run `modelpick ui` again.";
+
+test("a newer installed binary shows a neutral notice, and edits still apply", async ({ page }) => {
+  const notice = page.getByRole("status").filter({ hasText: "A newer modelpick is installed." });
+  await expect(notice).toHaveCount(0);
+  await server.send("binary replaced");
+  // The page re-reads state on focus; the timed poll is a minute apart.
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText(NEWER);
+  // Not an error: no alert role, not locked read-only.
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "Remove account claude-spare" }).click();
+  await expectConfig(server.configPath, (c) => c.accounts["claude-spare"], undefined, "the edit applied");
+  await expect(notice).toBeVisible();
+});

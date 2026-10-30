@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -77,7 +78,8 @@ func run(dir string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	cfgPath := filepath.Join(dir, "config.json")
-	backend := live.New(d, cfgPath)
+	var replaced atomic.Bool // the "binary" command flips what State reports
+	backend := live.New(d, cfgPath, live.WithBinaryCheck(replaced.Load))
 	srv := &http.Server{Handler: web.NewServer(backend, port, token), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -97,7 +99,7 @@ func run(dir string, stdin io.Reader, stdout io.Writer) error {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	done := make(chan struct{})
 	go func() {
-		readCommands(stdin, stdout, d, fakes)
+		readCommands(stdin, stdout, d, fakes, &replaced)
 		close(done)
 	}()
 	select {
@@ -113,14 +115,14 @@ func run(dir string, stdin io.Reader, stdout io.Writer) error {
 
 // readCommands answers each stdin line with "ok" or "error <why>" once it
 // has been applied, until EOF.
-func readCommands(stdin io.Reader, stdout io.Writer, d app.Deps, fakes map[string]*apptest.Fake) {
+func readCommands(stdin io.Reader, stdout io.Writer, d app.Deps, fakes map[string]*apptest.Fake, replaced *atomic.Bool) {
 	sc := bufio.NewScanner(stdin)
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) == 0 {
 			continue
 		}
-		if err := apply(f, d, fakes); err != nil {
+		if err := apply(f, d, fakes, replaced); err != nil {
 			fmt.Fprintln(stdout, "error "+err.Error())
 			continue
 		}
@@ -130,7 +132,7 @@ func readCommands(stdin io.Reader, stdout io.Writer, d app.Deps, fakes map[strin
 
 // apply runs one command against the fakes. Accounts are looked up in the
 // config as it is on disk now, so one the page added is found too.
-func apply(f []string, d app.Deps, fakes map[string]*apptest.Fake) error {
+func apply(f []string, d app.Deps, fakes map[string]*apptest.Fake, replaced *atomic.Bool) error {
 	switch {
 	case f[0] == "fail" && len(f) >= 3:
 		fake, err := fakeFor(f[1], d, fakes)
@@ -146,10 +148,13 @@ func apply(f []string, d app.Deps, fakes map[string]*apptest.Fake) error {
 		}
 		fake.SetErr(f[1], nil)
 		return nil
+	case f[0] == "binary" && len(f) == 2 && (f[1] == "replaced" || f[1] == "current"):
+		replaced.Store(f[1] == "replaced")
+		return nil
 	case f[0] == "tool" && len(f) == 3 && (f[2] == "missing" || f[2] == "present"):
 		return setTool(f[1], f[2] == "missing", d, fakes)
 	}
-	return fmt.Errorf("unknown command %q (want fail <account> <message…>, clear <account>, tool <vendor> missing|present)", strings.Join(f, " "))
+	return fmt.Errorf("unknown command %q (want fail <account> <message…>, clear <account>, tool <vendor> missing|present, binary replaced|current)", strings.Join(f, " "))
 }
 
 // fakeFor is the fake serving account's vendor.
