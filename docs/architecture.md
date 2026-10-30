@@ -170,7 +170,8 @@ redacted, that its parser test reads.
 `scripts/check.sh` is the single gate: `gofmt -l`, `go vet`, `go test`, then a
 build for linux/darwin × amd64/arm64. The pre-commit hook
 (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`)
-and CI (`.github/workflows/ci.yml`, Ubuntu and macOS) both run it.
+and CI (`.github/workflows/ci.yml`, Ubuntu and macOS, on branch pushes and
+pull requests) both run it; a release tag runs it in `release.yml` instead.
 
 ## Known limitations
 

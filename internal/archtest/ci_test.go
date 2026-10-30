@@ -25,3 +25,16 @@ func TestCIWorkflowTokenIsReadOnly(t *testing.T) {
 	}
 	t.Fatal("ci.yml has no top-level `permissions:` block")
 }
+
+// TestCIWorkflowSkipsTags: ci.yml runs on branch pushes only. A vX.Y.Z tag
+// runs check.sh in release.yml; ci.yml on the same tag would repeat it on
+// both runners.
+func TestCIWorkflowSkipsTags(t *testing.T) {
+	b, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "\n  push:\n    branches: ['**']\n") {
+		t.Fatal("ci.yml: `on: push:` must be limited to `branches: ['**']`, so a tag push does not run it")
+	}
+}

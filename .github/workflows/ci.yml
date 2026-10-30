@@ -1,7 +1,9 @@
 name: ci
 
 on:
+  # Branch pushes only: a vX.Y.Z tag runs check.sh in release.yml.
   push:
+    branches: ['**']
   pull_request:
 
 permissions:
