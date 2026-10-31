@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.4.0 — 2026-10-30
+
 ### New
 
 - `modelpick help`, `--help` and `-h` print the usage, with a line on each
