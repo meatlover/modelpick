@@ -23,8 +23,20 @@ ask for a model, and open the UI.
 ## Install
 
 modelpick is one static binary with no third-party dependencies. Install it
-one of three ways, then put it on your `PATH` (`~/.local/bin` below is only an
-example).
+one of four ways. Homebrew puts it on your `PATH`; for the others, put it there
+yourself (`~/.local/bin` below is only an example).
+
+### With Homebrew
+
+```
+brew install meatlover/tap/modelpick
+```
+
+This installs the latest release's archive for your platform, checked against
+its `SHA256SUMS`, on macOS or Linux. The example config is then at
+`$(brew --prefix)/share/modelpick/config.example.json`. The tap,
+[meatlover/homebrew-tap](https://github.com/meatlover/homebrew-tap), picks up a
+new release within about an hour; prereleases are not published there.
 
 ### A prebuilt release
 
@@ -170,7 +182,7 @@ of the original in the cache directory. Stop it with Ctrl-C. See
 
 ## Upgrade
 
-Install the new version the same way. The config format has `"version": 1`;
+Install the new version the same way (`brew upgrade modelpick` with Homebrew). The config format has `"version": 1`;
 a release that changes it will say so in the [changelog](../CHANGELOG.md).
 The cache needs no migration: an unreadable state file is treated as empty and
 rewritten on the next call. A running `modelpick ui` keeps the old binary
@@ -181,7 +193,8 @@ until you restart it.
 modelpick owns only three things. Remove them and nothing is left:
 
 ```
-rm ~/.local/bin/modelpick            # or wherever you put the binary
+rm ~/.local/bin/modelpick            # or wherever you put the binary,
+                                     # or: brew uninstall modelpick
 rm -r ~/.config/modelpick            # the config
 rm -r ~/.cache/modelpick             # cached usage readings and lock files
 ```
