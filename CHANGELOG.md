@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### New
+
+- Homebrew: `brew install meatlover/tap/modelpick` installs the latest
+  release on macOS and Linux. The tap picks up a new release within about an
+  hour. See `docs/getting-started.md`.
+
 ## v0.4.0 — 2026-10-30
 
 ### New

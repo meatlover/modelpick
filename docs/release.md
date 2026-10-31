@@ -45,6 +45,16 @@ whose steps each fail naming themselves (`release-build: version gate: …`):
 A failure at any step publishes nothing. You can run the script yourself on a
 tagged, clean checkout: `bash scripts/release-build.sh vX.Y.Z /tmp/dist`.
 
+## Homebrew
+
+[meatlover/homebrew-tap](https://github.com/meatlover/homebrew-tap) holds the
+`modelpick` formula, generated from a release's `SHA256SUMS` and never edited
+by hand. Its `update` workflow runs hourly: it writes the formula for the
+latest release (prereleases are skipped), installs and tests it on Ubuntu, and
+commits it. Nothing in this repository pushes to the tap, so a release needs no
+step for it; to publish to Homebrew at once, start the tap's `update` workflow
+with **Run workflow**.
+
 ## Downloading
 
 [Getting started](getting-started.md#a-prebuilt-release) shows how to download
@@ -71,5 +81,3 @@ Done on 2026-10-30. What it took, for the record:
   `v0.4.0-rc.1` pre-release proved the release job: four archives,
   `SHA256SUMS` and the notes; a `curl` download passed `shasum -c` and its
   `modelpick version` printed the tag. The pre-release was then deleted.
-
-Later: a Homebrew tap, once there is a release to point it at.
