@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -281,6 +282,50 @@ func TestModelsFromRunner(t *testing.T) {
 	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("boom") }
 	if _, err := f.a.Models(context.Background(), f.acct); err == nil {
 		t.Fatal("want runner error")
+	}
+}
+
+// A failed `opencode models` names the tool's own last error line, so the
+// warning says why (here, the reason seen under a ui started in a directory
+// that was later deleted), not only the exit status.
+func TestModelsExitNamesToolError(t *testing.T) {
+	f := newFixture(t, serveBody(200, "{}"))
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c",
+			`echo "  some log line" >&2; echo "error: The current working directory was deleted" >&2; echo >&2; exit 1`).Output()
+	}
+	_, err := f.a.Models(context.Background(), f.acct)
+	want := "opencode-go: opencode models exited with status 1: error: The current working directory was deleted"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", `printf '\033[31merror:\033[0m bad\a thing\n' >&2; exit 1`).Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if want := "opencode-go: opencode models exited with status 1: error: bad thing"; err == nil || err.Error() != want {
+		t.Fatalf("colour codes not stripped: err = %q, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", `echo "error: rejected key sk-abcdef1234567890" >&2; exit 1`).Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if want := "opencode-go: opencode models exited with status 1: error: rejected key [redacted]"; err == nil || err.Error() != want {
+		t.Fatalf("token not hidden: err = %q, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", "exit 3").Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if want := "opencode-go: opencode models exited with status 3"; err == nil || err.Error() != want {
+		t.Fatalf("no stderr: err = %v, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", `printf 'x%.0s' $(seq 1 400) >&2; exit 1`).Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if err == nil || len([]rune(err.Error())) > len("opencode-go: opencode models exited with status 1: ")+maxToolErr+1 {
+		t.Fatalf("long stderr not shortened: %d runes", len([]rune(err.Error())))
 	}
 }
 

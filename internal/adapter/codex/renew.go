@@ -57,6 +57,7 @@ func (a *Adapter) Renew(ctx context.Context, acct adapter.Account) error {
 	argv := a.o.AppServer
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(platform.EnvWithout(a.o.Environ(), renewDropped...), "CODEX_HOME="+home)
+	cmd.Dir = platform.ChildDir()
 	cmd.WaitDelay = renewWaitDelay
 	platform.NewProcessGroup(cmd)
 	stdin, err := cmd.StdinPipe()

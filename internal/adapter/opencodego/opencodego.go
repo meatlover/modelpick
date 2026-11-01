@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -208,6 +209,9 @@ func parseUsage(body []byte) (adapter.Reading, error) {
 	return r, nil
 }
 
+// maxToolErr bounds how much of the tool's own error line a message carries.
+const maxToolErr = 200
+
 // Models runs `opencode models opencode-go` and returns one model per
 // non-empty output line. OpenCode Go models take no thinking level.
 func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Model, error) {
@@ -215,7 +219,11 @@ func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Mode
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return nil, fmt.Errorf("opencode-go: opencode models exited with status %d", ee.ExitCode())
+			msg := fmt.Sprintf("opencode-go: opencode models exited with status %d", ee.ExitCode())
+			if line := lastLine(ee.Stderr); line != "" {
+				msg += ": " + line
+			}
+			return nil, errors.New(msg)
 		}
 		return nil, fmt.Errorf("opencode-go: run opencode models: %w", err)
 	}
@@ -226,6 +234,29 @@ func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Mode
 		}
 	}
 	return models, nil
+}
+
+// ansiEscape matches a terminal colour or cursor sequence.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
+
+// lastLine is the last non-blank line of b: a tool's final stderr line is
+// usually its error. It is shown in doctor and on the page, so colour codes
+// and other control characters are dropped, anything token-like is hidden,
+// and it is cut to maxToolErr runes.
+func lastLine(b []byte) string {
+	text := ansiEscape.ReplaceAllString(string(b), "")
+	text = strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\n' && r != '\t' || r == 0x7f {
+			return -1
+		}
+		return r
+	}, text)
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	line := adapter.HideTokens(strings.TrimSpace(lines[len(lines)-1]))
+	if r := []rune(line); len(r) > maxToolErr {
+		line = string(r[:maxToolErr]) + "…"
+	}
+	return line
 }
 
 // Check is doctor's view of the account: the opencode binary and the key
