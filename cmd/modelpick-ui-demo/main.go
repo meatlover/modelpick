@@ -11,13 +11,12 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/meatlover/modelpick/internal/core"
+	"github.com/meatlover/modelpick/internal/platform"
 	"github.com/meatlover/modelpick/internal/web"
 	"github.com/meatlover/modelpick/internal/web/demo"
 )
@@ -101,11 +100,7 @@ func readCommands(d *demo.Demo) {
 }
 
 func openURL(url string) {
-	name := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		name = "open"
-	}
-	if err := exec.Command(name, url).Start(); err != nil {
+	if err := platform.OpenBrowser(url); err != nil {
 		fmt.Println("demo: could not open the browser:", err)
 	}
 }

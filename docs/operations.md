@@ -85,6 +85,11 @@ Before any of these usage calls, an expired Claude or Codex login is first
 | `/usr/bin/security find-generic-password -s <service> -w` | macOS, each time a Claude login is read (20-second timeout). | Reads Claude Code's Keychain item. macOS may ask whether `security` may access it. |
 | `open <url>` (macOS) or `xdg-open <url>` | `modelpick ui` without `--no-open`. | Opens the page in your browser. A failure is a note, not an error. |
 
+No child process runs in the directory you started modelpick from: the
+Claude renewal runs in a temporary directory of its own, every other one in
+your home directory (the temp directory if that is missing). A `modelpick ui`
+left running in a folder you later delete keeps working.
+
 A renewal has a 60-second limit. The renewal processes get your environment
 without the variables that would make them log in some other way; the
 [reference](reference.md#environment-variables) lists them.
@@ -304,7 +309,7 @@ a value. A test checks that every message `doctor` can print has a row.
 | `token expired — the next usage call asks Codex to renew it; if that fails, run codex login` | The same for Codex. | Nothing yet. If renewal fails, run `codex login`. |
 | `login expires <time>; log in again in Claude Code with this account before then` | The Claude refresh token, which renewal never extends, expires within `login_expiry_warning_days`. `<time>` is UTC. A warning. | Log in again (`/login`) with this account before then. |
 | `login expired <time>; renewal fails until you log in again in Claude Code with this account` | The refresh token has expired. An error, but it does not block config edits in the UI. | Log in again (`/login`) with this account. |
-| `cannot list models, thinking values not checked: <reason>` | The account's model list could not be read, so `doctor` cannot check its thinking values. For a Codex account never used, the reason is `codex: <codex_home>/models_cache.json not found; run codex once to create it`. | Run `codex` once with that `CODEX_HOME`, or fix what the reason names (`opencode models` failed, for example). |
+| `cannot list models, thinking values not checked: <reason>` | The account's model list could not be read, so `doctor` cannot check its thinking values. For a Codex account never used, the reason is `codex: <codex_home>/models_cache.json not found; run codex once to create it`. | Run `codex` once with that `CODEX_HOME`, or fix what the reason names. When `opencode models` fails, the reason ends with OpenCode's own last error line, for example `opencode-go: opencode models exited with status 1: error: …`. |
 | `model <m> not offered by <account>` | The model is not in the account's model list. A warning: the list may be out of date. | Check `modelpick ls models`. |
 | `thinking "<x>" not supported by <model> (supported: <values>)` | The thinking value is not one the model takes. | Use one of the listed values, or `null`. |
 | `<account>: account reports <n> windows (<lengths>), cap has <m> values; ignored the last <k>` | The cap array has more values than the account's last reading has windows. A shorter array is fine. | Drop the extra values; positions are in [this order](configuration.md#caps). |

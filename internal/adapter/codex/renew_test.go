@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/meatlover/modelpick/internal/adapter"
+	"github.com/meatlover/modelpick/internal/platform"
 )
 
 // TestFakeAppServer is the stand-in for `codex app-server`. It runs only when a
@@ -28,7 +29,8 @@ func TestFakeAppServer(t *testing.T) {
 		os.Exit(2)
 	}
 	defer logf.Close()
-	rec := map[string]any{"codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY"), "pid": os.Getpid(), "pgid": syscall.Getpgrp()}
+	cwd, _ := os.Getwd()
+	rec := map[string]any{"cwd": cwd, "codex_home": os.Getenv("CODEX_HOME"), "openai_api_key": os.Getenv("OPENAI_API_KEY"), "pid": os.Getpid(), "pgid": syscall.Getpgrp()}
 	var methods []string
 	save := func() {
 		rec["methods"] = methods
@@ -84,6 +86,7 @@ func TestFakeAppServer(t *testing.T) {
 
 type fakeLog struct {
 	Methods     []string
+	Cwd         string          `json:"cwd"`
 	CodexHome   string          `json:"codex_home"`
 	APIKey      string          `json:"openai_api_key"`
 	PID         int             `json:"pid"`
@@ -136,6 +139,21 @@ func TestRenewProtocol(t *testing.T) {
 
 // A terminal's Ctrl-C goes to the foreground process group; the server is in
 // its own, so only ctx cancellation stops it.
+// The server runs in platform.ChildDir, not in modelpick's own working
+// directory (which may have been deleted under a long-running `modelpick ui`).
+func TestRenewServerRunsInChildDir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	err, l, _ := fakeRenew(t, "ok", context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err1 := filepath.EvalSymlinks(l.Cwd)
+	want, err2 := filepath.EvalSymlinks(platform.ChildDir())
+	if err1 != nil || err2 != nil || got != want {
+		t.Errorf("server cwd = %q, want %q (%v, %v)", l.Cwd, platform.ChildDir(), err1, err2)
+	}
+}
+
 func TestRenewServerInOwnProcessGroup(t *testing.T) {
 	err, l, _ := fakeRenew(t, "ok", context.Background())
 	if err != nil {

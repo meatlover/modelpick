@@ -208,6 +208,9 @@ func parseUsage(body []byte) (adapter.Reading, error) {
 	return r, nil
 }
 
+// maxToolErr bounds how much of the tool's own error line a message carries.
+const maxToolErr = 200
+
 // Models runs `opencode models opencode-go` and returns one model per
 // non-empty output line. OpenCode Go models take no thinking level.
 func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Model, error) {
@@ -215,7 +218,11 @@ func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Mode
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return nil, fmt.Errorf("opencode-go: opencode models exited with status %d", ee.ExitCode())
+			msg := fmt.Sprintf("opencode-go: opencode models exited with status %d", ee.ExitCode())
+			if line := lastLine(ee.Stderr); line != "" {
+				msg += ": " + line
+			}
+			return nil, errors.New(msg)
 		}
 		return nil, fmt.Errorf("opencode-go: run opencode models: %w", err)
 	}
@@ -226,6 +233,17 @@ func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Mode
 		}
 	}
 	return models, nil
+}
+
+// lastLine is the last non-blank line of b, trimmed and cut to maxToolErr
+// runes: a tool's final stderr line is usually its error.
+func lastLine(b []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	line := strings.TrimSpace(lines[len(lines)-1])
+	if r := []rune(line); len(r) > maxToolErr {
+		line = string(r[:maxToolErr]) + "…"
+	}
+	return line
 }
 
 // Check is doctor's view of the account: the opencode binary and the key

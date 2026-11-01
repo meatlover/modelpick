@@ -25,6 +25,7 @@ func openBrowserWith(goos string, start func(name string, args ...string) error,
 // startDetached starts the program and reaps it in the background.
 func startDetached(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
+	cmd.Dir = ChildDir()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
