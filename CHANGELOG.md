@@ -8,6 +8,13 @@
   release on macOS and Linux. The tap picks up a new release within about an
   hour. See `docs/getting-started.md`.
 
+### Fixed
+
+- Idle Claude accounts no longer shift cap positions onto the 7d window: with
+  no 5h session running the usage response has no 5h window, so the ui showed
+  `7d` and `2` instead of `5h` and `7d`. modelpick now counts the missing
+  window as 5h at 0%.
+
 ## v0.4.0 — 2026-10-30
 
 ### New

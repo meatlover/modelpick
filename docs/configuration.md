@@ -246,7 +246,8 @@ Windows scoped to a *different* model are ignored for the choice.
 
 Examples: Claude `[5h, 7d]`, and for a Fable choice `[5h, 7d, Fable-weekly]`;
 Codex whatever the plan reports (often just `[7d]`); OpenCode Go
-`[5h, 7d, 30d]`.
+`[5h, 7d, 30d]`. An idle Claude account reports no 5h window; modelpick
+counts it as 5h at 0% with no reset time, so the positions do not shift.
 
 Array length against the number of windows:
 
