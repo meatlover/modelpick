@@ -12,7 +12,10 @@
   time by more than 10 points, and blocks it for the first tenth of every
   window. Skip reasons always show the sign (`day 3.5 of 7, -10`). A `pace-N`
   or `pace+0` cap on a window with no reset time blocks the choice instead of
-  falling back to `default_cap`. A window whose reset time has passed now also
+  falling back to `default_cap`; on Claude an idle account has no running 5h
+  session, so such a cap on the 5h position blocks the choice while the account
+  is idle. A `pace+N` cap on a window with no reset time at 0% used passes
+  without a warning. A window whose reset time has passed now also
   takes its next reset to be one length later, so `ls` and the ui's Usage tab
   show that time instead of the passed one. See `docs/configuration.md`.
 

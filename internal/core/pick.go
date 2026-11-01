@@ -199,7 +199,8 @@ func (p *picker) matchesAny(names []string) bool {
 
 // windowBlocks judges one window against its effective cap element. A pace
 // element whose window lacks a reset time cannot be judged: pace+N with N > 0
-// falls back to default_cap with a warning; N ≤ 0 blocks with a warning,
+// falls back to default_cap with a warning (unless the window is at 0%, which
+// passes unwarned: it is under any positive allowance); N ≤ 0 blocks with a warning,
 // because such a choice is meant to run only on spare quota (signed-pace
 // spec §3.4).
 func (p *picker) windowBlocks(account string, w adapter.Window, cap CapElem) (string, bool) {
@@ -216,6 +217,9 @@ func (p *picker) windowBlocks(account string, w adapter.Window, cap CapElem) (st
 			why := fmt.Sprintf("%s window has no reset time; %s cannot be judged", label, cap)
 			p.addWarnings([]string{account + ": " + why})
 			return why, true
+		}
+		if w.UsedPct == 0 {
+			return "", false // 0% is under any positive allowance
 		}
 		d := p.cfg.Settings.DefaultCap
 		p.addWarnings([]string{fmt.Sprintf("%s: %s window has no reset time; pace cap used default_cap %s",

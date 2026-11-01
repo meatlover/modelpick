@@ -65,6 +65,15 @@ func TestPaceNoReset(t *testing.T) {
 	}
 }
 
+func TestPaceNoResetIdleUnwarned(t *testing.T) {
+	// 0% used is under any positive allowance: no fallback, no warning.
+	r := pickPace(t, `["pace+10"]`, adapter.Window{Label: "w", Length: 7 * day, UsedPct: 0})
+	wantPicked(t, r, "pace+10 no reset, 0% used")
+	if len(r.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none", r.Warnings)
+	}
+}
+
 func TestPaceResetPassed(t *testing.T) {
 	r := pickPace(t, `["pace+5"]`, paceWin(7*day, 80, -hour))
 	if len(r.Skipped) != 0 || *r.Account != "claude-main" {
@@ -154,7 +163,7 @@ func TestPaceNegativeNoReset(t *testing.T) {
 			t.Errorf("%s: warnings = %q, want [%q]", elem, r.Warnings, want)
 		}
 	}
-	// pace+10 keeps the default_cap fallback (TestPaceNoReset).
+	// pace+10 at 0% used passes unwarned (TestPaceNoResetIdleUnwarned).
 	wantPicked(t, pickPace(t, `["pace+10"]`, adapter.Window{Label: "w", Length: 7 * day, UsedPct: 0}), "pace+10 no reset")
 }
 

@@ -242,9 +242,12 @@ window resets, and `pace-10` blocks for the first tenth of every window
 
 A window of known length whose reset time is unknown cannot be judged against
 pace. With an offset above 0 the position uses `default_cap` instead, with a
-warning. With an offset at or below 0 the window blocks, also with a warning:
+warning (a window at 0% passes with no warning). With an offset at or below 0 the window blocks, also with a warning:
 `7d window has no reset time; pace-10 cannot be judged`. Such a choice is
-meant to run only on spare quota, and unknown is never read as room. A window
+meant to run only on spare quota, and unknown is never read as room. On
+Claude an idle account has no running 5h session, so its 5h window has no reset
+time: a `pace-N` or `pace+0` element on that position blocks the choice while
+the account is idle. A window
 of unknown length always uses `default_cap` (below).
 
 Order of the windows, which fixes what each position means:
@@ -279,7 +282,8 @@ starts reporting a different set of windows. Missing positions filled with
 `default_cap` are not reported. A capped choice whose usage is unknown is
 skipped; unknown usage is never treated as 0%. A window whose reset time has
 passed counts as 0% until the next reading, and its next reset is taken to be
-one length later.
+one length later (for a window that starts at first use, such as Claude's 5h
+session, this shown time is an estimate).
 
 ## What `pick` does with them
 

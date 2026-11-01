@@ -93,6 +93,7 @@ function splitSign(text, sign) {
 // leading + / - / − (U+2212), else keeps sign, the one the sentence shows
 // (owner-approved typing rule, 2026-11-01).
 export function boundNumber(text, kind, sign = 1) {
+  sign = sign ?? 1;
   let t = String(text).trim();
   if (t.endsWith("%")) t = t.slice(0, -1).trim();
   if (kind !== "pace") return NUMBER.test(t) ? bound(kind, Number(t)) : null;
