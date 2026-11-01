@@ -1456,9 +1456,9 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   color: var(--accent-strong);
 }
 
-/* Line 2, "Cap at 90%" / "Cap at time elapsed + 10%", in the value's
-   font; only the number is an input, sized to its text by caps.js (ch,
-   with tabular digits so each digit is 1ch). */
+/* Line 2, "Cap at 90%" / "Cap at time elapsed + 10%" (or − 10%), in the
+   value's font; only the number is an input, sized to its text by caps.js
+   (ch, with tabular digits so each digit is 1ch). */
 .cap-edit-line {
   font: 600 15px var(--font);
   color: var(--text);
@@ -1508,10 +1508,6 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   padding: 0 10px;
 }
 
-.cap-raquo {
-  font: 700 11px var(--font);
-}
-
 .cap-sw[aria-pressed="true"] {
   background: var(--accent);
   color: var(--surface);
@@ -1553,8 +1549,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--time);
 }
 
+/* The cap is drawn as a vertical line only (owner, 2026-11-01: no ring). */
 .cap-line,
-.cap-knob,
 .cap-clock {
   position: absolute;
   pointer-events: none;
@@ -1564,37 +1560,26 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   top: -5px;
   width: 2px;
   height: 20px;
+  border-radius: 1px;
   background: var(--text);
-}
-
-.cap-knob {
-  top: -2px;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--text);
-  border-radius: 50%;
-  background: var(--surface);
 }
 
 .cap-bar.is-pace .cap-line {
   background: var(--accent);
 }
 
-.cap-bar.is-pace .cap-knob {
-  border-color: var(--accent);
-}
-
+/* The time icon (13 px tall) above the line: caps.js sets left to the
+   line's centre. */
 .cap-clock {
-  top: -21px;
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
+  top: -23px;
+  display: flex;
   color: var(--accent);
-  font: 700 10px/11px var(--font);
+  transform: translateX(-50%);
 }
 
-/* The real control, invisible over the drawn bar; its thumb is as wide as
-   the drawn ring so a press lands on the value under the pointer. */
+/* The real control, invisible over the drawn bar; its 14 px thumb keeps
+   the hit area the ring had, so a press lands on the value under the
+   pointer. */
 .cap-range {
   position: absolute;
   top: -8px;
@@ -1621,7 +1606,8 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   border: 0;
 }
 
-.cap-bar:has(.cap-range:focus-visible) .cap-knob {
+/* Keyboard focus on the slider rings the line. */
+.cap-bar:has(.cap-range:focus-visible) .cap-line {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
