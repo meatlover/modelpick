@@ -451,7 +451,7 @@ func TestApplyOpEnvFromCacheAndReading(t *testing.T) {
 	s := f.load(t)
 	_, _, err := f.ed.Apply(s.SHA256, "choice.set",
 		json.RawMessage(`{"profile":"p","index":0,"field":"cap","value":[90,"abc"],"expect":`+goodFirst+`}`))
-	wantRefused(t, err, "Profile p, choice 1, 7d cap: abc is not a number, pace+N or default")
+	wantRefused(t, err, "Profile p, choice 1, 7d cap: abc is not a number, pace+N, pace-N or default")
 	s, _, err = f.ed.Apply(s.SHA256, "profile.add", json.RawMessage(`{"name":"q"}`))
 	if err != nil {
 		t.Fatal(err)

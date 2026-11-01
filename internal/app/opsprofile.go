@@ -332,7 +332,7 @@ func windowLabels(env OpEnv, account, model string) []string {
 	return env.Windows(account, model)
 }
 
-var paceRE = regexp.MustCompile(`^pace\+(\d+)$`)
+var paceRE = regexp.MustCompile(`^pace([+-])(\d+)$`)
 
 // parseCap reads a cap list (null = uncapped); prefix is "Profile p, choice
 // n" and labels name the positions that have a window.
@@ -364,8 +364,9 @@ func capWhere(prefix string, labels []string, k int) string {
 	return prefix + ", cap " + strconv.Itoa(k+1)
 }
 
-// capElement reads one element: a number 0–100, "pace+N" with N 5–50, or
-// "default" (owner rulings, rounds 3, 5 and 6).
+// capElement reads one element: a number 0–100, "pace+N" / "pace-N" with
+// the signed offset -50…+50, or "default" (owner, 2026-11-01: -50…+50
+// continuous, 0 included; "default" per round 5).
 func capElement(where string, raw json.RawMessage) (core.CapElem, error) {
 	text := rawText(raw)
 	var n float64
@@ -381,15 +382,18 @@ func capElement(where string, raw json.RawMessage) (core.CapElem, error) {
 			return core.CapElem{Kind: core.CapDefault}, nil
 		}
 		if m := paceRE.FindStringSubmatch(s); m != nil {
-			v, err := strconv.Atoi(m[1])
+			v, err := strconv.Atoi(m[2])
+			if m[1] == "-" {
+				v = -v
+			}
 			if err != nil || v < core.MinPaceMargin || v > core.MaxPaceMargin {
-				return core.CapElem{}, refuse("%s: %s is outside pace+%d–pace+%d", where, s, core.MinPaceMargin, core.MaxPaceMargin)
+				return core.CapElem{}, refuse("%s: %s is outside pace%d–pace+%d", where, s, core.MinPaceMargin, core.MaxPaceMargin)
 			}
 			return core.CapElem{Kind: core.CapPace, N: float64(v)}, nil
 		}
 		text = s
 	}
-	return core.CapElem{}, refuse("%s: %s is not a number, pace+N or default", where, text)
+	return core.CapElem{}, refuse("%s: %s is not a number, pace+N, pace-N or default", where, text)
 }
 
 // wireChoice is a choice as the page sends it in expect. Group and

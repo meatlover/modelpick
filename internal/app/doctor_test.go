@@ -10,7 +10,6 @@ import (
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/app"
 	"github.com/meatlover/modelpick/internal/app/apptest"
-	"github.com/meatlover/modelpick/internal/core"
 )
 
 const (
@@ -214,7 +213,24 @@ func TestDoctorSubjects(t *testing.T) {
 	}
 }
 
-func TestConfigFindingForPaceBelowMinimum(t *testing.T) {
+func TestNeverPickedSignedPace(t *testing.T) {
+	cases := []struct {
+		name    string
+		choices []string
+		want    []app.Finding
+	}{
+		{"pace+5 shadows pace-10", []string{claudeA + `,"cap":["pace+5"]}`, claudeA + `,"cap":["pace-10"]}`}, []app.Finding{never("2", "1")}},
+		{"reversed", []string{claudeA + `,"cap":["pace-10"]}`, claudeA + `,"cap":["pace+5"]}`}, nil},
+	}
+	for _, c := range cases {
+		got := onlyNever(runDoctor(t, docConfig("", c.choices...)))
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestConfigFindingForPaceOutOfRange(t *testing.T) {
 	d := apptest.NewDeps(t, docConfig("", codexA+`,"cap":["pace+51"]}`))
 	_, err := app.LoadConfig(d)
 	if err == nil {
@@ -224,7 +240,6 @@ func TestConfigFindingForPaceBelowMinimum(t *testing.T) {
 	if f.Severity != "error" || f.Subject != "config" || f.Message != err.Error() {
 		t.Fatalf("got %+v", f)
 	}
-	_ = core.MinPaceMargin
 }
 
 // goConfig has n opencode-go accounts go-1..go-n and one profile using go-1.
