@@ -215,10 +215,10 @@ func TestDoctorSubjects(t *testing.T) {
 }
 
 func TestConfigFindingForPaceBelowMinimum(t *testing.T) {
-	d := apptest.NewDeps(t, docConfig("", codexA+`,"cap":["pace+4"]}`))
+	d := apptest.NewDeps(t, docConfig("", codexA+`,"cap":["pace+51"]}`))
 	_, err := app.LoadConfig(d)
 	if err == nil {
-		t.Fatal("pace+4 must not parse")
+		t.Fatal("pace+51 must not parse")
 	}
 	f := app.ConfigFinding(err)
 	if f.Severity != "error" || f.Subject != "config" || f.Message != err.Error() {

@@ -73,7 +73,7 @@ references, malformed times, a cap element that is not one of the
 [three forms](#caps), an unknown `vendor`, an account named `models`, and a
 `version` other than `1`. Errors name the failing field, for example
 `profiles.tester[1].skip_during` or
-`profiles.tester[0].cap[0]: "pace+4": N must be 5–50`.
+`profiles.tester[0].cap[0]: "pace+60": N must be -50–50`.
 
 ## `version`
 
@@ -217,14 +217,15 @@ error:
 `cap` is an array with one element per usage window. Each element is one of:
 
 - a number 0–100, a fixed cap in percent;
-- `"pace+N"`, N a whole number from 5 to 50: a cap that follows the window's
-  elapsed time (below);
+- `"pace+N"` or `"pace-N"`, N a whole number with the offset from -50 to +50
+  (`"pace+0"` included; `"pace-0"` reads as `"pace+0"`; the sign is an ASCII
+  `-`): a cap that follows the window's elapsed time (below);
 - `"default"`: this position uses `default_cap`. It is how a position before
   a configured one stays at the default, as in `[95, "default", "pace+10"]`.
 
 A window **blocks** the choice when `used% >= cap`. Anything else is a config
-error naming the element, such as `"pace+2": N must be 5–50` or
-`must be a number, "pace+N" or "default"`. Trailing `"default"` elements mean
+error naming the element, such as `"pace+51": N must be -50–50` or
+`must be a number, "pace+N", "pace-N" or "default"`. Trailing `"default"` elements mean
 what a missing position means, and the UI does not write them.
 
 **Pace caps.** For a window with a known length and reset time, elapsed% is
@@ -232,8 +233,8 @@ how far the window is through its length, and the window may use
 `min(100, elapsed% + N)`. `"pace+10"` on a 7-day window two days in allows
 about 39%. The skip reason says so: `7d window 58% >= pace 49% (day 2.7 of
 7, +10)`. A window with no known length or reset time uses `default_cap`
-instead, with a warning. N starts at 5 because at the instant a window
-resets `pace+0` would allow 0% and block an unused window.
+instead, with a warning. A margin at or below 0 can block a window that has
+barely started: `pace+0` allows 0% at the instant a window resets.
 
 Order of the windows, which fixes what each position means:
 

@@ -15,13 +15,14 @@ type CapKind int
 
 const (
 	CapFixed   CapKind = iota // a percentage, 0–100
-	CapPace                   // "pace+N": the pace line plus a margin
+	CapPace                   // "pace+N" / "pace-N": the pace line plus a signed margin
 	CapDefault                // "default": the global default_cap
 )
 
-// Pace margins accepted in a config file (percentage points).
+// Pace margins accepted in a config file (percentage points). Owner,
+// 2026-11-01: -50 to +50, continuous, including 0.
 const (
-	MinPaceMargin = 5
+	MinPaceMargin = -50
 	MaxPaceMargin = 50
 )
 
@@ -32,7 +33,7 @@ type CapElem struct {
 	N    float64
 }
 
-const capShape = `must be a number, "pace+N" or "default"`
+const capShape = `must be a number, "pace+N", "pace-N" or "default"`
 
 // ParseCapElem decodes one cap element. The error text is the fragment that
 // follows the field name in a ConfigError.
@@ -62,13 +63,22 @@ func parseCapWord(s string) (CapElem, error) {
 	if s == "default" {
 		return CapElem{Kind: CapDefault}, nil
 	}
+	sign := 1.0
 	rest, ok := strings.CutPrefix(s, "pace+")
 	if !ok {
+		if rest, ok = strings.CutPrefix(s, "pace-"); !ok {
+			return CapElem{}, errors.New(capShape)
+		}
+		sign = -1
+	}
+	// The sign is the prefix's alone: "pace--5" and "pace+-5" are not spellings.
+	n, err := strconv.ParseFloat(rest, 64)
+	if rest == "" || rest[0] < '0' || rest[0] > '9' || err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 		return CapElem{}, errors.New(capShape)
 	}
-	n, err := strconv.ParseFloat(rest, 64)
-	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-		return CapElem{}, errors.New(capShape)
+	n *= sign
+	if n == 0 {
+		n = 0 // "pace-0" is pace+0, not negative zero
 	}
 	if n != math.Trunc(n) {
 		return CapElem{}, fmt.Errorf("%q: N must be a whole number", s)
@@ -83,6 +93,9 @@ func parseCapWord(s string) (CapElem, error) {
 func (e CapElem) String() string {
 	switch e.Kind {
 	case CapPace:
+		if e.N < 0 {
+			return "pace-" + strconv.FormatFloat(-e.N, 'f', -1, 64)
+		}
 		return "pace+" + strconv.FormatFloat(e.N, 'f', -1, 64)
 	case CapDefault:
 		return "default"

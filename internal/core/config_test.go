@@ -203,12 +203,37 @@ func TestCapElements(t *testing.T) {
 		t.Errorf("String() = %q", got)
 	}
 	refusals := []struct{ raw, msg string }{
-		{`["pace+51"]`, `"pace+51": N must be 5–50`},
-		{`["pace+2"]`, `"pace+2": N must be 5–50`},
+		{`["pace+51"]`, `"pace+51": N must be -50–50`},
+		{`["pace-51"]`, `"pace-51": N must be -50–50`},
+		{`["pace-2.5"]`, `"pace-2.5": N must be a whole number`},
 		{`["pace+1.5"]`, `"pace+1.5": N must be a whole number`},
-		{`["x"]`, `must be a number, "pace+N" or "default"`},
+		{`["pace\u221210"]`, `must be a number, "pace+N", "pace-N" or "default"`},
+		{`["pace+-5"]`, `must be a number, "pace+N", "pace-N" or "default"`},
+		{`["pace--5"]`, `must be a number, "pace+N", "pace-N" or "default"`},
+		{`["pace-"]`, `must be a number, "pace+N", "pace-N" or "default"`},
+		{`["x"]`, `must be a number, "pace+N", "pace-N" or "default"`},
 		{`[120]`, `must be between 0 and 100`},
 		{`[null]`, `must be a number`},
+	}
+	signed, err := parse(`["pace-10","pace-50","pace+0","pace-0","pace+2"]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSigned := []CapElem{{CapPace, -10}, {CapPace, -50}, {CapPace, 0}, {CapPace, 0}, {CapPace, 2}}
+	got := signed.Profiles["p"][0].Cap
+	if !reflect.DeepEqual(got, wantSigned) {
+		t.Fatalf("signed Cap = %v, want %v", got, wantSigned)
+	}
+	if s := fmt.Sprint(got[0], got[1], got[2], got[3], got[4]); s != "pace-10 pace-50 pace+0 pace+0 pace+2" {
+		t.Errorf("signed String() = %q", s)
+	}
+	doc, err := ParseDoc([]byte(strings.Replace(minimal, `"thinking":null`, `"thinking":null,"cap":["pace-0","pace-10"]`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := string(doc.Encode())
+	if !strings.Contains(enc, `"pace+0"`) || !strings.Contains(enc, `"pace-10"`) || strings.Contains(enc, "pace-0") {
+		t.Errorf("Encode = %s, want pace+0 and pace-10", enc)
 	}
 	for _, c := range refusals {
 		_, err := parse(c.raw)
