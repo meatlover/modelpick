@@ -230,11 +230,22 @@ what a missing position means, and the UI does not write them.
 
 **Pace caps.** For a window with a known length and reset time, elapsed% is
 how far the window is through its length, and the window may use
-`min(100, elapsed% + N)`. `"pace+10"` on a 7-day window two days in allows
-about 39%. The skip reason says so: `7d window 58% >= pace 49% (day 2.7 of
-7, +10)`. A window with no known length or reset time uses `default_cap`
-instead, with a warning. A margin at or below 0 can block a window that has
-barely started: `pace+0` allows 0% at the instant a window resets.
+`min(100, max(0, elapsed% + N))`. `"pace+10"` on a 7-day window two days in
+allows about 39%. The skip reason says so, with the offset's sign always
+shown: `7d window 58% >= pace 49% (day 2.7 of 7, +10)`. A negative offset
+runs the choice only while usage lags time by more than N points: halfway
+through a 7-day window `"pace-10"` allows 40%, so
+`7d window 44% >= pace 40% (day 3.5 of 7, -10)`. An offset at or below 0
+blocks a window that has barely started: `pace+0` allows 0% at the instant a
+window resets, and `pace-10` blocks for the first tenth of every window
+(0.7 days of a 7-day one), however little it has used.
+
+A window of known length whose reset time is unknown cannot be judged against
+pace. With an offset above 0 the position uses `default_cap` instead, with a
+warning. With an offset at or below 0 the window blocks, also with a warning:
+`7d window has no reset time; pace-10 cannot be judged`. Such a choice is
+meant to run only on spare quota, and unknown is never read as room. A window
+of unknown length always uses `default_cap` (below).
 
 Order of the windows, which fixes what each position means:
 
@@ -267,7 +278,8 @@ in its `warnings` (and by `doctor`), because caps shift by position if a plan
 starts reporting a different set of windows. Missing positions filled with
 `default_cap` are not reported. A capped choice whose usage is unknown is
 skipped; unknown usage is never treated as 0%. A window whose reset time has
-passed counts as 0% until the next reading.
+passed counts as 0% until the next reading, and its next reset is taken to be
+one length later.
 
 ## What `pick` does with them
 

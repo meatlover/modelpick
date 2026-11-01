@@ -7,6 +7,14 @@
 - Homebrew: `brew install meatlover/tap/modelpick` installs the latest
   release on macOS and Linux. The tap picks up a new release within about an
   hour. See `docs/getting-started.md`.
+- Pace caps take a signed offset, `"pace-50"` to `"pace+50"` (`"pace+0"`
+  included). `"pace-10"` lets a choice run only while its window's usage lags
+  time by more than 10 points, and blocks it for the first tenth of every
+  window. Skip reasons always show the sign (`day 3.5 of 7, -10`). A `pace-N`
+  or `pace+0` cap on a window with no reset time blocks the choice instead of
+  falling back to `default_cap`. A window whose reset time has passed now also
+  takes its next reset to be one length later, so `ls` and the ui's Usage tab
+  show that time instead of the passed one. See `docs/configuration.md`.
 
 ### Fixed
 

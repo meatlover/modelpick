@@ -206,3 +206,26 @@ func TestDisplayLabelsDuplicatesKeepRaw(t *testing.T) {
 		t.Errorf("got %v want %v", got, want)
 	}
 }
+
+func TestApplyResetsRollsForward(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-11 * time.Hour)
+	r := adapter.Reading{Windows: []adapter.Window{
+		{Label: "5h", Length: 5 * time.Hour, UsedPct: 80, ResetsAt: old},
+		{Label: "edge", Length: 5 * time.Hour, UsedPct: 70, ResetsAt: now},
+		{Label: "unknown", UsedPct: 60, ResetsAt: old},
+	}}
+	out := ApplyResets(r, now)
+	if w := out.Windows[0]; !w.ResetsAt.Equal(old.Add(15*time.Hour)) || w.UsedPct != 0 {
+		t.Errorf("5h: got resets %v used %v, want %v and 0", w.ResetsAt, w.UsedPct, old.Add(15*time.Hour))
+	}
+	if w := out.Windows[1]; !w.ResetsAt.Equal(now.Add(5*time.Hour)) || w.UsedPct != 0 {
+		t.Errorf("edge: got resets %v used %v, want %v and 0", w.ResetsAt, w.UsedPct, now.Add(5*time.Hour))
+	}
+	if w := out.Windows[2]; !w.ResetsAt.Equal(old) || w.UsedPct != 0 {
+		t.Errorf("zero length: got resets %v used %v, want %v and 0", w.ResetsAt, w.UsedPct, old)
+	}
+	if !r.Windows[0].ResetsAt.Equal(old) {
+		t.Error("input mutated")
+	}
+}

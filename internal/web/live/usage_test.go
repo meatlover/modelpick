@@ -35,13 +35,15 @@ func (f *fixture) usageCalls() int {
 	return f.claude.TotalUsage() + f.codex.TotalUsage() + f.goSrv.count()
 }
 
+// The 5h window's reset (11:00) has passed: it reads 0% and its next reset
+// is one length later, 16:00 (signed-pace spec §3.3).
 func TestUsageRowFromSavedReading(t *testing.T) {
 	f := newFixture(t)
 	l := f.live()
 	r := rowOf(t, l.Usage(), "claude-main")
 	want := `{"account":"claude-main","vendor":"claude","state":"ok","reading_age_seconds":600,"can_refresh":true,"windows":[` +
 		`{"label":"7d","length":"7d","used_pct":58,"resets_at":"2026-10-24T00:00:00Z","scope":null},` +
-		`{"label":"5h","length":"5h","used_pct":0,"resets_at":"2026-10-22T11:00:00Z","scope":null},` +
+		`{"label":"5h","length":"5h","used_pct":0,"resets_at":"2026-10-22T16:00:00Z","scope":null},` +
 		`{"label":"7d fable","length":"7d","used_pct":12,"resets_at":"","scope":"fable"},` +
 		`{"label":"7d claude-haiku-5-5","length":"7d","used_pct":1,"resets_at":"","scope":"claude-haiku-5-5"}]}`
 	if got := mustJSON(t, r); got != want {

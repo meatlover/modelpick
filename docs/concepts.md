@@ -22,7 +22,7 @@ only one model. A window has a length, a percent used, and a time it resets.
 A **reading** is one answer from the vendor's usage endpoint: every window of
 one account at one moment. modelpick stores the last good reading of each
 account in its cache. A window whose reset time has passed counts as 0% until
-the next reading.
+the next reading, and its next reset is taken to be one length later.
 
 ## The call floor
 
@@ -52,10 +52,12 @@ A **cap** says how much of a window a choice may use before it is skipped.
 
 - a number, a **fixed cap**: the choice is blocked when that window's used
   percent is at or over it;
-- `"pace+N"`, a **pace cap**: the cap follows how far the window is through
-  its length, plus N points. Halfway through a 7-day window, `"pace+10"`
-  allows 60%. It spreads a weekly allowance over the week instead of spending
-  it on the first day;
+- `"pace+N"` or `"pace-N"`, a **pace cap**: the cap follows how far the
+  window is through its length, plus or minus N points (N from 0 to 50).
+  Halfway through a 7-day window, `"pace+10"` allows 60% and `"pace-10"`
+  allows 40%. It spreads a weekly allowance over the week instead of spending
+  it on the first day; a negative offset keeps a choice to quota that is
+  running ahead of need, and blocks it for the first N% of every window;
 - `"default"`: `default_cap` (95 unless you change it).
 
 Window positions are counted in a fixed order: general windows shortest
@@ -106,8 +108,11 @@ at the first that fails:
    A reading with no window that applies to this model is skipped as
    `usage unknown (no windows reported)`.
 6. Any window is at or over its cap: skipped, with the window and the cap, for
-   example `5h window 93% >= cap 90` or
-   `7d window 58% >= pace 52.9% (day 3 of 7, +10)`.
+   example `5h window 93% >= cap 90`,
+   `7d window 58% >= pace 52.9% (day 3 of 7, +10)` or
+   `7d window 44% >= pace 40% (day 3.5 of 7, -10)`. A `pace-N` or `pace+0`
+   cap on a window with no reset time cannot be judged and blocks:
+   `7d window has no reset time; pace-10 cannot be judged`.
 7. Otherwise: picked.
 
 An account's usage is read only when a capped choice reaches step 5, and at
@@ -125,7 +130,7 @@ The answer is one JSON object:
 - `errors` lists what failed in this run, one entry per account and message.
 - `warnings` lists what did not change the decision but is worth knowing:
   a reading older than the floor, a cap array longer than the windows, a pace
-  cap that fell back to `default_cap`.
+  cap that fell back to `default_cap` or could not be judged.
 
 The [reference](reference.md#pick-json) lists every field.
 
