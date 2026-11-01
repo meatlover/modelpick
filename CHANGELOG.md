@@ -24,9 +24,11 @@
 - The tools modelpick starts (`opencode models`, the Codex login renewal,
   `claude --version`, `security`, the browser opener) run in your home
   directory; the Claude renewal already ran in a temporary directory. Before,
-  they ran in the directory `modelpick` was started from, so a `modelpick ui` left running in a folder that was later deleted
-  showed `cannot list models … opencode models exited with status 1`. That
-  message now also ends with OpenCode's own last error line.
+  they ran in the directory `modelpick` was started from, so a `modelpick ui`
+  left running in a folder that was later deleted showed `cannot list models
+  … opencode models exited with status 1`. That message now also ends with
+  OpenCode's own last error line, without colour codes and with anything
+  token-like hidden.
 
 - Idle Claude accounts no longer shift cap positions onto the 7d window: with
   no 5h session running the usage response has no 5h window, so the ui showed

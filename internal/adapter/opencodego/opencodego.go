@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -235,11 +236,23 @@ func (a *Adapter) Models(ctx context.Context, _ adapter.Account) ([]adapter.Mode
 	return models, nil
 }
 
-// lastLine is the last non-blank line of b, trimmed and cut to maxToolErr
-// runes: a tool's final stderr line is usually its error.
+// ansiEscape matches a terminal colour or cursor sequence.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
+
+// lastLine is the last non-blank line of b: a tool's final stderr line is
+// usually its error. It is shown in doctor and on the page, so colour codes
+// and other control characters are dropped, anything token-like is hidden,
+// and it is cut to maxToolErr runes.
 func lastLine(b []byte) string {
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	line := strings.TrimSpace(lines[len(lines)-1])
+	text := ansiEscape.ReplaceAllString(string(b), "")
+	text = strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\n' && r != '\t' || r == 0x7f {
+			return -1
+		}
+		return r
+	}, text)
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	line := adapter.HideTokens(strings.TrimSpace(lines[len(lines)-1]))
 	if r := []rune(line); len(r) > maxToolErr {
 		line = string(r[:maxToolErr]) + "…"
 	}

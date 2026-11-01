@@ -14,6 +14,11 @@ import (
 // that directory has been deleted under a long-running `modelpick ui`
 // (opencode refuses to start). Every function that builds an exec.Cmd must
 // therefore set its Dir (platform.ChildDir, or a directory of its own).
+//
+// The check is best-effort: any .Dir assignment in the same function counts,
+// and it does not see an &exec.Cmd{} literal, an aliased os/exec import or
+// os.StartProcess. None of those occurs today; tighten the check (match the
+// assigned variable to the command) if one is added.
 
 // execCallsWithoutDir lists, for the Go source in src, each exec.Command or
 // exec.CommandContext call whose enclosing function never assigns a .Dir

@@ -24,8 +24,10 @@ Credentials are read into memory for the one request that needs them.
 Nothing secret. The config file says only where each login lives, and the
 cache (`~/.cache/modelpick/`, mode `0700`, files `0600`) holds usage readings:
 window lengths, percents and reset times, the time of the last call and its
-error text. Error text never includes a credential or a response body, and a
-renewal failure's text is scrubbed of anything that looks like a token.
+error text. Error text never includes a credential or a response body. Text
+that comes from a vendor's tool (a renewal failure, the last error line of a
+failed `opencode models`) is scrubbed of anything that looks like a token;
+`opencode models` is never given your OpenCode key.
 modelpick writes no log file; internal errors go to stderr.
 
 It never writes a vendor's files. When a Claude or Codex access token has

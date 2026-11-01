@@ -300,6 +300,20 @@ func TestModelsExitNamesToolError(t *testing.T) {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
 	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", `printf '\033[31merror:\033[0m bad\a thing\n' >&2; exit 1`).Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if want := "opencode-go: opencode models exited with status 1: error: bad thing"; err == nil || err.Error() != want {
+		t.Fatalf("colour codes not stripped: err = %q, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return exec.Command("/bin/sh", "-c", `echo "error: rejected key sk-abcdef1234567890" >&2; exit 1`).Output()
+	}
+	_, err = f.a.Models(context.Background(), f.acct)
+	if want := "opencode-go: opencode models exited with status 1: error: rejected key [redacted]"; err == nil || err.Error() != want {
+		t.Fatalf("token not hidden: err = %q, want %q", err, want)
+	}
+	f.a.o.Run = func(context.Context, string, ...string) ([]byte, error) {
 		return exec.Command("/bin/sh", "-c", "exit 3").Output()
 	}
 	_, err = f.a.Models(context.Background(), f.acct)
