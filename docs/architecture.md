@@ -65,7 +65,8 @@ test fake, is exempt too (the map's comment says what would remove that).
      records an error;
    - no `cap`: picked;
    - otherwise `env.Usage` gives a reading (or none); none skips it;
-   - `core.ApplyResets` zeroes windows whose reset time has passed,
+   - `core.ApplyResets` zeroes windows whose reset time has passed and
+     rolls their reset forward by whole lengths,
      `core.OrderWindows` orders the windows that apply to the model, and
      `core.EffectiveCaps` gives one cap per window; any window at or over its
      cap (fixed, or the pace line from `core.PaceAllowed`) skips it;

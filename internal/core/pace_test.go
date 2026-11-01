@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -64,6 +65,15 @@ func TestPaceNoReset(t *testing.T) {
 	}
 }
 
+func TestPaceNoResetIdleUnwarned(t *testing.T) {
+	// 0% used is under any positive allowance: no fallback, no warning.
+	r := pickPace(t, `["pace+10"]`, adapter.Window{Label: "w", Length: 7 * day, UsedPct: 0})
+	wantPicked(t, r, "pace+10 no reset, 0% used")
+	if len(r.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none", r.Warnings)
+	}
+}
+
 func TestPaceResetPassed(t *testing.T) {
 	r := pickPace(t, `["pace+5"]`, paceWin(7*day, 80, -hour))
 	if len(r.Skipped) != 0 || *r.Account != "claude-main" {
@@ -109,4 +119,71 @@ func TestPaceGolden(t *testing.T) {
 	if got := r.JSON(); !bytes.Equal(got, want) {
 		t.Errorf("JSON mismatch\n--- got\n%s--- want\n%s", got, want)
 	}
+}
+
+func wantPicked(t *testing.T, r Result, what string) {
+	t.Helper()
+	if len(r.Skipped) != 0 || r.Account == nil || *r.Account != "claude-main" {
+		t.Errorf("%s: want claude-main picked; skipped %+v, account %v", what, r.Skipped, r.Account)
+	}
+}
+
+func TestPaceNegativeAllowsWhenBehind(t *testing.T) {
+	// elapsed 50, pace-10 allows 40: used 30 lags time by 20 points.
+	wantPicked(t, pickPace(t, `["pace-10"]`, paceWin(7*day, 30, 7*day/2)), "used 30 at pace 40")
+}
+
+func TestPaceNegativeBlocks(t *testing.T) {
+	r := pickPace(t, `["pace-10"]`, paceWin(7*day, 44, 7*day/2))
+	wantSkip(t, r, "7d window 44% >= pace 40% (day 3.5 of 7, -10)")
+}
+
+func TestPaceZeroAtReset(t *testing.T) {
+	// at the instant of a reset, pace+0 allows 0%: an unused window blocks.
+	r := pickPace(t, `["pace+0"]`, paceWin(7*day, 0, 7*day))
+	wantSkip(t, r, "7d window 0% >= pace 0% (day 0 of 7, +0)")
+}
+
+func TestPaceNegativeClampsAtZero(t *testing.T) {
+	// elapsed ≈7.1, so elapsed-10 is below 0: the allowance clamps at 0.
+	r := pickPace(t, `["pace-10"]`, paceWin(7*day, 0, 13*day/2))
+	wantSkip(t, r, "7d window 0% >= pace 0% (day 0.5 of 7, -10)")
+	allowed, _, ok := PaceAllowed(paceWin(7*day, 0, 13*day/2), -10, noon)
+	if !ok || allowed != 0 {
+		t.Errorf("PaceAllowed = %v, %v; want 0, true", allowed, ok)
+	}
+}
+
+func TestPaceNegativeNoReset(t *testing.T) {
+	for _, elem := range []string{"pace-10", "pace+0"} {
+		r := pickPace(t, `["`+elem+`"]`, adapter.Window{Label: "w", Length: 7 * day, UsedPct: 0})
+		wantSkip(t, r, "7d window has no reset time; "+elem+" cannot be judged")
+		want := "claude-main: 7d window has no reset time; " + elem + " cannot be judged"
+		if len(r.Warnings) != 1 || r.Warnings[0] != want {
+			t.Errorf("%s: warnings = %q, want [%q]", elem, r.Warnings, want)
+		}
+	}
+	// pace+10 at 0% used passes unwarned (TestPaceNoResetIdleUnwarned).
+	wantPicked(t, pickPace(t, `["pace+10"]`, adapter.Window{Label: "w", Length: 7 * day, UsedPct: 0}), "pace+10 no reset")
+}
+
+func TestPaceStaleReadingAfterReset(t *testing.T) {
+	// The reading says 80% and a reset an hour ago: the window rolled
+	// forward, so elapsed is ≈0.6% of the new one and pace-10 allows 0.
+	r := pickPace(t, `["pace-10"]`, paceWin(7*day, 80, -hour))
+	wantSkip(t, r, "7d window 0% >= pace 0% (day 0 of 7, -10)")
+	// a day into the new window, elapsed ≈14.3: pace-10 allows ≈4.3.
+	wantPicked(t, pickPace(t, `["pace-10"]`, paceWin(7*day, 80, -day)), "pace-10 a day after reset")
+	wantPicked(t, pickPace(t, `["pace+10"]`, paceWin(7*day, 80, -hour)), "pace+10 an hour after reset")
+}
+
+func TestPaceSignedOffset(t *testing.T) {
+	cases := map[float64]string{10: "+10", 0: "+0", math.Copysign(0, -1): "+0", -10: "-10", -2.5: "-2.5"}
+	for n, want := range cases {
+		if got := signedPct(n); got != want {
+			t.Errorf("signedPct(%v) = %q, want %q", n, got, want)
+		}
+	}
+	// "pace-0" in the file is pace+0 in the reason.
+	wantSkip(t, pickPace(t, `["pace-0"]`, paceWin(7*day, 0, 7*day)), "7d window 0% >= pace 0% (day 0 of 7, +0)")
 }

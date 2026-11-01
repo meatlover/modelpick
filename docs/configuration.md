@@ -73,7 +73,7 @@ references, malformed times, a cap element that is not one of the
 [three forms](#caps), an unknown `vendor`, an account named `models`, and a
 `version` other than `1`. Errors name the failing field, for example
 `profiles.tester[1].skip_during` or
-`profiles.tester[0].cap[0]: "pace+4": N must be 5–50`.
+`profiles.tester[0].cap[0]: "pace+60": N must be -50–50`.
 
 ## `version`
 
@@ -217,23 +217,38 @@ error:
 `cap` is an array with one element per usage window. Each element is one of:
 
 - a number 0–100, a fixed cap in percent;
-- `"pace+N"`, N a whole number from 5 to 50: a cap that follows the window's
-  elapsed time (below);
+- `"pace+N"` or `"pace-N"`, N a whole number with the offset from -50 to +50
+  (`"pace+0"` included; `"pace-0"` reads as `"pace+0"`; the sign is an ASCII
+  `-`): a cap that follows the window's elapsed time (below);
 - `"default"`: this position uses `default_cap`. It is how a position before
   a configured one stays at the default, as in `[95, "default", "pace+10"]`.
 
 A window **blocks** the choice when `used% >= cap`. Anything else is a config
-error naming the element, such as `"pace+2": N must be 5–50` or
-`must be a number, "pace+N" or "default"`. Trailing `"default"` elements mean
+error naming the element, such as `"pace+51": N must be -50–50` or
+`must be a number, "pace+N", "pace-N" or "default"`. Trailing `"default"` elements mean
 what a missing position means, and the UI does not write them.
 
 **Pace caps.** For a window with a known length and reset time, elapsed% is
 how far the window is through its length, and the window may use
-`min(100, elapsed% + N)`. `"pace+10"` on a 7-day window two days in allows
-about 39%. The skip reason says so: `7d window 58% >= pace 49% (day 2.7 of
-7, +10)`. A window with no known length or reset time uses `default_cap`
-instead, with a warning. N starts at 5 because at the instant a window
-resets `pace+0` would allow 0% and block an unused window.
+`min(100, max(0, elapsed% + N))`. `"pace+10"` on a 7-day window two days in
+allows about 39%. The skip reason says so, with the offset's sign always
+shown: `7d window 58% >= pace 49% (day 2.7 of 7, +10)`. A negative offset
+runs the choice only while usage lags time by more than N points: halfway
+through a 7-day window `"pace-10"` allows 40%, so
+`7d window 44% >= pace 40% (day 3.5 of 7, -10)`. An offset at or below 0
+blocks a window that has barely started: `pace+0` allows 0% at the instant a
+window resets, and `pace-10` blocks for the first tenth of every window
+(0.7 days of a 7-day one), however little it has used.
+
+A window of known length whose reset time is unknown cannot be judged against
+pace. With an offset above 0 the position uses `default_cap` instead, with a
+warning (a window at 0% passes with no warning). With an offset at or below 0 the window blocks, also with a warning:
+`7d window has no reset time; pace-10 cannot be judged`. Such a choice is
+meant to run only on spare quota, and unknown is never read as room. On
+Claude an idle account has no running 5h session, so its 5h window has no reset
+time: a `pace-N` or `pace+0` element on that position blocks the choice while
+the account is idle. A window
+of unknown length always uses `default_cap` (below).
 
 Order of the windows, which fixes what each position means:
 
@@ -246,7 +261,8 @@ Windows scoped to a *different* model are ignored for the choice.
 
 Examples: Claude `[5h, 7d]`, and for a Fable choice `[5h, 7d, Fable-weekly]`;
 Codex whatever the plan reports (often just `[7d]`); OpenCode Go
-`[5h, 7d, 30d]`.
+`[5h, 7d, 30d]`. An idle Claude account reports no 5h window; modelpick
+counts it as 5h at 0% with no reset time, so the positions do not shift.
 
 Array length against the number of windows:
 
@@ -265,7 +281,9 @@ in its `warnings` (and by `doctor`), because caps shift by position if a plan
 starts reporting a different set of windows. Missing positions filled with
 `default_cap` are not reported. A capped choice whose usage is unknown is
 skipped; unknown usage is never treated as 0%. A window whose reset time has
-passed counts as 0% until the next reading.
+passed counts as 0% until the next reading, and its next reset is taken to be
+one length later (for a window that starts at first use, such as Claude's 5h
+session, this shown time is an estimate).
 
 ## What `pick` does with them
 

@@ -230,6 +230,7 @@ func parseUsage(body []byte) (adapter.Reading, error) {
 			}
 			r.Windows = append(r.Windows, w)
 		}
+		addIdleSession(&r, "session")
 		return r, nil
 	}
 
@@ -248,7 +249,20 @@ func parseUsage(body []byte) (adapter.Reading, error) {
 	if len(r.Windows) == 0 {
 		return adapter.Reading{}, shapeErr("no limits, five_hour or seven_day")
 	}
+	addIdleSession(&r, "five_hour")
 	return r, nil
+}
+
+// addIdleSession adds a 5h window at 0% with no reset time when the response
+// has no general 5h window. An idle account reports none, and without it the
+// remaining windows would shift down one cap position.
+func addIdleSession(r *adapter.Reading, label string) {
+	for _, w := range r.Windows {
+		if w.Length == fiveHours && w.ScopeModelID == "" && w.ScopeModelName == "" {
+			return
+		}
+	}
+	r.Windows = append(r.Windows, adapter.Window{Label: label, Length: fiveHours})
 }
 
 // resetTime parses an RFC 3339 timestamp (fractional seconds allowed). Null

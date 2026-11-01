@@ -141,12 +141,12 @@ func TestApplyStaleBase(t *testing.T) {
 }
 
 // A file that does not parse is read-only: broken JSON, or JSON that
-// decodes but fails validation (a pace below 5).
+// decodes but fails validation (a pace above 50).
 func TestApplyReadOnly(t *testing.T) {
 	for _, c := range []struct{ name, file, readOnly string }{
 		{"broken JSON", `{"version":1,"profiles":`, ""},
-		{"pace+2", editorConfig(strings.Replace(goodFirst, `[90]`, `["pace+2"]`, 1)),
-			`profiles.p[0].cap[0]: "pace+2": N must be 5–50`},
+		{"pace+51", editorConfig(strings.Replace(goodFirst, `[90]`, `["pace+51"]`, 1)),
+			`profiles.p[0].cap[0]: "pace+51": N must be -50–50`},
 	} {
 		f := newEditorFx(t, c.file)
 		s := f.load(t)
@@ -451,7 +451,7 @@ func TestApplyOpEnvFromCacheAndReading(t *testing.T) {
 	s := f.load(t)
 	_, _, err := f.ed.Apply(s.SHA256, "choice.set",
 		json.RawMessage(`{"profile":"p","index":0,"field":"cap","value":[90,"abc"],"expect":`+goodFirst+`}`))
-	wantRefused(t, err, "Profile p, choice 1, 7d cap: abc is not a number, pace+N or default")
+	wantRefused(t, err, "Profile p, choice 1, 7d cap: abc is not a number, pace+N, pace-N or default")
 	s, _, err = f.ed.Apply(s.SHA256, "profile.add", json.RawMessage(`{"name":"q"}`))
 	if err != nil {
 		t.Fatal(err)

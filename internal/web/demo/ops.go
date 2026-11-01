@@ -11,7 +11,7 @@ import (
 )
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-var paceRE = regexp.MustCompile(`^pace\+(\d+)$`)
+var paceRE = regexp.MustCompile(`^pace([+-])(\d+)$`)
 
 type opArgs struct {
 	Name    string          `json:"name"`

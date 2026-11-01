@@ -11,18 +11,35 @@ import (
 )
 
 // ApplyResets returns a copy of r in which every window whose known reset time
-// has passed reads 0% used. The input is never mutated.
+// has passed reads 0% used. A window of known length is also rolled forward:
+// it is taken to be a new window that started at the old reset time, so its
+// ResetsAt advances by whole lengths until it is after now (signed-pace spec
+// §3.3). The input is never mutated.
 func ApplyResets(r adapter.Reading, now time.Time) adapter.Reading {
 	out := r
 	out.Windows = make([]adapter.Window, len(r.Windows))
 	copy(out.Windows, r.Windows)
 	for i := range out.Windows {
 		w := &out.Windows[i]
-		if !w.ResetsAt.IsZero() && !w.ResetsAt.After(now) {
-			w.UsedPct = 0
+		if w.ResetsAt.IsZero() || w.ResetsAt.After(now) {
+			continue
+		}
+		w.UsedPct = 0
+		if w.Length > 0 {
+			w.ResetsAt = nextReset(w.ResetsAt, w.Length, now)
 		}
 	}
 	return out
+}
+
+// nextReset is the first of at, at+length, at+2·length, … that is after now.
+// The whole lengths are added in one step; the loop only repeats when
+// now−at overflows a Duration (about 292 years).
+func nextReset(at time.Time, length time.Duration, now time.Time) time.Time {
+	for !at.After(now) {
+		at = at.Add(now.Sub(at) / length * length).Add(length)
+	}
+	return at
 }
 
 // ScopeMatches reports whether w applies to model: general windows always do;
@@ -135,8 +152,9 @@ func FormatLength(d time.Duration) string {
 }
 
 // PaceAllowed is the share of window w a pace position permits at now:
-// elapsed% + n capped at 100 (spec §3.2). elapsed is the share of the window
-// already gone, 0–100. ok is false when the length or reset time is unknown.
+// elapsed% + n, held within 0–100 (signed-pace spec §3.2; n is −50…50).
+// elapsed is the share of the window already gone, 0–100. ok is false when
+// the length or reset time is unknown.
 func PaceAllowed(w adapter.Window, n float64, now time.Time) (allowed, elapsed float64, ok bool) {
 	if w.Length <= 0 || w.ResetsAt.IsZero() {
 		return 0, 0, false
@@ -144,7 +162,7 @@ func PaceAllowed(w adapter.Window, n float64, now time.Time) (allowed, elapsed f
 	start := w.ResetsAt.Add(-w.Length)
 	elapsed = float64(now.Sub(start)) / float64(w.Length) * 100
 	elapsed = math.Max(0, math.Min(100, elapsed))
-	return math.Min(100, elapsed+n), elapsed, true
+	return math.Min(100, math.Max(0, elapsed+n)), elapsed, true
 }
 
 // paceWhere says how far into the window the pace line stands: "day 2.7 of 7"

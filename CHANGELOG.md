@@ -7,6 +7,24 @@
 - Homebrew: `brew install meatlover/tap/modelpick` installs the latest
   release on macOS and Linux. The tap picks up a new release within about an
   hour. See `docs/getting-started.md`.
+- Pace caps take a signed offset, `"pace-50"` to `"pace+50"` (`"pace+0"`
+  included). `"pace-10"` lets a choice run only while its window's usage lags
+  time by more than 10 points, and blocks it for the first tenth of every
+  window. Skip reasons always show the sign (`day 3.5 of 7, -10`). A `pace-N`
+  or `pace+0` cap on a window with no reset time blocks the choice instead of
+  falling back to `default_cap`; on Claude an idle account has no running 5h
+  session, so such a cap on the 5h position blocks the choice while the account
+  is idle. A `pace+N` cap on a window with no reset time at 0% used passes
+  without a warning. A window whose reset time has passed now also
+  takes its next reset to be one length later, so `ls` and the ui's Usage tab
+  show that time instead of the passed one. See `docs/configuration.md`.
+
+### Fixed
+
+- Idle Claude accounts no longer shift cap positions onto the 7d window: with
+  no 5h session running the usage response has no 5h window, so the ui showed
+  `7d` and `2` instead of `5h` and `7d`. modelpick now counts the missing
+  window as 5h at 0%.
 
 ## v0.4.0 — 2026-10-30
 

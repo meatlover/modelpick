@@ -234,12 +234,40 @@ test("cap by typing, fixed and pace", async ({ page }) => {
   await act(page, () => capBox(c3).press("Enter"));
   await expectConfig(server.configPath, (c) => coder(c)[2].cap, [90, 95, 98], "fixed 90 in the first window");
   await capBox(c3).click();
-  await c3.getByRole("button", { name: "Time elapsed + N" }).click();
+  await c3.getByRole("button", { name: "Time elapsed ± N" }).click();
   await capBox(c3).fill("10");
   await capBox(c3).press("Enter");
   await expectConfig(server.configPath, (c) => coder(c)[2].cap, ["pace+10", 95, 98], "pace+10");
   await expect(c3.getByText("Cap at time elapsed +")).toBeVisible();
   await expect(capBox(c3)).toHaveValue("10");
+});
+
+// The sentence's sign: a leading - flips it (a sign-only change is sent), a
+// bare number keeps it, and the stored value typed again sends nothing.
+test("cap by typing, signed pace keeps its sign", async ({ page }) => {
+  const c3 = card(page, 3);
+  await capBox(c3).click();
+  await c3.getByRole("button", { name: "Time elapsed ± N" }).click();
+  await capBox(c3).fill("10");
+  await act(page, () => capBox(c3).press("Enter"));
+  await expectConfig(server.configPath, (c) => coder(c)[2].cap, ["pace+10", 95, 98], "pace+10");
+  await capBox(c3).fill("-10");
+  await act(page, () => capBox(c3).press("Enter"));
+  await expectConfig(server.configPath, (c) => coder(c)[2].cap, ["pace-10", 95, 98], "the sign alone changed");
+  await expect(c3.getByText("Cap at time elapsed \u2212")).toBeVisible();
+  await expect(capBox(c3)).toHaveValue("10");
+  await capBox(c3).fill("15");
+  await act(page, () => capBox(c3).press("Enter"));
+  await expectConfig(server.configPath, (c) => coder(c)[2].cap, ["pace-15", 95, 98], "a bare number keeps the minus");
+  await expect(capBox(c3)).toHaveValue("15");
+  // The stored value typed again: no op at all, and the file as it was.
+  const sent = opsSent(page);
+  const before = fs.readFileSync(server.configPath, "utf8");
+  await capBox(c3).fill("15");
+  await capBox(c3).press("Enter");
+  await page.waitForTimeout(300);
+  expect(sent, "no op sent for the stored value").toEqual([]);
+  expectUnchanged(server.configPath, before);
 });
 
 // dragRange presses the open frame's slider at fromFrac of its width and
@@ -257,7 +285,7 @@ async function dragRange(page, card_, fromFrac, toFrac) {
 // The first cap of the go-1 choice, as the file holds it.
 const firstCap = () => coder(readConfig(server.configPath))[2].cap[0];
 
-// A switch from fixed to "Time elapsed + N" shows N = 5 (the smallest).
+// A switch from fixed to "Time elapsed ± N" starts at N = +5 (the switch default).
 const PACE_START = 5;
 
 test("cap by drag, fixed and pace", async ({ page }) => {
@@ -275,11 +303,24 @@ test("cap by drag, fixed and pace", async ({ page }) => {
   expect(fixed).toBeGreaterThanOrEqual(0);
   expect(coder(readConfig(server.configPath))[2].cap.slice(1)).toEqual([95, 98]);
   await capBox(c3).click();
-  await c3.getByRole("button", { name: "Time elapsed + N" }).click();
+  await c3.getByRole("button", { name: "Time elapsed ± N" }).click();
   await dragRange(page, c3, 0.02, 0.8);
   await expect.poll(() => String(firstCap())).toMatch(/^pace\+\d+$/);
   const n = Number(String(firstCap()).slice(5));
   expect(n).toBeGreaterThan(PACE_START);
+  expect(n).toBeLessThanOrEqual(50);
+});
+
+// The slider spans -50..+50 with the time line in the middle: a drag from the
+// right half across it to the left half stores a negative pace.
+test("cap by drag across the time line gives a negative pace", async ({ page }) => {
+  const c3 = card(page, 3);
+  await capBox(c3).click();
+  await c3.getByRole("button", { name: "Time elapsed ± N" }).click();
+  await dragRange(page, c3, 0.9, 0.1);
+  await expect.poll(() => String(firstCap())).toMatch(/^pace-\d+$/);
+  const n = Number(String(firstCap()).slice(5));
+  expect(n).toBeGreaterThanOrEqual(1);
   expect(n).toBeLessThanOrEqual(50);
 });
 
@@ -328,7 +369,7 @@ test("a touched default box is saved as set, even at the default value", async (
   await expect(c4.locator(".cap-edit")).toHaveCount(0);
   const second = c4.getByRole("textbox", { name: /cap$/ }).nth(1);
   await second.click();
-  await c4.getByRole("button", { name: "Time elapsed + N" }).click();
+  await c4.getByRole("button", { name: "Time elapsed ± N" }).click();
   await c4.getByRole("button", { name: "%", exact: true }).click();
   await expect(c4.locator(".cap-edit-line")).not.toContainText("(default)");
   await act(page, () => second.press("Enter"));

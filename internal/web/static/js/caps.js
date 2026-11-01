@@ -1,9 +1,10 @@
 // Caps on a choice card (spec 8.3 "Caps on a card", mockup
-// CapsEditor.dc.html): one box per window position; focusing a box opens
-// the one editing frame on the page (window label, the sentence "Cap at
-// 90%" with only the number editable, % / time-pace switch, trash, drag
-// bar and its caption). Edits apply on Enter, on leaving the frame and on
-// the bar's release, as one choice.set field=cap; a refusal reverts.
+// CapsEditor.dc.html; signed pace: SignedPace.html): one box per window
+// position; focusing a box opens the one editing frame on the page (window
+// label, the sentence "Cap at 90%" with only the number editable, % /
+// time-pace switch, trash, drag bar and its caption). Edits apply on
+// Enter, on leaving the frame and on the bar's release, as one choice.set
+// field=cap; a refusal reverts.
 import { h, clear, svg, trashIcon } from "./dom.js";
 import { store } from "./api.js";
 
@@ -16,18 +17,25 @@ const BAR = 196;
 // pace mode. ELAPSED also sets the pace geometry.
 const USED = 33; // fixed mode's fill (%)
 const ELAPSED = 50; // pace mode's fill (%)
-const PACE_MIN = 5; // the smallest N (owner, round 6: "set a minimum, +5")
-const PACE_MAX = 100 - ELAPSED; // the largest N the bar covers
+// Pace N is signed: the cap sits N points ahead of (N > 0) or behind
+// (N < 0) time elapsed. Owner, 2026-11-01: −50…+50, continuous, including
+// 0. With ELAPSED at 50 the bar covers exactly that range.
+const PACE_MIN = -50;
+const PACE_MAX = 50;
 const THUMB = 14; // width of the overlaid range's thumb (.cap-range)
-const KNOB = 14; // the drawn ring's outer width
-// Owner rulings 2026-10-23 (rounds 3 and 6): a typed or dragged cap is
-// bounded to fixed 0–100 and pace+5 to pace+50 (the server refuses the
-// rest).
+// Owner ruling 2026-10-23 (round 3): a typed or dragged cap is bounded to
+// its kind's range, fixed 0–100 and pace PACE_MIN…PACE_MAX (owner,
+// 2026-11-01); the server refuses the rest.
 const RANGE = { fixed: [0, 100], pace: [PACE_MIN, PACE_MAX] };
 // Owner ruling 2026-10-23 (round 3): what a switch to the kind that is not
 // stored shows.
 const SWITCHED = { fixed: 90, pace: 5 };
 const NUMBER = /^-?\d+(\.\d+)?$/;
+const UNSIGNED = /^\d+(\.\d+)?$/;
+// A pace element as written: "pace", a sign (ASCII, or U+2212 as the
+// sentence shows it), whole digits.
+const PACE = /^pace([+\-\u2212])(\d+)$/;
+const MINUS = "\u2212"; // the sentence's minus sign
 
 // ---------- values (pure) ----------
 
@@ -35,46 +43,69 @@ function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
 }
 
-// bound puts n in kind's range; pace N is a whole number.
-function bound(kind, n) {
-  const [lo, hi] = RANGE[kind];
-  return clamp(kind === "pace" ? Math.round(n) : n, lo, hi);
+// signOf is the sign the sentence shows for n: 0 reads +.
+function signOf(n) {
+  return n < 0 ? -1 : 1;
 }
 
-// readCap reads 90, 90%, pace+10 or pace+10% (any case, spaces around) as
-// written: {kind: "fixed"|"pace", n}, {kind: "empty"} or {kind: "bad", raw}.
+// bound puts n in kind's range; pace N is a whole number, rounded away
+// from 0 alike on both sides (12.5 → 13, −12.5 → −13), and never −0.
+function bound(kind, n) {
+  const [lo, hi] = RANGE[kind];
+  const v = kind === "pace" ? signOf(n) * Math.round(Math.abs(n)) : n;
+  return clamp(v, lo, hi) + 0;
+}
+
+// readCap reads 90, 90%, pace+10, pace-10 or pace−10 (U+2212), each with
+// an optional % (any case, spaces around), as written: {kind:
+// "fixed"|"pace", n} with pace n signed, {kind: "empty"} or {kind: "bad",
+// raw}. pace-0 reads 0.
 function readCap(text) {
   const raw = String(text).trim();
   if (raw === "") return { kind: "empty" };
   let t = raw.toLowerCase();
   if (t.endsWith("%")) t = t.slice(0, -1).trim();
-  if (t.startsWith("pace+")) {
-    const d = t.slice(5);
-    return /^\d+$/.test(d) ? { kind: "pace", n: Number(d) } : { kind: "bad", raw };
-  }
+  const m = PACE.exec(t);
+  if (m) return { kind: "pace", n: (m[1] === "+" ? 1 : -1) * Number(m[2]) + 0 };
   return NUMBER.test(t) ? { kind: "fixed", n: Number(t) } : { kind: "bad", raw };
 }
 
 // parseCap reads a cap text like readCap, with the number bounded to its
-// kind's range (120 → 100, pace+70 → pace+50, pace+2 → pace+5).
+// kind's range (120 → 100, pace+70 → pace+50, pace-70 → pace-50).
 export function parseCap(text) {
   const p = readCap(text);
   return p.kind === "fixed" || p.kind === "pace" ? { kind: p.kind, n: bound(p.kind, p.n) } : p;
 }
 
-// boundNumber reads the frame's number box for kind: the number (an
-// optional % after it, an optional + before a pace one) bounded to the
-// kind's range, or null when it is not a number (the box then reverts).
-export function boundNumber(text, kind) {
-  let t = String(text).trim();
-  if (t.endsWith("%")) t = t.slice(0, -1).trim();
-  if (kind === "pace" && t.startsWith("+")) t = t.slice(1);
-  return NUMBER.test(t) ? bound(kind, Number(t)) : null;
+// splitSign reads a leading sign off pace text: + sets +, - or − (U+2212)
+// sets −, none keeps sign. It returns [sign, the text after the sign].
+function splitSign(text, sign) {
+  const t = String(text).trim();
+  const c = t.charAt(0);
+  if (c === "+") return [1, t.slice(1)];
+  if (c === "-" || c === MINUS) return [-1, t.slice(1)];
+  return [sign, t];
 }
 
-// capText shows one config cap element: 90 → "90%", "pace+10" → "pace+10%".
+// boundNumber reads the frame's number box for kind: the number (an
+// optional % after it) bounded to the kind's range, or null when it is not
+// a number (the box then reverts). A pace number takes its sign from a
+// leading + / - / − (U+2212), else keeps sign, the one the sentence shows
+// (owner-approved typing rule, 2026-11-01).
+export function boundNumber(text, kind, sign = 1) {
+  sign = sign ?? 1;
+  let t = String(text).trim();
+  if (t.endsWith("%")) t = t.slice(0, -1).trim();
+  if (kind !== "pace") return NUMBER.test(t) ? bound(kind, Number(t)) : null;
+  const [s, rest] = splitSign(t, sign);
+  const d = rest.trim();
+  return UNSIGNED.test(d) ? bound(kind, s * Number(d)) : null;
+}
+
+// capText shows one config cap element as written plus %: 90 → "90%",
+// "pace+10" → "pace+10%", "pace-10" → "pace-10%".
 export function capText(v) {
-  return typeof v === "number" || String(v).startsWith("pace+") ? `${v}%` : String(v);
+  return typeof v === "number" || /^pace[+-]/.test(String(v)) ? `${v}%` : String(v);
 }
 
 // elementOf reads one config cap element as stored (a hand-written pace+60
@@ -85,21 +116,22 @@ export function elementOf(v) {
   return p.kind === "pace" ? p : null;
 }
 
-// capArg is the wire value for a parsed box: a number, "pace+N", or the
-// text as typed (the server refuses it with its reason).
+// capArg is the wire value for a parsed box: a number, "pace+N" (N ≥ 0),
+// "pace-N" (N > 0), or the text as typed (the server refuses it with its
+// reason).
 export function capArg(p) {
   if (p.kind === "fixed") return p.n;
-  if (p.kind === "pace") return `pace+${p.n}`;
+  if (p.kind === "pace") return p.n < 0 ? `pace-${-p.n}` : `pace+${p.n + 0}`;
   return p.raw;
 }
 
 // The cap array runs from the shortest window up. Owner ruling 2026-10-23
-// (round 5): an element is a number, "pace+N" or "default" (the position
+// (round 5): an element is a number, "pace±N" or "default" (the position
 // uses the Global default cap); positions past its end use it too, and
 // trailing "default" elements are dropped when writing.
 const DEFAULT = "default";
 
-// isSet says a cap element is set (a number or pace+N), not the default
+// isSet says a cap element is set (a number or pace±N), not the default
 // (a "default" element, or a position past the array's end).
 export function isSet(v) {
   return v !== undefined && v !== DEFAULT;
@@ -141,41 +173,47 @@ export function switchKind(kind, stored) {
 }
 
 // previewOf is what the bar shows while the number box holds text in mode
-// kind: the typed number bounded, else what a switch to kind shows.
-export function previewOf(kind, text, stored) {
-  const n = boundNumber(text, kind);
+// kind (sign: the sentence's, for a bare pace number): the typed number
+// bounded, else what a switch to kind shows.
+export function previewOf(kind, text, stored, sign = 1) {
+  const n = boundNumber(text, kind, sign);
   return { kind, n: n !== null ? n : bound(kind, switchKind(kind, stored).n) };
 }
 
-// lineParts is the frame's sentence around the number.
-export function lineParts(kind) {
-  return kind === "pace" ? ["Cap at time elapsed + ", "%"] : ["Cap at ", "%"];
+// lineParts is the frame's sentence around the number. For pace the sign
+// is prose before the box, which holds |N|: "+" for n ≥ 0 (0 reads + 0),
+// "−" (U+2212) for n < 0.
+export function lineParts(kind, n = 0) {
+  if (kind !== "pace") return ["Cap at ", "%"];
+  return [`Cap at time elapsed ${n < 0 ? MINUS : "+"} `, "%"];
 }
 
 export function capLine(shown) {
-  const [pre, post] = lineParts(shown.kind);
-  return `${pre}${shown.n}${post}`;
+  const [pre, post] = lineParts(shown.kind, shown.n);
+  return `${pre}${shown.kind === "pace" ? Math.abs(shown.n) : shown.n}${post}`;
 }
 
-// barGeometry places the handle: x is its centre on the bar (px); left and
+// barGeometry places the line: x is its centre on the bar (px); left and
 // width place the overlaid range so its thumb centre meets x at every value.
-// Pace N sits at the elapsed mark + N; the range runs from pace+5 to the
-// bar's end (pace+50).
+// Pace N sits at the elapsed mark + N; the range runs from PACE_MIN to
+// PACE_MAX, which with ELAPSED at 50 is the whole bar.
 export function barGeometry(shown) {
   if (shown.kind === "pace") {
     const v = clamp(shown.n, PACE_MIN, PACE_MAX);
     const start = (BAR * (ELAPSED + PACE_MIN)) / 100;
-    return { x: (BAR * (ELAPSED + v)) / 100, left: start - THUMB / 2, width: BAR - start + THUMB,
-      range: { min: PACE_MIN, max: PACE_MAX, value: Math.round(v) } };
+    const span = (BAR * (PACE_MAX - PACE_MIN)) / 100;
+    return { x: (BAR * (ELAPSED + v)) / 100, left: start - THUMB / 2, width: span + THUMB,
+      range: { min: PACE_MIN, max: PACE_MAX, value: Math.round(v) + 0 } };
   }
   const v = clamp(shown.n, 0, 100);
   return { x: (BAR * v) / 100, left: -THUMB / 2, width: BAR + THUMB,
     range: { min: 0, max: 100, value: Math.round(v) } };
 }
 
-// scaleText names what the bar's fill stands for in mode kind.
+// scaleText names what the bar's fill stands for in mode kind, as an
+// example (owner, 2026-11-01).
 export function scaleText(kind) {
-  return kind === "pace" ? `Time elapsed: ${ELAPSED}%` : `Token usage: ${USED}%`;
+  return kind === "pace" ? `Example \u2014 time elapsed: ${ELAPSED}%` : `Example \u2014 token usage: ${USED}%`;
 }
 
 // positions lists the boxes: one per window label when the account has a
@@ -192,9 +230,10 @@ export function positions(cap, labels) {
 
 // ---------- state that survives repaints ----------
 
-// edit is the open frame: {key, pos, kind, text}; kind and text are the
-// mode and the number box's text, both null while it shows the stored (or
-// pending) value. One per page.
+// edit is the open frame: {key, pos, kind, text, sign}; kind, text and
+// sign are the mode, the number box's text (for pace, |N| without a sign)
+// and the sign the sentence shows (1 or -1, pace only), all null while it
+// shows the stored (or pending) value. One per page.
 let edit = null;
 // pending: pendKey(card key, position) → text shown while its op is in
 // flight.
@@ -248,24 +287,36 @@ function baseOf(ctx, p) {
   return (isSet(cap[p]) && elementOf(cap[p])) || { kind: "fixed", n: defaultCap() };
 }
 
-// frameKind and frameText are what the open frame shows.
+// numberText is what the number box shows for value v: for pace |N|,
+// the sign being the sentence's.
+function numberText(v) {
+  return String(v.kind === "pace" ? Math.abs(v.n) : v.n);
+}
+
+// frameKind, frameText and frameSign are what the open frame shows.
 function frameKind(ctx, p) {
   return edit.kind !== null ? edit.kind : baseOf(ctx, p).kind;
 }
 
 function frameText(ctx, p) {
-  return edit.text !== null ? edit.text : String(baseOf(ctx, p).n);
+  return edit.text !== null ? edit.text : numberText(baseOf(ctx, p));
 }
 
-// setDraft records the frame's mode and text. On a set box, its stored
-// value leaves nothing to apply. A default box keeps any draft, even the
-// default's own value: once touched it is a customized cap (owner,
+function frameSign(ctx, p) {
+  return edit.sign !== null ? edit.sign : signOf(baseOf(ctx, p).n);
+}
+
+// setDraft records the frame's mode, text and sign. On a set box, its
+// stored value leaves nothing to apply. A default box keeps any draft, even
+// the default's own value: once touched it is a customized cap (owner,
 // 2026-10-24).
-function setDraft(ctx, p, kind, text) {
+function setDraft(ctx, p, kind, text, sign) {
   const b = baseOf(ctx, p);
-  const same = isSet(ctx.choice.cap[p]) && kind === b.kind && text === String(b.n);
+  const same = isSet(ctx.choice.cap[p]) && kind === b.kind && text === numberText(b) &&
+    (kind !== "pace" || sign === signOf(b.n));
   edit.kind = same ? null : kind;
   edit.text = same ? null : text;
+  edit.sign = same ? null : sign;
 }
 
 // ---------- applying ----------
@@ -304,12 +355,13 @@ async function send(key, p, value, text) {
   return r;
 }
 
-// apply saves the frame's draft (kind, text) into position p: a number
-// out of range is saved bounded; text that is not a number, or the value
-// the box already stands for, sends nothing (the box shows that value).
-function apply(key, p, kind, text) {
+// apply saves the frame's draft (kind, text, sign) into position p: a
+// number out of range is saved bounded; text that is not a number, or the
+// value the box already stands for, sends nothing (the box shows that
+// value).
+function apply(key, p, kind, text, sign) {
   const ctx = liveCtx(key);
-  const n = ctx ? boundNumber(text, kind) : null;
+  const n = ctx ? boundNumber(text, kind, sign) : null;
   if (n === null) return;
   const b = baseOf(ctx, p);
   if (!isSet(ctx.choice.cap[p]) || kind !== b.kind || n !== b.n) commit(key, p, { kind, n });
@@ -375,10 +427,11 @@ function trash(key, p) {
 function settle() {
   const e = edit;
   if (!e || e.text === null) return;
-  const { kind, text } = e;
+  const { kind, text, sign } = e;
   e.kind = null;
   e.text = null;
-  apply(e.key, e.pos, kind, text);
+  e.sign = null;
+  apply(e.key, e.pos, kind, text, sign);
 }
 
 // leave closes the open frame and applies its draft.
@@ -393,7 +446,7 @@ function openBox(ctx, p) {
   const key = cardKey(ctx);
   if (isOpen(key, p)) return;
   if (edit) leave();
-  edit = { key, pos: p, kind: null, text: null };
+  edit = { key, pos: p, kind: null, text: null, sign: null };
   rerender(key, boxKey(ctx, p));
   // The editor floats below the box's top, past the card: show all of it.
   const m = mounts.get(key);
@@ -416,23 +469,27 @@ function afterLeave(key, p) {
 
 // ---------- drawing ----------
 
-function clock(w) {
-  return svg(w, "0 0 12 12", { "stroke-width": "1.4" },
-    ["circle", { cx: 6, cy: 6.5, r: 4.3 }], ["path", { d: "M6 4.3v2.3l1.5 1" }],
-    ["path", { d: "M2.2 2.2l1.3-1M9.8 2.2l-1.3-1" }]);
+// timeIcon is the time button's glyph, a clock followed by » (owner,
+// 2026-11-01; SignedPace.html), px tall: 16 in the switch, 13 above the
+// bar.
+function timeIcon(px) {
+  return svg(px, "0 0 19 16", { width: (px * 19) / 16, height: px, "stroke-width": "1.4",
+    "stroke-linecap": "round", "stroke-linejoin": "round" },
+  ["circle", { cx: 6.6, cy: 8.5, r: 5.3 }], ["path", { d: "M6.6 5.7v2.8l1.7 1.1" }],
+  ["path", { d: "M13.2 5.6l2.3 2.9-2.3 2.9M15.7 5.6l2.3 2.9-2.3 2.9", "stroke-width": "1.3" }]);
 }
 
-// place draws shown on the frame: switch state, fill, handle, alarm clock,
-// the range's span and value and the fill's caption.
-function place(els, shown) {
+// place draws shown on the frame: switch state, the sentence's sign, fill,
+// line, time icon, the range's span and value and the fill's caption.
+function place(els, shown, sign) {
   const g = barGeometry(shown);
   const pace = shown.kind === "pace";
   els.bar.classList.toggle("is-pace", pace);
   els.pct.setAttribute("aria-pressed", String(!pace));
   els.pace.setAttribute("aria-pressed", String(pace));
+  els.pre.data = lineParts(shown.kind, sign)[0];
   els.line.style.left = `${g.x - 1}px`;
-  els.knob.style.left = `${g.x - KNOB / 2}px`;
-  els.clock.style.left = `${g.x - 8}px`;
+  els.clock.style.left = `${g.x}px`; // .cap-clock centres itself on left
   els.fill.style.width = `${(BAR * (pace ? ELAPSED : USED)) / 100}px`;
   els.clock.hidden = !pace;
   const r = els.range;
@@ -441,7 +498,7 @@ function place(els, shown) {
   r.min = String(g.range.min);
   r.max = String(g.range.max);
   r.value = String(g.range.value);
-  r.setAttribute("aria-label", pace ? `${capLabel(els.label)} above time elapsed` : capLabel(els.label));
+  r.setAttribute("aria-label", pace ? `${capLabel(els.label)} relative to time elapsed` : capLabel(els.label));
   r.setAttribute("aria-valuetext", capLine(shown));
   els.scale.textContent = scaleText(shown.kind);
 }
@@ -451,14 +508,19 @@ function fit(input) {
   input.style.width = `${Math.max(1, input.value.length)}ch`;
 }
 
-// draft records text typed (or dragged) in the frame and redraws the bar
-// with it, bounded.
-function draft(ctx, p, els, text) {
+// draft records text typed (or dragged) in the frame and redraws the
+// sentence and the bar with it, bounded. For pace, sign is the dragged
+// value's; when typed (sign null), a leading + / - / − moves into the
+// sentence and out of the box, and a bare number keeps the sentence's sign.
+function draft(ctx, p, els, text, sign = null) {
   const kind = frameKind(ctx, p);
-  setDraft(ctx, p, kind, text);
-  els.input.value = text;
+  let t = text;
+  let s = sign;
+  if (kind === "pace" && s === null) [s, t] = splitSign(text, frameSign(ctx, p));
+  setDraft(ctx, p, kind, t, s);
+  els.input.value = t;
   fit(els.input);
-  place(els, previewOf(kind, text, baseOf(ctx, p)));
+  place(els, previewOf(kind, t, baseOf(ctx, p), s), s);
   trashState(ctx, p, els);
   els.isDefault.textContent = defaultNote(ctx, p);
 }
@@ -484,14 +546,14 @@ function switchRow(ctx, p, els) {
   const key = cardKey(ctx);
   const to = (kind) => {
     if (kind === frameKind(ctx, p)) return;
-    setDraft(ctx, p, kind, String(switchKind(kind, baseOf(ctx, p)).n));
+    const v = switchKind(kind, baseOf(ctx, p));
+    setDraft(ctx, p, kind, numberText(v), signOf(v.n));
     rerender(key);
   };
   els.pct = h("button", { type: "button", class: "cap-sw", "data-key": `${boxKey(ctx, p)}-pct`,
     onMouseDown: keep, onClick: () => to("fixed") }, "%");
-  els.pace = h("button", { type: "button", class: "cap-sw cap-sw-pace", "aria-label": "Time elapsed + N",
-    "data-key": `${boxKey(ctx, p)}-pace`, onMouseDown: keep, onClick: () => to("pace") },
-  clock(12), h("span", { class: "cap-raquo" }, "»"));
+  els.pace = h("button", { type: "button", class: "cap-sw cap-sw-pace", "aria-label": "Time elapsed \u00b1 N",
+    "data-key": `${boxKey(ctx, p)}-pace`, onMouseDown: keep, onClick: () => to("pace") }, timeIcon(16));
   els.trash = h("button", { type: "button", class: "btn btn-trash cap-trash",
     "aria-label": `Use default cap for ${els.label}`,
     "data-key": `${boxKey(ctx, p)}-trash`, onMouseDown: keep, onClick: () => trash(key, p) }, trashIcon());
@@ -504,8 +566,7 @@ function bar(ctx, p, els) {
   const key = cardKey(ctx);
   els.fill = h("div", { class: "cap-fill" });
   els.line = h("div", { class: "cap-line" });
-  els.knob = h("div", { class: "cap-knob" });
-  els.clock = h("span", { class: "cap-clock", "aria-hidden": "true" }, clock(11), h("span", {}, "»"));
+  els.clock = h("span", { class: "cap-clock", "aria-hidden": "true" }, timeIcon(13));
   // Release applies. change alone misses a drag that ends where it began
   // (no change event), which on a default box must still save it.
   const release = () => {
@@ -514,10 +575,14 @@ function bar(ctx, p, els) {
     rerender(key);
   };
   els.range = h("input", { type: "range", class: "cap-range", step: "1", "data-key": `${boxKey(ctx, p)}-range`,
-    onInput: () => draft(ctx, p, els, els.range.value),
+    // The dragged value is signed: the line's side of the time line sets
+    // the sentence's sign.
+    onInput: () => {
+      const v = Number(els.range.value);
+      draft(ctx, p, els, String(Math.abs(v)), signOf(v));
+    },
     onChange: release, onPointerUp: release });
-  els.bar = h("div", { class: "cap-bar" }, els.fill, els.line, els.knob,
-    els.clock, els.range);
+  els.bar = h("div", { class: "cap-bar" }, els.fill, els.line, els.clock, els.range);
   return els.bar;
 }
 
@@ -527,21 +592,23 @@ function capLabel(label) {
 }
 
 // valueLine is the frame's second line, "Cap at 90%" or "Cap at time
-// elapsed + 10%", with only the number editable.
+// elapsed + 10%" / "− 10%", with only the number editable; the text before
+// it is a node place() rewrites when the sign changes.
 function valueLine(ctx, p, pos, els) {
   const key = cardKey(ctx);
-  const [pre, post] = lineParts(frameKind(ctx, p));
+  const [pre, post] = lineParts(frameKind(ctx, p), frameSign(ctx, p));
+  els.pre = document.createTextNode(pre);
   els.input = h("input", { type: "text", inputmode: "decimal", class: "cap-edit-val",
     "aria-label": capLabel(pos.label), "data-key": boxKey(ctx, p), value: frameText(ctx, p),
     onInput: (e) => draft(ctx, p, els, e.target.value),
     onKeyDown: (e) => {
       if (e.key === "Enter") settle();
-      if (e.key === "Escape") edit.kind = edit.text = null;
+      if (e.key === "Escape") edit.kind = edit.text = edit.sign = null;
       if (e.key === "Enter" || e.key === "Escape") rerender(key);
     } });
   fit(els.input);
   els.isDefault = h("span", { class: "cap-edit-default" }, defaultNote(ctx, p));
-  return h("div", { class: "cap-edit-line" }, pre, els.input, post, els.isDefault);
+  return h("div", { class: "cap-edit-line" }, els.pre, els.input, post, els.isDefault);
 }
 
 function frame(ctx, p, pos) {
@@ -554,7 +621,8 @@ function frame(ctx, p, pos) {
     onFocusOut: () => afterLeave(key, p) },
     h("span", { class: "mono cap-edit-win" }, pos.label), valueLine(ctx, p, pos, els), switchRow(ctx, p, els),
     bar(ctx, p, els), els.scale);
-  place(els, previewOf(frameKind(ctx, p), frameText(ctx, p), baseOf(ctx, p)));
+  const sign = frameSign(ctx, p);
+  place(els, previewOf(frameKind(ctx, p), frameText(ctx, p), baseOf(ctx, p), sign), sign);
   return el;
 }
 

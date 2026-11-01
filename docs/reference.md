@@ -230,7 +230,8 @@ tried them in. The reasons:
 | `usage unknown (see errors)` | The choice is capped and the account has no usable reading; `errors` says why. |
 | `usage unknown (no windows reported)` | The reading has no window that applies to this model. |
 | `<window> window <used>% >= cap <cap>` | A window is at or over its fixed cap, for example `5h window 93% >= cap 90`. |
-| `<window> window <used>% >= pace <allowed>% (<where>, +<N>)` | A window is at or over its pace cap, for example `7d window 58% >= pace 52.9% (day 3 of 7, +10)`. `<where>` is `day D of L` for a whole-day window, else `hour H of L`. |
+| `<window> window <used>% >= pace <allowed>% (<where>, <+N or -N>)` | A window is at or over its pace cap, for example `7d window 58% >= pace 52.9% (day 3 of 7, +10)` or `7d window 44% >= pace 40% (day 3.5 of 7, -10)`. `<where>` is `day D of L` for a whole-day window, else `hour H of L`. The offset always carries its ASCII sign: `+10`, `+0`, `-10`. |
+| `<window> window has no reset time; <cap> cannot be judged` | A `pace-N` or `pace+0` cap (`<cap>` as written, for example `pace-10`) on a window whose length is known and reset time is not. A `pace+N` cap with N above 0 uses `default_cap` there instead (none if the window is at 0%). |
 
 `<window>` is the window's length (`5h`, `7d`, `30d`), or `?` when the vendor
 did not say.
@@ -258,6 +259,9 @@ status:
 - `<a>: account reports <n> windows (<lengths>), cap has <m> values; ignored the last <k>`
 - `<a>: unrecognised window "<label>" capped at default_cap <cap>`
 - `<a>: <window> window has no reset time; pace cap used default_cap <cap>`
+  (a `pace+N` cap, N above 0)
+- `<a>: <window> window has no reset time; <cap> cannot be judged` (a
+  `pace-N` or `pace+0` cap; the choice is skipped)
 
 A cap array shorter than the windows gives no warning: the missing positions
 use `default_cap`.

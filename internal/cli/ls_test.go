@@ -113,6 +113,8 @@ func TestLsTableUnknownLengthAndReset(t *testing.T) {
 	}
 }
 
+// A passed reset reads 0% and rolls forward by whole lengths (signed-pace
+// spec §3.3): 11:50 + 5h is the next reset.
 func TestLsTablePassedReset(t *testing.T) {
 	claude := apptest.NewFake("claude")
 	claude.Readings["claude-main"] = adapter.Reading{TakenAt: apptest.Now, Windows: []adapter.Window{
@@ -124,7 +126,7 @@ func TestLsTablePassedReset(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	row := strings.Fields(strings.Split(stdout, "\n")[1])
-	if got := strings.Join(row[2:], " "); got != "5h 0% in 0m Thu 11:50Z <1m" {
+	if got := strings.Join(row[2:], " "); got != "5h 0% in 4h 50m Thu 16:50Z <1m" {
 		t.Errorf("row = %q\n%s", got, stdout)
 	}
 }

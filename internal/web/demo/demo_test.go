@@ -102,15 +102,12 @@ func TestChoiceSetRefusals(t *testing.T) {
 		want  string
 	}{
 		{"range", "cap", []any{120}, "Profile coder-difficult, choice 1, 5h cap: 120 is outside 0–100%"},
-		// Owner ruling 2026-10-23 (round 6): pace N is 5–50; pace+0 is now
-		// refused (owner spec change).
-		{"pace over 50", "cap", []any{90, "pace+51"}, "Profile coder-difficult, choice 1, 7d cap: pace+51 is outside pace+5–pace+50"},
-		{"pace below 5", "cap", []any{"pace+2"}, "Profile coder-difficult, choice 1, 5h cap: pace+2 is outside pace+5–pace+50"},
-		{"pace+4", "cap", []any{"pace+4"}, "Profile coder-difficult, choice 1, 5h cap: pace+4 is outside pace+5–pace+50"},
-		{"pace+0", "cap", []any{"pace+0"}, "Profile coder-difficult, choice 1, 5h cap: pace+0 is outside pace+5–pace+50"},
-		{"not a number", "cap", []any{"fast"}, "Profile coder-difficult, choice 1, 5h cap: fast is not a number, pace+N or default"},
-		{"null element", "cap", []any{nil}, "Profile coder-difficult, choice 1, 5h cap: null is not a number, pace+N or default"},
-		{"Default is not default", "cap", []any{"Default"}, "Profile coder-difficult, choice 1, 5h cap: Default is not a number, pace+N or default"},
+		// Owner, 2026-11-01: pace is -50…+50 continuous, 0 included.
+		{"pace over 50", "cap", []any{90, "pace+51"}, "Profile coder-difficult, choice 1, 7d cap: pace+51 is outside pace-50–pace+50"},
+		{"pace below -50", "cap", []any{"pace-51"}, "Profile coder-difficult, choice 1, 5h cap: pace-51 is outside pace-50–pace+50"},
+		{"not a number", "cap", []any{"fast"}, "Profile coder-difficult, choice 1, 5h cap: fast is not a number, pace+N, pace-N or default"},
+		{"null element", "cap", []any{nil}, "Profile coder-difficult, choice 1, 5h cap: null is not a number, pace+N, pace-N or default"},
+		{"Default is not default", "cap", []any{"Default"}, "Profile coder-difficult, choice 1, 5h cap: Default is not a number, pace+N, pace-N or default"},
 	}
 	for _, c := range cases {
 		if got := refusal(t, d, "choice.set", set(c.field, c.value)).Reason; got != c.want {
@@ -126,11 +123,13 @@ func TestChoiceSetRefusals(t *testing.T) {
 	}
 }
 
-// Owner ruling 2026-10-23 (rounds 3 and 6): pace N is 5–50; both ends are
-// saved.
+// Owner, 2026-11-01: pace is -50…+50 continuous, 0 included; both ends
+// and the signed middle are saved, and "pace-0" is stored as "pace+0".
 func TestChoiceSetPaceRange(t *testing.T) {
 	d := newDemo()
-	for _, v := range []string{"pace+5", "pace+50"} {
+	for _, tc := range [][2]string{{"pace+50", "pace+50"}, {"pace-50", "pace-50"}, {"pace-10", "pace-10"},
+		{"pace+0", "pace+0"}, {"pace+2", "pace+2"}, {"pace-0", "pace+0"}} {
+		v, want := tc[0], tc[1]
 		must(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 0, "field": "cap",
 			"value": []any{v}, "expect": choiceJSON(t, d, "coder-difficult", 0)})
 		var got struct {
@@ -139,7 +138,7 @@ func TestChoiceSetPaceRange(t *testing.T) {
 		if err := json.Unmarshal(choiceJSON(t, d, "coder-difficult", 0), &got); err != nil {
 			t.Fatal(err)
 		}
-		if len(got.Cap) != 1 || got.Cap[0] != v {
+		if len(got.Cap) != 1 || got.Cap[0] != want {
 			t.Errorf("%s: stored cap %v", v, got.Cap)
 		}
 	}
@@ -255,7 +254,7 @@ func TestCapRefusalNamesChoiceAndWindow(t *testing.T) {
 	}
 	got := refusal(t, d, "choice.set", args([]any{"pace+70"})).Reason
 	if !strings.HasPrefix(got, "Profile coder-difficult, choice 3, ") ||
-		!strings.HasSuffix(got, " cap: pace+70 is outside pace+5–pace+50") {
+		!strings.HasSuffix(got, " cap: pace+70 is outside pace-50–pace+50") {
 		t.Errorf("got %q", got)
 	}
 	got = refusal(t, d, "choice.set", map[string]any{"profile": "coder-difficult", "index": 2,

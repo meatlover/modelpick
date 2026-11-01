@@ -687,3 +687,50 @@ func TestCredentialLoginExpires(t *testing.T) {
 		})
 	}
 }
+
+func TestIdleSessionWindowAdded(t *testing.T) {
+	body := `{"limits":[
+		{"kind":"weekly_all","group":"weekly","percent":25,"resets_at":"2026-10-28T09:59:59Z","scope":null},
+		{"kind":"weekly_scoped","group":"weekly","percent":3,"resets_at":"2026-10-28T10:00:00Z","scope":{"model":{"id":null,"display_name":"Fable"},"surface":null}}
+	]}`
+	f := newFixture(t, serveBody(http.StatusOK, body))
+	r, err := f.a.Usage(context.Background(), f.acct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Windows) != 3 {
+		t.Fatalf("want 3 windows, got %+v", r.Windows)
+	}
+	s := findWindow(t, r.Windows, 5*time.Hour, "")
+	if s.Label != "session" || s.UsedPct != 0 || !s.ResetsAt.IsZero() || s.ScopeModelName != "" {
+		t.Errorf("synthesised session window = %+v", s)
+	}
+	wk := findWindow(t, r.Windows, 7*24*time.Hour, "")
+	if wk.UsedPct != 25 || !wk.ResetsAt.Equal(mustTime(t, "2026-10-28T09:59:59Z")) {
+		t.Errorf("weekly window = %+v", wk)
+	}
+	fb := findWindow(t, r.Windows, 7*24*time.Hour, "Fable")
+	if fb.UsedPct != 3 {
+		t.Errorf("Fable window = %+v", fb)
+	}
+}
+
+func TestIdleSessionNamedFallback(t *testing.T) {
+	body := `{"five_hour":null,"seven_day":{"utilization":30,"resets_at":"2026-10-28T09:59:59Z"}}`
+	f := newFixture(t, serveBody(http.StatusOK, body))
+	r, err := f.a.Usage(context.Background(), f.acct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Windows) != 2 {
+		t.Fatalf("want 2 windows, got %+v", r.Windows)
+	}
+	s := findWindow(t, r.Windows, 5*time.Hour, "")
+	if s.Label != "five_hour" || s.UsedPct != 0 || !s.ResetsAt.IsZero() {
+		t.Errorf("synthesised five_hour window = %+v", s)
+	}
+	w := findWindow(t, r.Windows, 7*24*time.Hour, "")
+	if w.UsedPct != 30 {
+		t.Errorf("seven_day window = %+v", w)
+	}
+}

@@ -8,8 +8,10 @@ import (
 	"github.com/meatlover/modelpick/internal/web"
 )
 
-// capElement validates one cap element (a number 0–100, "pace+N" with N
-// 5–50, or "default"); where names it in the refusal.
+// capElement validates one cap element (a number 0–100, "pace+N" /
+// "pace-N" with the signed offset -50…+50, or "default"); where names it
+// in the refusal. It keeps its own copy of the app's rule: the demo may
+// not import internal/app.
 func capElement(where string, raw json.RawMessage) (any, error) {
 	text := strings.TrimSpace(string(raw))
 	var n float64
@@ -27,20 +29,26 @@ func capElement(where string, raw json.RawMessage) (any, error) {
 			return s, nil
 		}
 		if m := paceRE.FindStringSubmatch(s); m != nil {
-			v, _ := strconv.Atoi(m[1])
-			// Owner ruling 2026-10-23 (rounds 3 and 6): pace N is 5–50
-			// ("set a minimum, +5").
-			if v < 5 || v > 50 {
-				return nil, refuse("%s: %s is outside pace+5–pace+50", where, s)
+			v, _ := strconv.Atoi(m[2])
+			if m[1] == "-" {
+				v = -v
 			}
-			return s, nil
+			// Owner, 2026-11-01: -50…+50 continuous, 0 included.
+			if v < -50 || v > 50 {
+				return nil, refuse("%s: %s is outside pace-50–pace+50", where, s)
+			}
+			// Stored normalised, as the core writes it: "pace-0" is "pace+0".
+			if v >= 0 {
+				return "pace+" + strconv.Itoa(v), nil
+			}
+			return "pace-" + strconv.Itoa(-v), nil
 		}
 	}
 	var shown string
 	if text == "null" || json.Unmarshal(raw, &shown) != nil {
 		shown = text
 	}
-	return nil, refuse("%s: %s is not a number, pace+N or default", where, shown)
+	return nil, refuse("%s: %s is not a number, pace+N, pace-N or default", where, shown)
 }
 
 // parseCap validates a cap list; prefix is "Profile p, choice n" and
