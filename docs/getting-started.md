@@ -29,8 +29,17 @@ yourself (`~/.local/bin` below is only an example).
 ### With Homebrew
 
 ```
-brew install meatlover/tap/modelpick
+brew tap meatlover/tap
+brew trust meatlover/tap
+brew install modelpick
 ```
+
+The tap is added and trusted once per machine; after that `brew install
+modelpick` and `brew upgrade modelpick` work by the short name. Homebrew 7
+loads formulae from a tap only once it is trusted, and no longer adds a tap
+for you when you name a formula in it (`brew install meatlover/tap/modelpick`
+fails until the tap is added). If your Homebrew has no `brew trust` command,
+skip that line.
 
 This installs the latest release's archive for your platform, checked against
 its `SHA256SUMS`, on macOS or Linux. The example config is then at

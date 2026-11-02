@@ -52,7 +52,9 @@ For JSON, name a profile: modelpick pick <profile>
 ## Install
 
 ```
-brew install meatlover/tap/modelpick
+brew tap meatlover/tap
+brew trust meatlover/tap
+brew install modelpick
 ```
 
 or, with Go 1.24 or newer:
