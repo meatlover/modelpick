@@ -83,9 +83,11 @@ func vendorLines(b *strings.Builder, res core.Result, home string, export func(n
 	case "codex":
 		export("CODEX_HOME", ref.CodexHome)
 	case "opencode-go":
-		export("MODELPICK_KEY_FILE", ref.KeyFile)
-		export("MODELPICK_KEY_LINE", fmt.Sprint(ref.KeyLine))
-		return
+		if ref.KeyFile != "" {
+			export("MODELPICK_KEY_FILE", ref.KeyFile)
+			export("MODELPICK_KEY_LINE", fmt.Sprint(ref.KeyLine))
+			return
+		}
 	}
 	b.WriteString("unset MODELPICK_KEY_FILE\nunset MODELPICK_KEY_LINE\n")
 }

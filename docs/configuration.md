@@ -105,7 +105,7 @@ would depend on the directory modelpick happens to run in.
 |---|---|---|
 | `claude` | `config_dir` | macOS: the Keychain item Claude Code made for that directory (service `Claude Code-credentials` for `~/.claude`, `Claude Code-credentials-<8 hex>` otherwise); Linux, or no Keychain item: `<config_dir>/.credentials.json`. |
 | `codex` | `codex_home` | `<codex_home>/auth.json`. |
-| `opencode-go` | `key_file`, `key_line` | `key_line` is the 1-based index among the key lines of `key_file`, ignoring blank lines and `#` comments. |
+| `opencode-go` | `key_file` and `key_line`, or neither | `key_line` is the 1-based index among the key lines of `key_file`, ignoring blank lines and `#` comments. With neither, the key is OpenCode's own login (`opencode auth login`, OpenCode Go), read from `$XDG_DATA_HOME/opencode/auth.json` or `~/.local/share/opencode/auth.json`. One account per login; more keys need a key file. |
 
 `pick` copies the chosen account's object into `account_ref` with paths made
 absolute, so a launcher can use it (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, which

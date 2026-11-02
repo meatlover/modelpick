@@ -149,6 +149,19 @@ func TestPickCLIUsesDepsShuffle(t *testing.T) {
 	}
 }
 
+func TestPickOpencodeLoginAccountRef(t *testing.T) {
+	cfg := `{"version":1,
+	"accounts":{"go":{"vendor":"opencode-go"}},
+	"profiles":{"p":[{"account":"go","model":"glm-5","thinking":null}]}}`
+	goFake := apptest.NewFake("opencode-go")
+	goFake.Readings["go"] = apptest.ClaudeReading(1, 1)
+	stdout, _, code := run(apptest.NewDeps(t, cfg, goFake), "pick", "p")
+	p := parsePick(t, stdout)
+	if code != 0 || len(p.AccountRef) != 1 || p.AccountRef["vendor"] != "opencode-go" {
+		t.Fatalf("exit %d, want account_ref {vendor:opencode-go}; stdout\n%s", code, stdout)
+	}
+}
+
 func TestPickConfigError(t *testing.T) {
 	bad := strings.Replace(testConfig,
 		`"cap": [90, 98] },
