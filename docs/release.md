@@ -44,6 +44,10 @@ whose steps each fail naming themselves (`release-build: version gate: …`):
 
 A failure at any step publishes nothing. You can run the script yourself on a
 tagged, clean checkout: `bash scripts/release-build.sh vX.Y.Z /tmp/dist`.
+Make that checkout a clone (`git clone --branch vX.Y.Z <repo> <dir>`), not a
+`git worktree`: in a worktree Go stamps no version information into the build
+(seen with Go 1.24.4, even with `-buildvcs=true`), so the self-check fails with
+`prints "modelpick dev", want "modelpick vX.Y.Z"`. CI builds from a clone.
 
 ## Homebrew
 
