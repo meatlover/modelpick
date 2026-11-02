@@ -37,8 +37,10 @@
      usage blue (--fill); owner ruling 2026-10-23, no mockup. */
   --time: #C99A06;
   --time-soft: #F5E7B0;
-  /* Other windows while a general limit is full: the limit orange, heavily darkened. */
-  --usage-other: #612B08;
+  /* An account's other windows while one is near or at its limit
+     (owner, 2026-11-02, mockup usage-thresholds A): a light grey bar and text. */
+  --usage-dim: #D3D2CC;
+  --usage-dim-text: #9C9B94;
 
   --chip-bg: #ECEBE6;
   --chip-text: #3A3935;
@@ -102,7 +104,8 @@
     --cell-hover: #3F3F3A;
     --time: #E0B53A;
     --time-soft: #4A3F17;
-    --usage-other: #884D26;
+    --usage-dim: #45443F;
+    --usage-dim-text: #6F6E68;
 
     --chip-bg: #33332F;
     --chip-text: #D2D1CA;

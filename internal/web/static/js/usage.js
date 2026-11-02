@@ -48,32 +48,46 @@ function errorAccounts() {
   return accountErrorSet(store.doctor ? store.doctor.findings : []);
 }
 
-// A scoped window can exhaust one model without exhausting the account.
-// Only general windows select the account's highlighted reset time.
-function fullGeneral(w) {
-  return !w.scope && w.used_pct >= 100;
+// A scoped window can exhaust one model without exhausting the account, so
+// only general windows mark it: from NEAR_PCT a window is near ("warn"), at
+// 100 full. An account shows one marked window and dims the rest, since one
+// window running out is enough to stop it (owner, 2026-11-02).
+const NEAR_PCT = 95;
+
+function level(w) {
+  if (w.scope) return "";
+  if (w.used_pct >= 100) return "full";
+  return w.used_pct >= NEAR_PCT ? "warn" : "";
 }
 
-function nearestFullReset(windows) {
-  let nearest = -1;
-  let time = Infinity;
+// marked is the index of the window the account shows, or -1: full beats
+// warn; among the same level the latest reset (a window without a reset
+// time loses to one with it), and on a tie the first.
+function marked(windows) {
+  const rank = { full: 2, warn: 1, "": 0 };
+  let best = -1;
+  let bestRank = 0;
+  let bestAt = -Infinity;
   windows.forEach((w, i) => {
-    if (!fullGeneral(w)) return;
-    const at = Date.parse(w.resets_at);
-    if (Number.isFinite(at) && at < time) {
-      nearest = i;
-      time = at;
+    const r = rank[level(w)];
+    if (r === 0) return;
+    const parsed = Date.parse(w.resets_at);
+    const at = Number.isFinite(parsed) ? parsed : -Infinity;
+    if (r > bestRank || (r === bestRank && at > bestAt)) {
+      best = i;
+      bestRank = r;
+      bestAt = at;
     }
   });
-  return nearest;
+  return best;
 }
 
-function windowRow(w, limited, highlightReset) {
+// windowRow draws one window; mark is "full", "warn", "dim" or "".
+function windowRow(w, mark) {
   const used = Math.round(w.used_pct);
   const fill = h("div", { class: "bar-fill" });
   fill.style.width = `${Math.min(100, Math.max(0, used)) * BAR_PX / 100}px`;
-  return h("div", { class: ["u-win", limited && (fullGeneral(w) ? "is-full" : "is-limited"),
-    highlightReset && "is-next-reset"] },
+  return h("div", { class: ["u-win", mark && `is-${mark}`] },
     h("span", { class: "mono u-label" }, w.label),
     h("strong", { class: "u-pct" }, `${used}%`),
     h("div", { class: "bar", "aria-hidden": "true" }, fill),
@@ -135,16 +149,25 @@ function refreshButton(row) {
   wait ? "Refreshing…" : "Refresh");
 }
 
+// chipOf is the state chip's text and class: an ok account with a marked
+// window says how near it is; any other state keeps its own words.
+function chipOf(row, mark) {
+  if (row.state !== "ok") return [stateText(row.state), "chip-warn"];
+  if (mark === "full") return ["Limit reached", "chip-full"];
+  if (mark === "warn") return ["Near limit", "chip-warn"];
+  return ["ok", "chip-ok"];
+}
+
 function accountRow(row, red) {
   const windows = row.windows || [];
-  const limited = windows.some(fullGeneral);
-  const nextReset = nearestFullReset(windows);
-  const state = row.state === "ok" && limited ? "Limit reached" : stateText(row.state);
-  const warn = state !== "ok";
+  const shown = marked(windows);
+  const mark = shown < 0 ? "" : level(windows[shown]);
+  const [state, chip] = chipOf(row, mark);
   return h("div", { class: ["u-grid", "u-row", red.has(row.account) && "is-error"] },
     h("span", { class: "u-name" }, row.account),
-    h("div", {}, h("span", { class: ["chip", warn ? "chip-warn" : "chip-ok"] }, state)),
-    h("div", { class: "u-wins" }, windows.map((w, i) => windowRow(w, limited, i === nextReset))),
+    h("div", {}, h("span", { class: ["chip", chip] }, state)),
+    h("div", { class: "u-wins" }, windows.map((w, i) =>
+      windowRow(w, i === shown ? mark : shown < 0 ? "" : "dim"))),
     ageCell(row),
     h("div", { class: "u-act" }, refreshButton(row)));
 }

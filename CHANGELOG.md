@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- The ui's Usage tab marks one window per account. A general (not
+  model-scoped) window at 95% or more turns its bar, percent and reset time
+  orange and the account reads **Near limit**; at 100% they turn red and it
+  reads **Limit reached**. A full window wins over a near one; among the same
+  colour the one that resets last, and on a tie the first. The account's
+  other windows are greyed out instead of dark orange.
+
 ## v0.5.0 — 2026-11-01
 
 ### New
