@@ -110,16 +110,19 @@ and a first config are in [getting started](docs/getting-started.md).
 Read this before you use modelpick.
 
 - modelpick reads each tool's stored login (Claude Code's Keychain item or
-  credentials file, Codex's `auth.json`, your OpenCode Go key file) **in
-  memory**, only to call that vendor's usage endpoint.
+  credentials file, Codex's `auth.json`, your OpenCode Go key file or
+  OpenCode's own `auth.json`) **in memory**, only to call that vendor's usage
+  endpoint. OpenCode's `auth.json` is read whole, but only its `opencode-go`
+  entry is decoded; the other entries, including other providers' refresh
+  tokens, are never decoded, used, kept, logged or sent.
 - It **stores no credentials**: not in its cache, its output or its logs.
-- It **never writes any vendor file** and never handles a refresh token. When a
-  usage call is due and a Claude or Codex login has expired, it asks the
-  vendor's own tool to renew it: `claude -p` with a tiny prompt (a few tokens
-  of that Claude subscription, about 10 seconds) or `codex app-server` (no
-  quota, about 3 seconds). The tool renews its own login. If the refresh
-  token itself has expired, log in again (`/login` in Claude Code,
-  `codex login`).
+- It **never writes any vendor file** and never decodes, uses or keeps a
+  refresh token. When a usage call is due and a Claude or Codex login has
+  expired, it asks the vendor's own tool to renew it: `claude -p` with a tiny
+  prompt (a few tokens of that Claude subscription, about 10 seconds) or
+  `codex app-server` (no quota, about 3 seconds). The tool renews its own
+  login. If the refresh token itself has expired, log in again (`/login` in
+  Claude Code, `codex login`).
 - Its usage call to Anthropic **identifies itself as Claude Code**: it sends
   `User-Agent: claude-cli/<version> (external, cli)`, with the version your
   installed `claude --version` prints, and the `anthropic-beta:

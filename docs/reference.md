@@ -208,7 +208,7 @@ Accounts hold no secret, so it is safe to print:
 |---|---|
 | `claude` | `{"vendor": "claude", "config_dir": "/home/you/.claude"}` |
 | `codex` | `{"vendor": "codex", "codex_home": "/home/you/.codex"}` |
-| `opencode-go` | `{"vendor": "opencode-go", "key_file": "/home/you/.config/opencode/keys", "key_line": 2}` |
+| `opencode-go` | `{"vendor": "opencode-go", "key_file": "/home/you/.config/opencode/keys", "key_line": 2}`, or `{"vendor": "opencode-go"}` for OpenCode's own login |
 
 ### `load_balance`
 
@@ -281,7 +281,7 @@ single-quoted. On `ok` or `ok_with_errors`:
 | `export MODELPICK_THINKING=` | `thinking`; `unset MODELPICK_THINKING` when null |
 | `export CLAUDE_CONFIG_DIR=` | Claude: `account_ref.config_dir`; `unset CLAUDE_CONFIG_DIR` for the default `~/.claude` |
 | `export CODEX_HOME=` | Codex: `account_ref.codex_home` |
-| `export MODELPICK_KEY_FILE=`, `export MODELPICK_KEY_LINE=` | OpenCode Go: which key; for the other vendors both are unset |
+| `export MODELPICK_KEY_FILE=`, `export MODELPICK_KEY_LINE=` | OpenCode Go: which key; unset for the other vendors and for an OpenCode-login account |
 
 For example:
 
@@ -415,7 +415,11 @@ tool at that account, and starts it. modelpick never starts a tool itself.
    - `opencode-go`: the key is line `account_ref.key_line` of
      `account_ref.key_file`, counting only non-blank lines that do not start
      with `#`. How the key reaches OpenCode is up to the launcher;
-     modelpick does not install it.
+     modelpick does not install it. With no `key_file`, run `opencode` as is:
+     it uses its own login, so unset anything your launcher sets to give
+     opencode a key-file key (for example `OPENCODE_AUTH_CONTENT` or
+     `OPENCODE_API_KEY`), or opencode runs on that key instead of its own
+     login.
 5. Pass `model` and `thinking` with the tool's own flags, and `exec` it.
 
 With `jq`:
@@ -442,7 +446,7 @@ eval "$out" || exit 1
 case "$MODELPICK_VENDOR" in
   claude) exec claude --model "$MODELPICK_MODEL" ;;   # CLAUDE_CONFIG_DIR is set or unset for you
   codex)  exec codex -m "$MODELPICK_MODEL" ;;         # CODEX_HOME is set
-  opencode-go) exec opencode -m "$MODELPICK_MODEL" ;; # MODELPICK_KEY_FILE / _LINE name the key
+  opencode-go) exec opencode -m "$MODELPICK_MODEL" ;; # MODELPICK_KEY_FILE / _LINE name the key; unset: opencode uses its own login
   *) echo "modelpick: no vendor" >&2; exit 1 ;;
 esac
 ```

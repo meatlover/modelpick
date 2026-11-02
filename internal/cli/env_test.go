@@ -115,6 +115,20 @@ func TestEnvOpencodeNullThinking(t *testing.T) {
 	}
 }
 
+// A login account has no key reference, so a stale one from an earlier
+// key-file pick must be unset.
+func TestEnvOpencodeLoginUnsetsKeyRef(t *testing.T) {
+	cfg := `{"version":1,
+	"accounts":{"go":{"vendor":"opencode-go"}},
+	"profiles":{"p":[{"account":"go","model":"glm-5","thinking":null}]}}`
+	goFake := apptest.NewFake("opencode-go")
+	goFake.Readings["go"] = apptest.ClaudeReading(1, 1)
+	out, _, code := run(apptest.NewDeps(t, cfg, goFake), "env", "p")
+	if code != 0 || !strings.HasSuffix(out, "unset MODELPICK_KEY_FILE\nunset MODELPICK_KEY_LINE\n") {
+		t.Fatalf("exit %d; stdout\n%s", code, out)
+	}
+}
+
 // wantEnvQuotedDir is spec §10's quoting case: a config_dir with a quote
 // and a space.
 const wantEnvQuotedDir = `export MODELPICK_STATUS='ok'

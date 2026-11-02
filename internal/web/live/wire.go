@@ -44,6 +44,10 @@ func wireAccounts(doc *core.Doc, sources map[string]string) []web.Account {
 		case "codex":
 			w.Fields["codex_home"], w.Location = a.CodexHome, a.CodexHome
 		case "opencode-go":
+			if a.KeyFile == "" {
+				w.Location = "OpenCode login"
+				break
+			}
 			w.Fields["key_file"], w.Fields["key_line"], w.Location = a.KeyFile, a.KeyLine, a.KeyFile
 			w.Source = fmt.Sprintf("key line %d of %d", a.KeyLine, onFile[a.KeyFile])
 		}

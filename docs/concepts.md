@@ -8,10 +8,11 @@ the [reference](reference.md) has every output field.
 ## Accounts
 
 An **account** is one login to one vendor: a Claude Code config directory, a
-Codex home, or one line of an OpenCode Go key file. You name your accounts
-(`claude-main`, `go-1`) and can have any number per vendor. The config file
-only says where each login lives; modelpick reads the login itself from there,
-in memory, when it needs to ask the vendor for usage.
+Codex home, or an OpenCode Go key (OpenCode's own login, or one line of a key
+file). You name your accounts (`claude-main`, `go-1`) and can have any number
+per vendor. The config file only says where each login lives; modelpick reads
+the login itself from there, in memory, when it needs to ask the vendor for
+usage.
 
 ## Windows and readings
 

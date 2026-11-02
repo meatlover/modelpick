@@ -54,7 +54,7 @@ func DefaultDeps(version string) Deps {
 			claude.New(claude.Options{HTTP: client, Home: home, Now: time.Now,
 				Keychain: platform.KeychainPassword, Run: platform.ExecRunner, LookPath: exec.LookPath}),
 			codex.New(codex.Options{HTTP: client, Now: time.Now, LookPath: exec.LookPath, UserAgent: ua, Version: version}),
-			opencodego.New(opencodego.Options{HTTP: client, Now: time.Now,
+			opencodego.New(opencodego.Options{HTTP: client, Now: time.Now, AuthFile: opencodego.AuthPath(os.Getenv, home),
 				Run: platform.ExecRunner, LookPath: exec.LookPath, UserAgent: ua}),
 		),
 	}

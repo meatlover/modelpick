@@ -13,8 +13,8 @@ ask for a model, and open the UI.
     configure.
   - Codex: `codex`, logged in with a ChatGPT account (`<codex_home>/auth.json`
     must exist).
-  - OpenCode Go: `opencode`, plus a file holding your Go API keys, one per
-    line.
+  - OpenCode Go: `opencode`, logged in with `opencode auth login` (choose
+    OpenCode Go). For more than one Go key, a file holding them, one per line.
 
   `doctor` reports a missing tool as an error. `pick` works without them
   until a Claude or Codex login expires: renewing it runs the tool. `ls
@@ -115,7 +115,8 @@ Then edit it:
    liking. Point each at where its login lives: `config_dir` for Claude (the
    `CLAUDE_CONFIG_DIR` you log in with, `~/.claude` by default), `codex_home`
    for Codex (`~/.codex` by default), `key_file` and `key_line` for an
-   OpenCode Go key.
+   OpenCode Go key in a file. An OpenCode Go account that uses OpenCode's own
+   login needs neither: `{ "vendor": "opencode-go" }`.
 2. Under `profiles`, write one profile per kind of work, each a list of
    choices in order of preference. End each profile with a choice that has no
    `cap`, so it always has an answer.

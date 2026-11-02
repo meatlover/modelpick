@@ -153,7 +153,7 @@ host.
 |---|---|---|---|
 | claude | Keychain `Claude Code-credentials` for `~/.claude`, else `…-<sha256(abs path)[:8]>`; fallback `<config_dir>/.credentials.json`; `claudeAiOauth.{accessToken, expiresAt, refreshTokenExpiresAt}` | `limits[]` (session = 5h, weekly = 7d, model-scoped entries) | Built-in list (`internal/adapter/claude/models.go`) |
 | codex | `<codex_home>/auth.json` `tokens.{access_token, account_id}`; expiry from the JWT `exp` | `rate_limit.primary_window` / `secondary_window`, length from `limit_window_seconds` | `<codex_home>/models_cache.json` |
-| opencode-go | Line `key_line` of `key_file` | `usage.{rolling, weekly, monthly}` = 5h, 7d, 30d | `opencode models opencode-go` |
+| opencode-go | Line `key_line` of `key_file`, or the `opencode-go` entry's `key` in OpenCode's `auth.json` | `usage.{rolling, weekly, monthly}` = 5h, 7d, 30d | `opencode models opencode-go` |
 
 Each vendor package has a `testdata/usage_2026-10-22.json`: a real response,
 redacted, that its parser test reads.

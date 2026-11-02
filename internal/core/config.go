@@ -246,7 +246,15 @@ func (p parser) checkVendorFields(a adapter.Account, prefix string) error {
 	case "codex":
 		need = []string{"codex_home"}
 	case "opencode-go":
-		need = []string{"key_file", "key_line"}
+		// key_file and key_line come as a pair; with neither, the key is
+		// OpenCode's own login.
+		need = nil
+		switch {
+		case a.KeyFile != "" && a.KeyLine == 0:
+			return p.fail(join(prefix, "key_line"), "required with key_file")
+		case a.KeyFile == "" && a.KeyLine != 0:
+			return p.fail(join(prefix, "key_file"), "required with key_line")
+		}
 	default:
 		return p.fail(join(prefix, "vendor"), "unknown vendor %q", a.Vendor)
 	}
@@ -255,14 +263,16 @@ func (p parser) checkVendorFields(a adapter.Account, prefix string) error {
 		for _, n := range need {
 			wanted = wanted || n == f.key
 		}
+		keyPair := a.Vendor == "opencode-go" && (f.key == "key_file" || f.key == "key_line")
 		switch {
+		case keyPair:
 		case wanted && !f.set:
 			return p.fail(join(prefix, f.key), "required for vendor %q", a.Vendor)
 		case !wanted && f.set:
 			return p.fail(join(prefix, f.key), "not valid for vendor %q", a.Vendor)
 		}
 	}
-	if a.Vendor == "opencode-go" && a.KeyLine < 1 {
+	if a.Vendor == "opencode-go" && a.KeyFile != "" && a.KeyLine < 1 {
 		return p.fail(join(prefix, "key_line"), "must be >= 1")
 	}
 	// Ruling 26: a relative path would be relative to whatever directory

@@ -16,10 +16,11 @@ logins are renewed, and what each `doctor` message means. Install it first
 | Claude: Keychain item `Claude Code-credentials[-<8 hex>]`, else `<config_dir>/.credentials.json` | reads only | The Claude Code login. |
 | Codex: `<codex_home>/auth.json`, `<codex_home>/models_cache.json` | reads only | The Codex login; the model list. |
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
+| OpenCode Go login: `$XDG_DATA_HOME/opencode/auth.json` (when absolute), else `~/.local/share/opencode/auth.json` | reads only | OpenCode's own login. The file is read whole; only the `opencode-go` entry is decoded. Other entries, including other providers' refresh tokens, are never decoded, used, kept, logged or sent. |
 
 Credentials are held in memory for the one request that needs them. They are
 never written to the cache, printed, or logged. modelpick never writes a
-vendor file and never handles a refresh token; see [renewal](#renewal).
+vendor file and never decodes, uses or keeps a refresh token; see [renewal](#renewal).
 
 ### State files
 
@@ -304,6 +305,7 @@ a value. A test checks that every message `doctor` can print has a row.
 | `no credential: not found in keychain: <service> or file: <config_dir>/.credentials.json` | No Claude login for that `config_dir`. | Log in with `CLAUDE_CONFIG_DIR=<config_dir> claude`. Check that the path is the one you logged in with; the Keychain name is derived from it. |
 | `no credential: not found: <codex_home>/auth.json` | No Codex login there. | `CODEX_HOME=<codex_home> codex login`. |
 | `no credential: key file <key_file> line <n>` | The OpenCode Go key file has fewer than `key_line` keys. | Add the key, or fix `key_line`. Blank lines and `#` lines do not count. |
+| `no credential: OpenCode login in <path>` | No OpenCode Go login in OpenCode's auth.json. | Run `opencode auth login` and choose OpenCode Go, or use a `key_file`. |
 | `credential unreadable (<source>): <error>` | The login exists but cannot be read or is not in the expected shape, or the Keychain lookup failed or timed out. | Log in again with the tool. On macOS, look for a Keychain permission prompt. |
 | `token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login` | The Claude access token is past its expiry. A warning. | Nothing yet: the next due call renews it. If `renewal failed: <reason>` shows, use `/login` in Claude Code. |
 | `token expired — the next usage call asks Codex to renew it; if that fails, run codex login` | The same for Codex. | Nothing yet. If renewal fails, run `codex login`. |

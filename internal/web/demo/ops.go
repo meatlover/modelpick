@@ -380,6 +380,9 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 		return home, "file: " + home + "/auth.json"
 	}
 	file, _ := f["key_file"].(string)
+	if file == "" {
+		return "OpenCode login", "file: ~/.local/share/opencode/auth.json"
+	}
 	line := "1"
 	if n, ok := f["key_line"].(float64); ok {
 		line = strconv.Itoa(int(n))
