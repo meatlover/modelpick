@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- An `opencode-go` account with no `key_file` uses OpenCode's own login.
+  The ui's Add account form offers it as "OpenCode login".
+
 ### Changed
 
 - The ui's Usage tab marks one window per account. A general (not

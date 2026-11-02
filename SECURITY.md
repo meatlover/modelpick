@@ -14,7 +14,12 @@ and sends, and how to report a problem. The
   uses or keeps it.
 - **The Codex login**: `<codex_home>/auth.json`, its access token and account
   id. It also reads `<codex_home>/models_cache.json` for the model list.
-- **An OpenCode Go key**: one line of your `key_file`.
+- **An OpenCode Go key**: one line of your `key_file`, or, for an account with
+  no `key_file`, the `opencode-go` entry of OpenCode's own `auth.json`
+  (`$XDG_DATA_HOME/opencode/auth.json`, else
+  `~/.local/share/opencode/auth.json`). modelpick decodes only that entry; the
+  other entries (other providers' tokens) are not decoded, kept, logged or
+  sent, and the file is never written.
 - **Its own config file and cache.**
 
 Credentials are read into memory for the one request that needs them.
