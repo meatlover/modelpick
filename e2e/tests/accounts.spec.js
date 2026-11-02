@@ -74,6 +74,17 @@ test("a login account, then a key file account on the defaults", async ({ page }
   await expect(rows(page).filter({ hasText: "go-login" })).toContainText("OpenCode login");
 });
 
+test("with a login account present, the Login choice defaults to Key file", async ({ page }) => {
+  const add = page.getByRole("region", { name: "Add account" });
+  await add.getByLabel("Vendor").selectOption("opencode-go");
+  await expect(add.getByLabel("Login")).toHaveValue("OpenCode login");
+  await add.getByLabel("Name").fill("go-login");
+  await act(page, () => add.getByRole("button", { name: "Add", exact: true }).click());
+  await add.getByLabel("Vendor").selectOption("claude");
+  await add.getByLabel("Vendor").selectOption("opencode-go");
+  await expect(add.getByLabel("Login")).toHaveValue("Key file");
+});
+
 test("remove an unused account", async ({ page }) => {
   await page.getByRole("button", { name: "Remove account claude-spare" }).click();
   await expectConfig(server.configPath, (c) => Object.keys(c.accounts).sort(),

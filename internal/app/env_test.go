@@ -3,6 +3,8 @@ package app_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,6 +95,23 @@ func TestDefaultDepsAdaptersKeyedByVendor(t *testing.T) {
 	}
 	if d.Getenv == nil || d.Now == nil {
 		t.Fatal("DefaultDeps left Getenv or Now nil")
+	}
+}
+
+// DefaultDeps must hand the opencode-go adapter the real auth.json path.
+func TestDefaultDepsOpencodeLoginPath(t *testing.T) {
+	xdg := t.TempDir()
+	path := filepath.Join(xdg, "opencode", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"opencode-go":{"type":"api","key":"FAKE-deps-key"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	st := app.DefaultDeps("test").Adapters["opencode-go"].Credential(adapter.Account{Name: "go", Vendor: "opencode-go"})
+	if !st.Present || st.Err != nil || st.Source != "OpenCode login in "+path {
+		t.Errorf("status = %+v, want present with source for %s", st, path)
 	}
 }
 

@@ -82,13 +82,19 @@ function nextLine(accounts, file) {
   return String(lines.length ? Math.max(...lines) + 1 : 1);
 }
 
+// hasLoginAccount: OpenCode keeps one login per install, so a second
+// opencode-go account without a key file would read the same key.
+function hasLoginAccount(accounts) {
+  return accounts.some((a) => a.vendor === "opencode-go" && !(a.fields || {}).key_file);
+}
+
 function value(accounts, key) {
   if (drafts[key] !== undefined) return drafts[key];
   switch (key) {
     case "name": return nextName(accounts, vendor);
     case "config_dir": return nextPath(accounts, "claude", "config_dir", "~/.claude");
     case "codex_home": return nextPath(accounts, "codex", "codex_home", "~/.codex");
-    case "login": return LOGIN;
+    case "login": return hasLoginAccount(accounts) ? KEY_FILE_LOGIN : LOGIN;
     case "key_file": return KEY_FILE;
     default: return nextLine(accounts, value(accounts, "key_file"));
   }

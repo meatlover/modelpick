@@ -36,7 +36,7 @@ func keyFromAuth(path string) (key string, found bool, err error) {
 		return "", false, err // *PathError: operation, path and errno only
 	}
 	var entries map[string]json.RawMessage
-	if json.Unmarshal(b, &entries) != nil {
+	if json.Unmarshal(b, &entries) != nil || entries == nil { // null decodes to a nil map
 		return "", false, errAuthShape
 	}
 	raw, ok := entries["opencode-go"]

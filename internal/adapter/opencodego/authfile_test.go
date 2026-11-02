@@ -65,6 +65,7 @@ func TestAuthFileCredential(t *testing.T) {
 		{name: "other providers only", body: `{"anthropic":{"type":"oauth","access":"` + fakeAccess + `"}}`},
 		{name: "api key", body: `{"opencode-go":{"type":"api","key":"` + fakeAuthKey + `"}}`, present: true},
 		{name: "array", body: `[]`, errText: notJSONText},
+		{name: "null", body: `null`, errText: notJSONText},
 		{name: "not json", body: `not json`, errText: notJSONText},
 		{name: "oauth entry", body: `{"opencode-go":{"type":"oauth","access":"x"}}`, errText: notAPIKeyText},
 		{name: "oauth entry with a key", body: `{"opencode-go":{"type":"oauth","key":"` + fakeBadEntry + `"}}`, errText: notAPIKeyText},
@@ -164,5 +165,13 @@ func TestAuthFileUnreadable(t *testing.T) {
 	}
 	if msg := st.Err.Error(); msg == notJSONText || msg == notAPIKeyText {
 		t.Fatalf("Err = %q, want the read error", msg)
+	}
+}
+
+func TestAuthFileUnknownPath(t *testing.T) {
+	a := New(Options{})
+	st := a.Credential(adapter.Account{Name: authAcctName, Vendor: authAcctVen})
+	if st.Present || st.Source != "OpenCode login" || st.Err == nil || st.Err.Error() != "OpenCode login path unknown" {
+		t.Errorf("status = %+v", st)
 	}
 }

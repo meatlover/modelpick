@@ -416,7 +416,10 @@ tool at that account, and starts it. modelpick never starts a tool itself.
      `account_ref.key_file`, counting only non-blank lines that do not start
      with `#`. How the key reaches OpenCode is up to the launcher;
      modelpick does not install it. With no `key_file`, run `opencode` as is:
-     it uses its own login.
+     it uses its own login, so unset anything your launcher sets to give
+     opencode a key-file key (for example `OPENCODE_AUTH_CONTENT` or
+     `OPENCODE_API_KEY`), or opencode runs on that key instead of its own
+     login.
 5. Pass `model` and `thinking` with the tool's own flags, and `exec` it.
 
 With `jq`:

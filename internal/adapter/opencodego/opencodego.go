@@ -81,6 +81,9 @@ func (a *Adapter) load(acct adapter.Account) (credential, adapter.CredStatus) {
 		found  bool
 		err    error
 	)
+	if acct.KeyFile == "" && a.o.AuthFile == "" {
+		return credential{}, adapter.CredStatus{Source: "OpenCode login", Err: errors.New("OpenCode login path unknown")}
+	}
 	if acct.KeyFile == "" {
 		source = "OpenCode login in " + a.o.AuthFile
 		key, found, err = keyFromAuth(a.o.AuthFile)
@@ -97,7 +100,8 @@ func (a *Adapter) load(acct adapter.Account) (credential, adapter.CredStatus) {
 	return credential{key: key}, adapter.CredStatus{Present: true, Source: source}
 }
 
-// Credential reports whether the key line exists. A key never expires locally.
+// Credential reports whether the key exists: the key_file line, or the
+// opencode-go entry of OpenCode's auth.json. A key never expires locally.
 func (a *Adapter) Credential(acct adapter.Account) adapter.CredStatus {
 	_, st := a.load(acct)
 	return st
