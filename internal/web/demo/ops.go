@@ -380,6 +380,9 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 		return home, "file: " + home + "/auth.json"
 	}
 	file, _ := f["key_file"].(string)
+	if file == "" {
+		return "OpenCode login", "file: ~/.local/share/opencode/auth.json"
+	}
 	line := "1"
 	if n, ok := f["key_line"].(float64); ok {
 		line = strconv.Itoa(int(n))
@@ -392,7 +395,7 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 func (d *Demo) relabel() {
 	onFile := map[string]int{}
 	for _, a := range d.accounts {
-		if f, ok := a.Fields["key_file"].(string); ok && a.Vendor == "opencode-go" {
+		if f, ok := a.Fields["key_file"].(string); ok && f != "" && a.Vendor == "opencode-go" {
 			onFile[f]++
 		}
 	}

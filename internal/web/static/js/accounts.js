@@ -18,6 +18,8 @@ const FIELDS = {
   codex: [["codex_home", "Codex home"]],
   "opencode-go": [["key_file", "Key file"], ["key_line", "Key line"]],
 };
+const LOGIN = "OpenCode login";
+const KEY_FILE_LOGIN = "Key file";
 const KEY_FILE = "~/.ssh/opencode-go-api";
 
 let host = null;
@@ -86,6 +88,7 @@ function value(accounts, key) {
     case "name": return nextName(accounts, vendor);
     case "config_dir": return nextPath(accounts, "claude", "config_dir", "~/.claude");
     case "codex_home": return nextPath(accounts, "codex", "codex_home", "~/.codex");
+    case "login": return LOGIN;
     case "key_file": return KEY_FILE;
     default: return nextLine(accounts, value(accounts, "key_file"));
   }
@@ -93,9 +96,17 @@ function value(accounts, key) {
 
 // ---------- add ----------
 
+// formFields is the vendor's field keys the form shows: an opencode-go account
+// on OpenCode's own login has none.
+function formFields(accounts) {
+  const keys = FIELDS[vendor];
+  if (vendor === "opencode-go" && value(accounts, "login") === LOGIN) return [];
+  return keys;
+}
+
 function fieldArgs(accounts) {
   const fields = {};
-  for (const [key] of FIELDS[vendor]) {
+  for (const [key] of formFields(accounts)) {
     const v = value(accounts, key);
     fields[key] = key === "key_line" ? (v.trim() === "" ? v : Number(v)) : v;
   }
@@ -131,14 +142,25 @@ function lineInput(accounts) {
 function vendorSelect() {
   return h("select", { "data-key": "vendor", onChange: (e) => {
     vendor = e.target.value;
+    delete drafts.login;
     focusKey = "vendor";
     paint();
   } }, VENDORS.map((v) => h("option", { value: v, selected: v === vendor }, v)));
 }
 
+function loginSelect(accounts) {
+  const cur = value(accounts, "login");
+  return h("select", { "data-key": "login", onChange: (e) => {
+    drafts.login = e.target.value;
+    focusKey = "login";
+    paint();
+  } }, [LOGIN, KEY_FILE_LOGIN].map((o) => h("option", { value: o, selected: o === cur }, o)));
+}
+
 function vendorFields(accounts) {
-  return FIELDS[vendor].map(([key, label]) => labelled(label,
-    key === "key_line" ? lineInput(accounts) : textInput(accounts, key, "mono a-path")));
+  const login = vendor === "opencode-go" ? [labelled("Login", loginSelect(accounts))] : [];
+  return login.concat(formFields(accounts).map(([key, label]) => labelled(label,
+    key === "key_line" ? lineInput(accounts) : textInput(accounts, key, "mono a-path"))));
 }
 
 function addForm(accounts) {

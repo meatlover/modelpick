@@ -758,3 +758,18 @@ func TestDemoNeverReportsAReplacedBinary(t *testing.T) {
 		t.Fatal("the demo reports binary_replaced")
 	}
 }
+
+func TestOpencodeLoginAccount(t *testing.T) {
+	d := newDemo()
+	must(t, d, "account.add", map[string]any{"name": "go-a", "vendor": "opencode-go", "fields": map[string]any{}})
+	for _, x := range d.State().Accounts {
+		if x.Name == "go-a" && (x.Location != "OpenCode login" || x.Source != "file: ~/.local/share/opencode/auth.json") {
+			t.Fatalf("login account shown wrongly: %+v", x)
+		}
+	}
+	for _, x := range d.State().Accounts {
+		if x.Name == "go-2" && x.Source != "key line 2 of 3" {
+			t.Fatalf("login account counted on a key file: %+v", x)
+		}
+	}
+}

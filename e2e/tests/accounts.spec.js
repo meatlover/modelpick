@@ -34,6 +34,30 @@ test("add an account", async ({ page }) => {
   await expect(rows(page).filter({ hasText: "claude-work" })).toHaveCount(1);
 });
 
+test("add an OpenCode login account", async ({ page }) => {
+  const add = page.getByRole("region", { name: "Add account" });
+  await add.getByLabel("Name").fill("go-login");
+  await add.getByLabel("Vendor").selectOption("opencode-go");
+  await add.getByLabel("Login").selectOption("OpenCode login");
+  await expect(add.getByRole("textbox", { name: "Key file" })).toHaveCount(0);
+  await add.getByRole("button", { name: "Add", exact: true }).click();
+  await expectConfig(server.configPath, (c) => c.accounts["go-login"], { vendor: "opencode-go" },
+    "the account has no key file or line");
+  await expect(rows(page).filter({ hasText: "go-login" })).toContainText("OpenCode login");
+});
+
+test("add a key file account", async ({ page }) => {
+  const add = page.getByRole("region", { name: "Add account" });
+  await add.getByLabel("Name").fill("go-file");
+  await add.getByLabel("Vendor").selectOption("opencode-go");
+  await add.getByLabel("Login").selectOption("Key file");
+  await add.getByRole("textbox", { name: "Key file" }).fill("~/.ssh/other-key");
+  await add.getByRole("spinbutton", { name: "Key line" }).fill("4");
+  await add.getByRole("button", { name: "Add", exact: true }).click();
+  await expectConfig(server.configPath, (c) => c.accounts["go-file"],
+    { vendor: "opencode-go", key_file: "~/.ssh/other-key", key_line: 4 }, "both are in the file");
+});
+
 test("remove an unused account", async ({ page }) => {
   await page.getByRole("button", { name: "Remove account claude-spare" }).click();
   await expectConfig(server.configPath, (c) => Object.keys(c.accounts).sort(),
