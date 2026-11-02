@@ -395,7 +395,7 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 func (d *Demo) relabel() {
 	onFile := map[string]int{}
 	for _, a := range d.accounts {
-		if f, ok := a.Fields["key_file"].(string); ok && f != "" && a.Vendor == "opencode-go" {
+		if f, ok := a.Fields["key_file"].(string); ok && a.Vendor == "opencode-go" {
 			onFile[f]++
 		}
 	}

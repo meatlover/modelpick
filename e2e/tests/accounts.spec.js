@@ -2,7 +2,7 @@
 // starts its own server, acts the way a user does and then reads config.json.
 const fs = require("node:fs");
 const { test, expect } = require("@playwright/test");
-const { startServer, login } = require("./helpers");
+const { startServer, login, act } = require("./helpers");
 const { expectConfig, expectUnchanged, readConfig, handEdit } = require("./config");
 
 let server;
@@ -56,6 +56,22 @@ test("add a key file account", async ({ page }) => {
   await add.getByRole("button", { name: "Add", exact: true }).click();
   await expectConfig(server.configPath, (c) => c.accounts["go-file"],
     { vendor: "opencode-go", key_file: "~/.ssh/other-key", key_line: 4 }, "both are in the file");
+});
+
+test("a login account, then a key file account on the defaults", async ({ page }) => {
+  const add = page.getByRole("region", { name: "Add account" });
+  const addBtn = add.getByRole("button", { name: "Add", exact: true });
+  await add.getByLabel("Name").fill("go-login");
+  await act(page, () => addBtn.click());
+  await expect(rows(page).filter({ hasText: "go-login" })).toContainText("fake: go-login");
+  await add.getByLabel("Login").selectOption("Key file");
+  await add.getByLabel("Name").fill("go-file");
+  await act(page, () => addBtn.click());
+  await expectConfig(server.configPath, (c) => c.accounts["go-file"],
+    { vendor: "opencode-go", key_file: "~/.ssh/opencode-go-api", key_line: 3 }, "the defaults are in the file");
+  const row = rows(page).filter({ hasText: "go-file" });
+  await expect(row).toContainText("key line 3 of 3");
+  await expect(rows(page).filter({ hasText: "go-login" })).toContainText("OpenCode login");
 });
 
 test("remove an unused account", async ({ page }) => {

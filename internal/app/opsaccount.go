@@ -30,7 +30,8 @@ func opAccountAdd(doc *core.Doc, a opArgs, _ OpEnv) error {
 		return refuse("Unknown vendor %q", a.Vendor)
 	}
 	acct := core.DocAccount{Vendor: a.Vendor}
-	if a.Vendor == "opencode-go" && blankField(a.Fields["key_file"]) && blankField(a.Fields["key_line"]) {
+	// Both locator fields absent (not blank) is OpenCode's own login.
+	if a.Vendor == "opencode-go" && a.Fields["key_file"] == nil && a.Fields["key_line"] == nil {
 		fields = nil // OpenCode's own login: no locator
 	}
 	for _, f := range fields {
@@ -44,8 +45,6 @@ func opAccountAdd(doc *core.Doc, a opArgs, _ OpEnv) error {
 	doc.Accounts[a.Name] = acct
 	return nil
 }
-
-func blankField(v any) bool { return v == nil || v == "" }
 
 func setAccountField(acct *core.DocAccount, name string, f accountField, v any) error {
 	if v == nil || v == "" {

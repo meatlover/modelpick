@@ -517,6 +517,8 @@ var accountCases = []opCase{
 		want: base.acct("go-3", `{"vendor":"opencode-go","key_file":"~/.ssh/opencode-go-api","key_line":3}`)},
 	{name: "add opencode-go login", doc: base, op: "account.add", args: addAccount("go-3", "opencode-go", `{}`),
 		want: base.acct("go-3", `{"vendor":"opencode-go"}`)},
+	{name: "add opencode-go blank fields", doc: base, op: "account.add",
+		args: addAccount("go-3", "opencode-go", `{"key_file":"","key_line":""}`), refused: "Account go-3 needs a key file"},
 	{name: "add opencode-go key file only", doc: base, op: "account.add",
 		args: addAccount("go-3", "opencode-go", `{"key_file":"~/k"}`), refused: "Account go-3 needs a key line"},
 	{name: "add ignores other vendors' fields", doc: base, op: "account.add",

@@ -30,7 +30,7 @@ func list(in []string) []string { return append([]string{}, in...) }
 func wireAccounts(doc *core.Doc, sources map[string]string) []web.Account {
 	onFile := map[string]int{}
 	for _, a := range doc.Accounts {
-		if a.Vendor == "opencode-go" && a.KeyFile != "" {
+		if a.Vendor == "opencode-go" {
 			onFile[a.KeyFile]++
 		}
 	}

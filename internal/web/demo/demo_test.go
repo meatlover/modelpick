@@ -762,14 +762,14 @@ func TestDemoNeverReportsAReplacedBinary(t *testing.T) {
 func TestOpencodeLoginAccount(t *testing.T) {
 	d := newDemo()
 	must(t, d, "account.add", map[string]any{"name": "go-a", "vendor": "opencode-go", "fields": map[string]any{}})
+	got := map[string]web.Account{}
 	for _, x := range d.State().Accounts {
-		if x.Name == "go-a" && (x.Location != "OpenCode login" || x.Source != "file: ~/.local/share/opencode/auth.json") {
-			t.Fatalf("login account shown wrongly: %+v", x)
-		}
+		got[x.Name] = x
 	}
-	for _, x := range d.State().Accounts {
-		if x.Name == "go-2" && x.Source != "key line 2 of 3" {
-			t.Fatalf("login account counted on a key file: %+v", x)
-		}
+	if a, ok := got["go-a"]; !ok || a.Location != "OpenCode login" || a.Source != "file: ~/.local/share/opencode/auth.json" {
+		t.Fatalf("login account shown wrongly (found %v): %+v", ok, a)
+	}
+	if a, ok := got["go-2"]; !ok || a.Source != "key line 2 of 3" {
+		t.Fatalf("login account counted on a key file (found %v): %+v", ok, a)
 	}
 }
