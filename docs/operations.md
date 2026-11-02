@@ -16,11 +16,11 @@ logins are renewed, and what each `doctor` message means. Install it first
 | Claude: Keychain item `Claude Code-credentials[-<8 hex>]`, else `<config_dir>/.credentials.json` | reads only | The Claude Code login. |
 | Codex: `<codex_home>/auth.json`, `<codex_home>/models_cache.json` | reads only | The Codex login; the model list. |
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
-| OpenCode Go login: `$XDG_DATA_HOME/opencode/auth.json` (when absolute), else `~/.local/share/opencode/auth.json` | reads only | OpenCode's own login. Only the `opencode-go` entry is decoded; the rest of the file is not used. |
+| OpenCode Go login: `$XDG_DATA_HOME/opencode/auth.json` (when absolute), else `~/.local/share/opencode/auth.json` | reads only | OpenCode's own login. The file is read whole; only the `opencode-go` entry is decoded. Other entries, including other providers' refresh tokens, are never decoded, used, kept, logged or sent. |
 
 Credentials are held in memory for the one request that needs them. They are
 never written to the cache, printed, or logged. modelpick never writes a
-vendor file and never handles a refresh token; see [renewal](#renewal).
+vendor file and never decodes, uses or keeps a refresh token; see [renewal](#renewal).
 
 ### State files
 

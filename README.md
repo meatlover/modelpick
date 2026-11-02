@@ -110,12 +110,14 @@ and a first config are in [getting started](docs/getting-started.md).
 Read this before you use modelpick.
 
 - modelpick reads each tool's stored login (Claude Code's Keychain item or
-  credentials file, Codex's `auth.json`, your OpenCode Go key file or OpenCode's own `auth.json`)
-  **in memory**, only to call that vendor's usage endpoint. From OpenCode's
-  `auth.json` it decodes only the `opencode-go` entry; the other entries
-  (other providers' tokens) are not decoded, kept, logged or sent.
+  credentials file, Codex's `auth.json`, your OpenCode Go key file or
+  OpenCode's own `auth.json`) **in memory**, only to call that vendor's usage
+  endpoint. OpenCode's `auth.json` is read whole, but only its `opencode-go`
+  entry is decoded; the other entries, including other providers' refresh
+  tokens, are never decoded, used, kept, logged or sent.
 - It **stores no credentials**: not in its cache, its output or its logs.
-- It **never writes any vendor file** and never handles a refresh token. When a
+- It **never writes any vendor file** and never decodes, uses or keeps a refresh
+  token. When a
   usage call is due and a Claude or Codex login has expired, it asks the
   vendor's own tool to renew it: `claude -p` with a tiny prompt (a few tokens
   of that Claude subscription, about 10 seconds) or `codex app-server` (no
