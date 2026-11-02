@@ -67,6 +67,7 @@ func TestAuthFileCredential(t *testing.T) {
 		{name: "array", body: `[]`, errText: notJSONText},
 		{name: "not json", body: `not json`, errText: notJSONText},
 		{name: "oauth entry", body: `{"opencode-go":{"type":"oauth","access":"x"}}`, errText: notAPIKeyText},
+		{name: "oauth entry with a key", body: `{"opencode-go":{"type":"oauth","key":"` + fakeBadEntry + `"}}`, errText: notAPIKeyText},
 		{name: "empty key", body: `{"opencode-go":{"type":"api","key":""}}`, errText: notAPIKeyText},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,5 +153,16 @@ func TestCheckAbsentAuthFile(t *testing.T) {
 	want := "no credential: OpenCode login in " + p
 	if len(got) != 1 || got[0].Severity != adapter.SeverityError || got[0].Message != want {
 		t.Fatalf("findings = %+v, want one error %q", got, want)
+	}
+}
+
+func TestAuthFileUnreadable(t *testing.T) {
+	p := t.TempDir() // a directory: ReadFile fails with something other than ErrNotExist
+	st := New(Options{AuthFile: p}).Credential(adapter.Account{Name: authAcctName, Vendor: authAcctVen})
+	if st.Present || st.Err == nil {
+		t.Fatalf("status = %+v, want absent with an error", st)
+	}
+	if msg := st.Err.Error(); msg == notJSONText || msg == notAPIKeyText {
+		t.Fatalf("Err = %q, want the read error", msg)
 	}
 }
