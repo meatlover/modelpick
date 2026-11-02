@@ -509,6 +509,11 @@ select:not(:disabled):hover {
   color: var(--warn-note);
 }
 
+.chip-full {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 /* ---------- toast ---------- */
 
 #toasts {
@@ -701,17 +706,34 @@ body[data-readonly="1"] main :is([draggable="true"], [tabindex]):not(:has(button
   background: var(--fill);
 }
 
-.u-win.is-full .bar-fill {
+/* One window per account is marked (usage.js marked): near the limit
+   orange, full red, with its percent and reset time in the same colour;
+   the account's other windows are dimmed. */
+.u-win.is-warn .bar-fill {
   background: var(--paint);
 }
 
-.u-win.is-limited .bar-fill {
-  background: var(--usage-other);
+.u-win.is-full .bar-fill {
+  background: var(--danger);
 }
 
-.u-win.is-next-reset .u-left,
-.u-win.is-next-reset .u-reset {
+.u-win.is-warn :is(.u-pct, .u-left, .u-reset) {
   color: var(--paint);
+  font-weight: 600;
+}
+
+.u-win.is-full :is(.u-pct, .u-left, .u-reset) {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.u-win.is-dim .bar-fill {
+  background: var(--usage-dim);
+}
+
+.u-win.is-dim :is(.u-label, .u-pct, .u-left, .u-reset) {
+  color: var(--usage-dim-text);
+  font-weight: 400;
 }
 
 .u-age {
