@@ -1,6 +1,6 @@
 // Package opencodego reads OpenCode Go usage through the zen usage endpoint,
-// using a key from a key file the owner already keeps. It never writes a
-// vendor file.
+// using a key from a key file the owner already keeps, or else the one in
+// OpenCode's own login (auth.json). It never writes a vendor file.
 package opencodego
 
 import (
@@ -35,6 +35,7 @@ type Options struct {
 	Run       platform.Runner
 	LookPath  platform.LookPathFunc
 	UserAgent string // default "modelpick"; the real version comes from app.DefaultDeps
+	AuthFile  string // OpenCode's auth.json, read when an account has no key_file
 }
 
 // Adapter implements adapter.Adapter for OpenCode Go.
@@ -70,13 +71,23 @@ func (a *Adapter) Vendor() string { return "opencode-go" }
 // Authorization header of the usage request.
 type credential struct{ key string }
 
-// load reads the key line. The returned status never holds the key.
+// load reads the key: the key_file line when one is configured, otherwise the
+// opencode-go entry of OpenCode's auth.json. The returned status never holds
+// the key.
 func (a *Adapter) load(acct adapter.Account) (credential, adapter.CredStatus) {
+	var (
+		source string
+		key    string
+		found  bool
+		err    error
+	)
 	if acct.KeyFile == "" {
-		return credential{}, adapter.CredStatus{Source: "no key_file configured"}
+		source = "OpenCode login in " + a.o.AuthFile
+		key, found, err = keyFromAuth(a.o.AuthFile)
+	} else {
+		source = fmt.Sprintf("key file %s line %d", acct.KeyFile, acct.KeyLine)
+		key, found, err = KeyAt(acct.KeyFile, acct.KeyLine)
 	}
-	source := fmt.Sprintf("key file %s line %d", acct.KeyFile, acct.KeyLine)
-	key, found, err := KeyAt(acct.KeyFile, acct.KeyLine)
 	if err != nil {
 		return credential{}, adapter.CredStatus{Source: source, Err: err}
 	}
