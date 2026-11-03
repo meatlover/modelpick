@@ -75,7 +75,7 @@ func TestUsageFixture(t *testing.T) {
 	}
 	w := r.Windows[0]
 	reset := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
-	if w.Label != "premium_interactions" || w.UsedPct < 0.39 || w.UsedPct > 0.41 ||
+	if w.Label != "premium_interactions" || w.UsedPct != 0.4 ||
 		!w.ResetsAt.Equal(reset) || w.Length != 30*24*time.Hour || w.ScopeModelID != "" || w.ScopeModelName != "" {
 		t.Fatalf("window = %+v", w)
 	}
@@ -216,7 +216,8 @@ func TestUsageStatuses(t *testing.T) {
 }
 
 func TestUsageNoCredentialMakesNoCall(t *testing.T) {
-	for name, auth := range map[string]string{"missing file": "", "no entry": `{}`, "bad type": `{"github-copilot":{"type":"api"}}`} {
+	for name, auth := range map[string]string{"missing file": "", "no entry": `{}`, "bad type": `{"github-copilot":{"type":"api"}}`,
+		"both tokens empty": `{"github-copilot":{"type":"oauth","refresh":"","access":""}}`} {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t, serveBody(200, fixtureBody(t)), auth)
 			if _, err := f.a.Usage(context.Background(), adapter.Account{}); err == nil {

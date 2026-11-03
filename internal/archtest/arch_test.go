@@ -22,12 +22,11 @@ import (
 // its imports follow whatever the app, cli, web/live and e2e suites need
 // next.
 var allowed = map[string][]string{
-	"internal/pathx":           {},
-	"internal/platform":        {"internal/pathx"},
-	"internal/adapter":         {},
-	"internal/adapter/copilot": {"internal/adapter", "internal/platform"},
-	"internal/core":            {"internal/adapter", "internal/pathx"},
-	"internal/usage":           {"internal/adapter", "internal/platform"},
+	"internal/pathx":    {},
+	"internal/platform": {"internal/pathx"},
+	"internal/adapter":  {},
+	"internal/core":     {"internal/adapter", "internal/pathx"},
+	"internal/usage":    {"internal/adapter", "internal/platform"},
 	"internal/app": {"internal/core", "internal/usage", "internal/adapter", "internal/adapter/claude",
 		"internal/adapter/codex", "internal/adapter/copilot", "internal/adapter/opencodego", "internal/platform",
 		"internal/pathx"},

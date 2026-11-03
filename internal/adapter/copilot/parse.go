@@ -44,7 +44,8 @@ func parseUsage(body []byte) (adapter.Reading, error) {
 	case s.PercentRemaining == nil:
 		return adapter.Reading{}, shapeErr(premiumKey + " has no percent_remaining")
 	default:
-		w.UsedPct = math.Min(100, math.Max(0, 100-*s.PercentRemaining))
+		// The API reports one decimal; 100-x in float64 leaves noise like 0.4000000000000057.
+		w.UsedPct = math.Round(math.Min(100, math.Max(0, 100-*s.PercentRemaining))*10) / 10
 	}
 	if resets, err := time.Parse("2006-01-02", u.QuotaResetDate); err == nil {
 		w.ResetsAt = resets.UTC()
