@@ -66,6 +66,7 @@ func TestUsageErrorMessages(t *testing.T) {
 		{"claude", wrapped(adapter.ErrUnauthorized), "usage endpoint returned HTTP 401; log in to Claude Code with this account"},
 		{"codex", wrapped(adapter.ErrUnauthorized), "usage endpoint returned HTTP 401; log in to Codex with this account"},
 		{"opencode-go", wrapped(adapter.ErrUnauthorized), "usage endpoint returned HTTP 401; log in to OpenCode with this account"},
+		{"copilot", wrapped(adapter.ErrUnauthorized), "usage endpoint returned HTTP 401; log in to OpenCode (GitHub Copilot) with this account"},
 		{"claude", adapter.ErrTokenExpired, "token expired; open Claude Code with this account to refresh it"},
 		{"codex", adapter.ErrTokenExpired, "token expired; open Codex with this account to refresh it"},
 		{"claude", &adapter.HTTPError{Status: 503}, "usage endpoint returned HTTP 503"},
@@ -83,7 +84,7 @@ func TestUsageErrorMessages(t *testing.T) {
 
 func TestDefaultDepsAdaptersKeyedByVendor(t *testing.T) {
 	d := app.DefaultDeps("test")
-	want := []string{"claude", "codex", "opencode-go"}
+	want := []string{"claude", "codex", "opencode-go", "copilot"}
 	if len(d.Adapters) != len(want) {
 		t.Fatalf("adapters = %v, want %v", d.Adapters, want)
 	}

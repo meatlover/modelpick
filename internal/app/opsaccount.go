@@ -16,6 +16,8 @@ var vendorFields = map[string][]accountField{
 	"claude":      {{"config_dir", "a config dir"}},
 	"codex":       {{"codex_home", "a Codex home"}},
 	"opencode-go": {{"key_file", "a key file"}, {"key_line", "a key line"}},
+	// Copilot reads OpenCode's own login: the vendor is known, with no locator.
+	"copilot": nil,
 }
 
 // opAccountAdd stores the vendor's locator fields as typed (a "~" path stays

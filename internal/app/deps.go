@@ -15,6 +15,7 @@ import (
 	"github.com/meatlover/modelpick/internal/adapter"
 	"github.com/meatlover/modelpick/internal/adapter/claude"
 	"github.com/meatlover/modelpick/internal/adapter/codex"
+	"github.com/meatlover/modelpick/internal/adapter/copilot"
 	"github.com/meatlover/modelpick/internal/adapter/opencodego"
 	"github.com/meatlover/modelpick/internal/core"
 	"github.com/meatlover/modelpick/internal/platform"
@@ -56,6 +57,9 @@ func DefaultDeps(version string) Deps {
 			codex.New(codex.Options{HTTP: client, Now: time.Now, LookPath: exec.LookPath, UserAgent: ua, Version: version}),
 			opencodego.New(opencodego.Options{HTTP: client, Now: time.Now, AuthFile: opencodego.AuthPath(os.Getenv, home),
 				Run: platform.ExecRunner, LookPath: exec.LookPath, UserAgent: ua}),
+			// Copilot sends its own User-Agent (the Copilot client's).
+			copilot.New(copilot.Options{HTTP: client, Now: time.Now, AuthFile: opencodego.AuthPath(os.Getenv, home),
+				Run: platform.ExecRunner, LookPath: exec.LookPath}),
 		),
 	}
 }

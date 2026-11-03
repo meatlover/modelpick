@@ -129,6 +129,24 @@ func TestEnvOpencodeLoginUnsetsKeyRef(t *testing.T) {
 	}
 }
 
+// Copilot exports no vendor variable: only the standing unsets remain.
+func TestEnvCopilotExportsNoVendorVar(t *testing.T) {
+	cfg := `{"version":1,
+	"accounts":{"cp":{"vendor":"copilot"}},
+	"profiles":{"p":[{"account":"cp","model":"gpt-5","thinking":null}]}}`
+	cp := apptest.NewFake("copilot")
+	cp.Readings["cp"] = apptest.ClaudeReading(1, 1)
+	out, _, code := run(apptest.NewDeps(t, cfg, cp), "env", "p")
+	if code != 0 || !strings.HasSuffix(out, "unset MODELPICK_KEY_FILE\nunset MODELPICK_KEY_LINE\n") {
+		t.Fatalf("exit %d; stdout\n%s", code, out)
+	}
+	for _, v := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "MODELPICK_KEY_FILE"} {
+		if strings.Contains(out, "export "+v) {
+			t.Errorf("copilot env exports %s:\n%s", v, out)
+		}
+	}
+}
+
 // wantEnvQuotedDir is spec §10's quoting case: a config_dir with a quote
 // and a space.
 const wantEnvQuotedDir = `export MODELPICK_STATUS='ok'

@@ -12,6 +12,7 @@ var toolNames = map[string]string{
 	"claude":      "Claude Code",
 	"codex":       "Codex",
 	"opencode-go": "OpenCode",
+	"copilot":     "OpenCode (GitHub Copilot)",
 }
 
 // UsageError rewrites err as what the user should do about it, keeping err
