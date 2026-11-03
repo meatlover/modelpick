@@ -290,7 +290,7 @@ func doctorMessages(t *testing.T) []msgTemplate {
 	t.Helper()
 	var found []msgTemplate
 	fset := token.NewFileSet()
-	dirs := []string{"../app", "../adapter", "../adapter/claude", "../adapter/codex", "../adapter/opencodego"}
+	dirs := []string{"../app", "../adapter", "../adapter/claude", "../adapter/codex", "../adapter/copilot", "../adapter/opencodego"}
 	for _, dir := range dirs {
 		files := packageFiles(t, fset, dir)
 		consts := stringConsts(files)
