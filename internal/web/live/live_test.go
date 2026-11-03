@@ -120,6 +120,7 @@ func newFixtureRenewing(t *testing.T, renewing bool) *fixture {
 			return []byte("opencode-go/deepseek-v4.1-flash\n"), nil
 		},
 		LookPath: func(string) (string, error) { return "/usr/bin/opencode", nil }})
+	f.d.Adapters["copilot"] = apptest.NewFake("copilot") // the contract adds a copilot account
 	f.path = f.d.Getenv("MODELPICK_CONFIG")
 	apptest.WriteStored(t, f.d, "claude-main", claudeStored)
 	return f

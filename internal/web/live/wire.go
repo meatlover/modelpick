@@ -43,6 +43,8 @@ func wireAccounts(doc *core.Doc, sources map[string]string) []web.Account {
 			w.Fields["config_dir"], w.Location = a.ConfigDir, a.ConfigDir
 		case "codex":
 			w.Fields["codex_home"], w.Location = a.CodexHome, a.CodexHome
+		case "copilot":
+			w.Location = "OpenCode login (GitHub Copilot)"
 		case "opencode-go":
 			if a.KeyFile == "" {
 				w.Location = "OpenCode login"

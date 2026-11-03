@@ -71,6 +71,7 @@ func Run(t *testing.T, h Harness) {
 		{"StateListsAlgorithms", stateAlgorithms},
 		{"GroupScenarios", groupScenarios},
 		{"GroupMemberAccount", memberAddAccount},
+		{"AddCopilotAccount", addCopilot},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, h) })

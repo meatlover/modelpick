@@ -378,6 +378,8 @@ func accountLocation(vendor string, f map[string]any, onFile int) (loc, src stri
 	case "codex":
 		home, _ := f["codex_home"].(string)
 		return home, "file: " + home + "/auth.json"
+	case "copilot":
+		return "OpenCode login (GitHub Copilot)", "file: ~/.local/share/opencode/auth.json"
 	}
 	file, _ := f["key_file"].(string)
 	if file == "" {
@@ -410,7 +412,7 @@ func (d *Demo) opAccountAdd(a opArgs) error {
 	if err := d.checkNew("account", a.Name, d.hasAccount); err != nil {
 		return err
 	}
-	if a.Vendor != "claude" && a.Vendor != "codex" && a.Vendor != "opencode-go" {
+	if a.Vendor != "claude" && a.Vendor != "codex" && a.Vendor != "opencode-go" && a.Vendor != "copilot" {
 		return refuse("Unknown vendor %q", a.Vendor)
 	}
 	if a.Fields == nil {

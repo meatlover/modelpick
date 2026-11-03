@@ -91,6 +91,7 @@ func (d *Demo) buildAccounts() {
 		acct("codex-main", "codex", "~/.codex", "file: ~/.codex/auth.json",
 			map[string]any{"codex_home": "~/.codex"}),
 		goAcct(1), goAcct(2), goAcct(3),
+		acct("copilot-main", "copilot", "", "", map[string]any{}),
 	}
 	d.relabel()
 }
@@ -109,6 +110,8 @@ func vendorModels(vendor string) []web.Model {
 			"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-5-5")
 	case "codex":
 		return mk([]string{"low", "medium", "high", "xhigh"}, "gpt-6.1-sol", "gpt-6.1-sol-mini")
+	case "copilot":
+		return mk(nil, "github-copilot/gpt-5.1", "github-copilot/claude-sonnet-4.5")
 	}
 	return mk(nil, "opencode-go/deepseek-v4.1-flash", "opencode-go/deepseek-v4.1")
 }
@@ -121,6 +124,8 @@ func vendorWindows(vendor, model string) []string {
 		return []string{"5h", "7d"}
 	case vendor == "codex":
 		return []string{"7d"}
+	case vendor == "copilot":
+		return []string{"30d"}
 	}
 	return []string{"5h", "7d", "30d"}
 }
@@ -210,6 +215,7 @@ func (d *Demo) buildReadings(t0 time.Time) {
 		"codex-main":       mk(12*time.Minute, "ok", true, w("7d", 7*day, 41, at(2*day+50*time.Minute))),
 		"go-1":             mk(9*time.Minute, "ok", true, goWin(0, 62, 95)...),
 		"go-2":             mk(9*time.Minute, "ok", true, goWin(3, 70, 96)...),
+		"copilot-main":     mk(20*time.Minute, "ok", true, w("30d", 30*day, 37, at(11*day+4*time.Hour))),
 		"go-3": mk(38*time.Minute, "rate-limited until "+at(32*time.Minute).UTC().Format(time.RFC3339),
 			false, goWin(0, 100, 81)...),
 	}
@@ -227,6 +233,8 @@ func freshWindows(vendor string, t0 time.Time) []window {
 		fable := w("7d Fable", 7*day, 0)
 		fable.scope = str("claude-fable-5-1")
 		return []window{w("5h", 5*time.Hour, 2), w("7d", 7*day, 1), fable}
+	case "copilot":
+		return []window{w("30d", 30*day, 1)}
 	case "codex":
 		return []window{w("7d", 7*day, 1)}
 	}

@@ -72,7 +72,7 @@ func profileOf(t *testing.T, d *Demo, name string) web.Profile {
 
 func TestFixtureCounts(t *testing.T) {
 	s := newDemo().State()
-	if len(s.Accounts) != 6 || len(s.Profiles) != 2 || len(s.Schedules) != 1 {
+	if len(s.Accounts) != 7 || len(s.Profiles) != 2 || len(s.Schedules) != 1 {
 		t.Fatalf("got %d accounts, %d profiles, %d schedules", len(s.Accounts), len(s.Profiles), len(s.Schedules))
 	}
 	if s.DefaultCap != 95 || len(s.Profiles[0].Choices) != 4 {
@@ -371,7 +371,7 @@ func TestRefreshRules(t *testing.T) {
 
 func TestUsageFixture(t *testing.T) {
 	rows := newDemo().Usage()
-	if len(rows) != 6 || *rows[0].ReadingAgeSeconds != 240 || len(rows[1].Windows) != 0 {
+	if len(rows) != 7 || *rows[0].ReadingAgeSeconds != 240 || len(rows[1].Windows) != 0 {
 		t.Fatalf("rows: %+v", rows)
 	}
 	w := rows[0].Windows[2]

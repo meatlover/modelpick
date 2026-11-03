@@ -10,13 +10,14 @@ import { removalPlan } from "./removal.js";
 
 export const uses = ["state", "doctor"];
 
-const VENDORS = ["claude", "codex", "opencode-go"];
-const PREFIX = { claude: "claude", codex: "codex", "opencode-go": "go" };
+const VENDORS = ["claude", "codex", "opencode-go", "copilot"];
+const PREFIX = { claude: "claude", codex: "codex", "opencode-go": "go", copilot: "copilot" };
 // Per vendor: the field keys in form order, with the label shown.
 const FIELDS = {
   claude: [["config_dir", "Config dir"]],
   codex: [["codex_home", "Codex home"]],
   "opencode-go": [["key_file", "Key file"], ["key_line", "Key line"]],
+  copilot: [],
 };
 const LOGIN = "OpenCode login";
 const KEY_FILE_LOGIN = "Key file";

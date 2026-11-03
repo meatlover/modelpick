@@ -32,7 +32,7 @@ test("every tab loads", async ({ page }) => {
   await expect(page.getByRole("link", { name: "deepseek-peak", exact: true })).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("group", { name: "schedule of deepseek-peak" })).toBeVisible();
   await nav(page, "Accounts");
-  await expect(accountRows(page)).toHaveCount(6);
+  await expect(accountRows(page)).toHaveCount(7);
 });
 
 test("Profiles: the default cap changes", async ({ page }) => {
@@ -63,7 +63,7 @@ test("Accounts: add an account", async ({ page }) => {
   await add.getByLabel("Config dir").fill("~/.claude-work");
   await add.getByRole("button", { name: "Add", exact: true }).click();
   await expect(accountRows(page).filter({ hasText: "claude-work" })).toHaveCount(1);
-  await expect(accountRows(page)).toHaveCount(7);
+  await expect(accountRows(page)).toHaveCount(8);
 });
 
 test("refresh shows a new age", async ({ page }) => {
