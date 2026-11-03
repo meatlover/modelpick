@@ -24,7 +24,7 @@ func TestCredentialFromAuthFile(t *testing.T) {
 		{"both empty", p(`{"github-copilot":{"type":"oauth","refresh":"","access":""}}`), false, false, "", "opencode auth login"},
 		{"entry missing", p(`{"opencode-go":{"type":"api","key":"k"}}`), false, false, "", "opencode auth login"},
 		{"file missing", nil, false, false, "", "opencode auth login"},
-		{"wrong type", p(`{"github-copilot":{"type":"api","key":"gho_SECRETSECRET"}}`), false, true, "", ""},
+		{"wrong type", p(`{"github-copilot":{"type":"api","key":"gho_SECRETSECRET"}}`), false, false, "", "opencode auth login"},
 		{"malformed", p(`{"github-copilot": gho_SECRETSECRET`), false, true, "", ""},
 	}
 	for _, c := range cases {

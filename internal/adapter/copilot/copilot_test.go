@@ -247,4 +247,22 @@ func TestCheck(t *testing.T) {
 	if len(got) != 1 || got[0].Severity != adapter.SeverityError || !strings.Contains(got[0].Message, "opencode auth login") {
 		t.Fatalf("no-credential findings = %+v", got)
 	}
+	m := newFixture(t, serveBody(200, "{}"), `{"github-copilot": gho_SECRETSECRET`)
+	m.a.o.LookPath = func(string) (string, error) { return "/bin/opencode", nil }
+	got = m.a.Check(context.Background(), adapter.Account{Name: "c"})
+	if len(got) != 1 || got[0].Severity != adapter.SeverityError || !strings.Contains(got[0].Message, "credential unreadable") ||
+		strings.Contains(got[0].Message, "SECRET") {
+		t.Fatalf("malformed-auth findings = %+v", got)
+	}
+}
+
+func TestUsageCredentialErrorLeaksNoToken(t *testing.T) {
+	f := newFixture(t, serveBody(200, fixtureBody(t)), `{"github-copilot": gho_SECRETSECRET`)
+	_, err := f.a.Usage(context.Background(), adapter.Account{})
+	if err == nil || !strings.Contains(err.Error(), "credential") || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("err = %v", err)
+	}
+	if f.hits.Load() != 0 {
+		t.Fatalf("server hit %d times", f.hits.Load())
+	}
 }

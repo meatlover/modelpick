@@ -12,8 +12,7 @@ import (
 const loginHint = "run `opencode auth login` and pick GitHub Copilot"
 
 var (
-	errAuthShape  = errors.New("auth.json is not the expected JSON")
-	errAuthNotOAu = errors.New("github-copilot entry in auth.json is not an OAuth login")
+	errAuthShape = errors.New("auth.json is not the expected JSON")
 )
 
 // credential is the in-memory GitHub token. It never leaves this package
@@ -69,8 +68,11 @@ func tokenFromAuth(path string) (token string, found bool, err error) {
 		Refresh string `json:"refresh"`
 		Access  string `json:"access"`
 	}
-	if json.Unmarshal(raw, &e) != nil || e.Type != "oauth" {
-		return "", false, errAuthNotOAu
+	if json.Unmarshal(raw, &e) != nil {
+		return "", false, errAuthShape
+	}
+	if e.Type != "oauth" {
+		return "", false, nil // not a GitHub login: same as no entry
 	}
 	if e.Refresh != "" {
 		return e.Refresh, true, nil
