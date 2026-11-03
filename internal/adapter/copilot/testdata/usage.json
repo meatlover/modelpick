@@ -1,0 +1,12 @@
+{
+  "login": "REDACTED",
+  "access_type_sku": "copilot_for_business_seat_quota",
+  "copilot_plan": "business",
+  "quota_reset_date": "2026-12-01",
+  "quota_reset_date_utc": "2026-12-01T00:00:00.000Z",
+  "quota_snapshots": {
+    "chat": {"entitlement": 0, "overage_count": 0, "overage_permitted": false, "percent_remaining": 100, "quota_id": "chat", "quota_remaining": 0, "remaining": 0, "unlimited": true},
+    "completions": {"entitlement": 0, "overage_count": 0, "overage_permitted": false, "percent_remaining": 100, "quota_id": "completions", "quota_remaining": 0, "remaining": 0, "unlimited": true},
+    "premium_interactions": {"entitlement": 20000, "overage_count": 0, "overage_permitted": true, "percent_remaining": 99.6, "quota_id": "premium_interactions", "quota_remaining": 19923, "remaining": 19923, "unlimited": false}
+  }
+}
