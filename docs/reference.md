@@ -81,7 +81,8 @@ config error or a bad argument.
 `ls models` lists the models each account's subscription offers, with their
 thinking values: Claude from a list built into modelpick, Codex from
 `<codex_home>/models_cache.json`, OpenCode Go by running
-`opencode models opencode-go`. It makes no usage call. A listing that fails is
+`opencode models opencode-go`, GitHub Copilot by running
+`opencode models github-copilot`. It makes no usage call. A listing that fails is
 a row `error: <message>`; the exit code is still 0.
 
 ### `modelpick config`
@@ -172,7 +173,7 @@ fields, in this order, one per line:
 |---|---|---|
 | `status` | string | `ok`, `ok_with_errors` or `failed`; see [status values](#status-values). |
 | `profile` | string | The profile asked for, `""` when none could be read from the arguments. |
-| `vendor` | string or null | `claude`, `codex` or `opencode-go`; null when `failed`. |
+| `vendor` | string or null | `claude`, `codex`, `opencode-go` or `copilot`; null when `failed`. |
 | `account` | string or null | The account's name in the config. |
 | `model` | string or null | The model, exactly as written in the config. |
 | `thinking` | string or null | The thinking value as written; null for none, and when `failed`. |
@@ -209,6 +210,7 @@ Accounts hold no secret, so it is safe to print:
 | `claude` | `{"vendor": "claude", "config_dir": "/home/you/.claude"}` |
 | `codex` | `{"vendor": "codex", "codex_home": "/home/you/.codex"}` |
 | `opencode-go` | `{"vendor": "opencode-go", "key_file": "/home/you/.config/opencode/keys", "key_line": 2}`, or `{"vendor": "opencode-go"}` for OpenCode's own login |
+| `copilot` | `{"vendor": "copilot"}` (no fields; the login is OpenCode's) |
 
 ### `load_balance`
 
@@ -412,6 +414,8 @@ tool at that account, and starts it. modelpick never starts a tool itself.
    - `claude`: set `CLAUDE_CONFIG_DIR` to `account_ref.config_dir` (or leave it
      unset for `~/.claude`);
    - `codex`: set `CODEX_HOME` to `account_ref.codex_home`;
+   - `copilot`: run `opencode` as is with the chosen model; it uses its own
+     GitHub Copilot login, and `account_ref` holds only `vendor`.
    - `opencode-go`: the key is line `account_ref.key_line` of
      `account_ref.key_file`, counting only non-blank lines that do not start
      with `#`. How the key reaches OpenCode is up to the launcher;

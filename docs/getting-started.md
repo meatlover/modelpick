@@ -125,7 +125,9 @@ Then edit it:
    `CLAUDE_CONFIG_DIR` you log in with, `~/.claude` by default), `codex_home`
    for Codex (`~/.codex` by default), `key_file` and `key_line` for an
    OpenCode Go key in a file. An OpenCode Go account that uses OpenCode's own
-   login needs neither: `{ "vendor": "opencode-go" }`.
+   login needs neither: `{ "vendor": "opencode-go" }`. A GitHub Copilot
+   account takes no fields: `{ "vendor": "copilot" }` (its login is
+   OpenCode's, from `opencode auth login`).
 2. Under `profiles`, write one profile per kind of work, each a list of
    choices in order of preference. End each profile with a choice that has no
    `cap`, so it always has an answer.

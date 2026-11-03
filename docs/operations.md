@@ -17,6 +17,7 @@ logins are renewed, and what each `doctor` message means. Install it first
 | Codex: `<codex_home>/auth.json`, `<codex_home>/models_cache.json` | reads only | The Codex login; the model list. |
 | OpenCode Go: your `key_file` | reads only | One API key per line. |
 | OpenCode Go login: `$XDG_DATA_HOME/opencode/auth.json` (when absolute), else `~/.local/share/opencode/auth.json` | reads only | OpenCode's own login. The file is read whole; only the `opencode-go` entry is decoded. Other entries, including other providers' refresh tokens, are never decoded, used, kept, logged or sent. |
+| GitHub Copilot login: the same `auth.json` | reads only | OpenCode's own login. Only the `github-copilot` entry is decoded; its long-lived GitHub OAuth token (`refresh`, else `access`) is the credential. |
 
 Credentials are held in memory for the one request that needs them. They are
 never written to the cache, printed, or logged. modelpick never writes a
@@ -48,13 +49,23 @@ modelpick reaches the network only for usage calls, one HTTPS `GET` per call:
 | claude | `https://api.anthropic.com/api/oauth/usage` | `Authorization: Bearer <access token>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: claude-cli/<version> (external, cli)` |
 | codex | `https://chatgpt.com/backend-api/wham/usage` | `Authorization: Bearer <access token>`, `ChatGPT-Account-Id: <account id from auth.json>`, `User-Agent: modelpick/<version>` |
 | opencode-go | `https://opencode.ai/zen/go/v1/usage` | `Authorization: Bearer <key>`, `User-Agent: modelpick/<version>` |
+| copilot | `https://api.github.com/copilot_internal/user` | `Authorization: token <GitHub OAuth token>`, `User-Agent: GitHubCopilotChat/0.26.7` |
 
 The Claude `User-Agent` is the one Claude Code itself sends, with the version
 that `claude --version` prints (`2.1.0` if that fails). `<version>` for the
 other two is modelpick's release number: that release's at a release tag, the
 next one with `-dev` between releases.
 
-The endpoints are undocumented and may change. Each call has a 10-second
+The endpoints are undocumented and may change. GitHub's `copilot_internal`
+endpoint is internal: a persistent `403` or `404` from it (the error says
+`the copilot_internal endpoint may have changed`) likely means GitHub changed
+it, not that your login is bad. A `401` means the GitHub token was revoked:
+run `opencode auth login` again. modelpick sends the long-lived GitHub OAuth
+token from OpenCode's `auth.json` and never does the short-lived Copilot
+token exchange, so a Copilot account has no renewal. Its one window is
+`premium_interactions`: used is 100 minus `percent_remaining`, it resets on
+`quota_reset_date` (the 1st of the month), and its length is the calendar
+month ending there. Each call has a 10-second
 timeout. Redirects are never followed, so a login header cannot be sent to
 another host; a 3xx is reported as `usage endpoint returned HTTP <n>`. A
 response modelpick does not understand makes that account's usage
@@ -83,6 +94,7 @@ Before any of these usage calls, an expired Claude or Codex login is first
 | `claude -p "Reply with exactly one word: ok" --model haiku …` | A Claude usage call is due and the access token has expired. | Claude Code renews its own login; costs a few tokens of that subscription, about 10 seconds. |
 | `codex app-server` | A Codex usage call is due and the access token has expired. | Codex renews its own login and rewrites `auth.json`; no quota, about 3 seconds. |
 | `opencode models opencode-go` | `doctor`, `ls models`, and the UI once per run per account (10-second timeout). | Lists OpenCode Go models; it may contact OpenCode. |
+| `opencode models github-copilot` | The same, for a Copilot account. | Lists GitHub Copilot models; it may contact GitHub. |
 | `/usr/bin/security find-generic-password -s <service> -w` | macOS, each time a Claude login is read (20-second timeout). | Reads Claude Code's Keychain item. macOS may ask whether `security` may access it. |
 | `open <url>` (macOS) or `xdg-open <url>` | `modelpick ui` without `--no-open`. | Opens the page in your browser. A failure is a note, not an error. |
 
@@ -306,6 +318,7 @@ a value. A test checks that every message `doctor` can print has a row.
 | `no credential: not found: <codex_home>/auth.json` | No Codex login there. | `CODEX_HOME=<codex_home> codex login`. |
 | `no credential: key file <key_file> line <n>` | The OpenCode Go key file has fewer than `key_line` keys. | Add the key, or fix `key_line`. Blank lines and `#` lines do not count. |
 | `no credential: OpenCode login in <path>` | No OpenCode Go login in OpenCode's auth.json. | Run `opencode auth login` and choose OpenCode Go, or use a `key_file`. |
+| `no credential: OpenCode login in <path>: no GitHub Copilot login; run `opencode auth login` and pick GitHub Copilot` | A Copilot account, but no `github-copilot` login in OpenCode's auth.json. | Run `opencode auth login` and pick GitHub Copilot. |
 | `credential unreadable (<source>): <error>` | The login exists but cannot be read or is not in the expected shape, or the Keychain lookup failed or timed out. | Log in again with the tool. On macOS, look for a Keychain permission prompt. |
 | `token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login` | The Claude access token is past its expiry. A warning. | Nothing yet: the next due call renews it. If `renewal failed: <reason>` shows, use `/login` in Claude Code. |
 | `token expired — the next usage call asks Codex to renew it; if that fails, run codex login` | The same for Codex. | Nothing yet. If renewal fails, run `codex login`. |

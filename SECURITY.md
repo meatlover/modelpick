@@ -21,6 +21,12 @@ and sends, and how to report a problem. The
   memory, but only that entry is decoded; the other entries, including other
   providers' refresh tokens, are never decoded, used, kept, logged or sent.
   The file is never written.
+- **A GitHub Copilot login**: for a `copilot` account, the `github-copilot`
+  entry of OpenCode's `auth.json` (same path as above). modelpick sends its
+  long-lived GitHub OAuth token as it is; it never does the short-lived
+  Copilot token exchange and cannot renew the login. That token can reach
+  whatever the OAuth app was granted on your GitHub account, not only the
+  usage endpoint, so treat `auth.json` like any other credential file.
 - **Its own config file and cache.**
 
 Credentials are read into memory for the one request that needs them.
@@ -50,13 +56,16 @@ per account per 15 minutes by default:
 | Anthropic | `https://api.anthropic.com/api/oauth/usage` | The Claude access token, `anthropic-beta: oauth-2025-04-20`, and `User-Agent: claude-cli/<version> (external, cli)`, the user agent of Claude Code itself with the version `claude --version` prints. |
 | OpenAI | `https://chatgpt.com/backend-api/wham/usage` | The Codex access token, `ChatGPT-Account-Id`, `User-Agent: modelpick/<version>`. |
 | OpenCode | `https://opencode.ai/zen/go/v1/usage` | The OpenCode Go key, `User-Agent: modelpick/<version>`. |
+| GitHub | `https://api.github.com/copilot_internal/user` | The GitHub OAuth token as `Authorization: token <token>`, `User-Agent: GitHubCopilotChat/0.26.7`. |
 
 Redirects are never followed, so a credential cannot be sent to another host.
 There is no telemetry and no other network call. `opencode models
-opencode-go`, which modelpick runs to list models, may contact OpenCode
-itself.
+opencode-go` and `opencode models github-copilot`, which modelpick runs to
+list models, may contact OpenCode or GitHub themselves.
 
-These usage endpoints are undocumented. Whether reading your login this way is
+These usage endpoints are undocumented, and GitHub's is internal: a
+persistent 403 or 404 from it likely means GitHub changed it, not that your
+login is bad (a 401 means log in again with `opencode auth login`). Whether reading your login this way is
 acceptable under each vendor's terms is your decision; see the README's
 [Terms and credentials](README.md#terms-and-credentials).
 

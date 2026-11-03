@@ -106,6 +106,7 @@ would depend on the directory modelpick happens to run in.
 | `claude` | `config_dir` | macOS: the Keychain item Claude Code made for that directory (service `Claude Code-credentials` for `~/.claude`, `Claude Code-credentials-<8 hex>` otherwise); Linux, or no Keychain item: `<config_dir>/.credentials.json`. |
 | `codex` | `codex_home` | `<codex_home>/auth.json`. |
 | `opencode-go` | `key_file` and `key_line`, or neither | `key_line` is the 1-based index among the key lines of `key_file`, ignoring blank lines and `#` comments. With neither, the key is OpenCode's own login (`opencode auth login`, OpenCode Go), read from `$XDG_DATA_HOME/opencode/auth.json` when `XDG_DATA_HOME` is an absolute path, else `~/.local/share/opencode/auth.json`. One account per login; more keys need a key file. |
+| `copilot` | none | OpenCode's own GitHub Copilot login: the `github-copilot` entry of `$XDG_DATA_HOME/opencode/auth.json` (when `XDG_DATA_HOME` is an absolute path), else `~/.local/share/opencode/auth.json`. Log in with `opencode auth login` and pick GitHub Copilot. One account per login, so an account is just `{ "vendor": "copilot" }`; any other field is rejected. |
 
 `pick` copies the chosen account's object into `account_ref` with paths made
 absolute, so a launcher can use it (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, which
@@ -261,7 +262,7 @@ Windows scoped to a *different* model are ignored for the choice.
 
 Examples: Claude `[5h, 7d]`, and for a Fable choice `[5h, 7d, Fable-weekly]`;
 Codex whatever the plan reports (often just `[7d]`); OpenCode Go
-`[5h, 7d, 30d]`. An idle Claude account reports no 5h window; modelpick
+`[5h, 7d, 30d]`; GitHub Copilot one monthly window. An idle Claude account reports no 5h window; modelpick
 counts it as 5h at 0% with no reset time, so the positions do not shift.
 
 Array length against the number of windows:
