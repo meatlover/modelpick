@@ -255,6 +255,8 @@ func (p parser) checkVendorFields(a adapter.Account, prefix string) error {
 		case a.KeyFile == "" && a.KeyLine != 0:
 			return p.fail(join(prefix, "key_file"), "required with key_line")
 		}
+	case "copilot":
+		need = nil
 	default:
 		return p.fail(join(prefix, "vendor"), "unknown vendor %q", a.Vendor)
 	}

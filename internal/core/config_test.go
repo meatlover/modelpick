@@ -60,6 +60,16 @@ func TestOpencodeLoginAccount(t *testing.T) {
 	}
 }
 
+func TestCopilotAccountNoLocator(t *testing.T) {
+	cfg, err := Parse([]byte(`{"version":1,"accounts":{"a":{"vendor":"copilot"}}}`), "c.json", "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := cfg.Accounts["a"]; a.Vendor != "copilot" || a.ConfigDir != "" || a.KeyFile != "" {
+		t.Errorf("account = %+v, want a bare copilot account", a)
+	}
+}
+
 func TestDefaultsApplyWhenSettingsOmitted(t *testing.T) {
 	cfg, err := Parse([]byte(minimal), "c.json", "/h")
 	if err != nil {
@@ -115,6 +125,8 @@ func TestValidationErrors(t *testing.T) {
 		{"go key_line 0", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_file":"/k","key_line":0}}}`, "accounts.a.key_line", "required with key_file"},
 		{"go key_line without key_file", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_line":1}}}`, "accounts.a.key_file", "required with key_line"},
 		{"go key_line negative", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_file":"/k","key_line":-1}}}`, "accounts.a.key_line", "must be >= 1"},
+		{"copilot with config_dir", `{"version":1,"accounts":{"a":{"vendor":"copilot","config_dir":"/c"}}}`, "accounts.a.config_dir", `not valid for vendor "copilot"`},
+		{"copilot with key_file", `{"version":1,"accounts":{"a":{"vendor":"copilot","key_file":"/k","key_line":1}}}`, "accounts.a.key_file", `not valid for vendor "copilot"`},
 		{"go with config_dir", `{"version":1,"accounts":{"a":{"vendor":"opencode-go","key_file":"/k","key_line":1,"config_dir":"/c"}}}`, "accounts.a.config_dir", `not valid for vendor "opencode-go"`},
 		{"unknown account", prof(`{"account":"zz","model":"m","thinking":null}`), "profiles.tester[0].account", `unknown account "zz"`},
 		{"unknown schedule", prof(ok + `,{"account":"a","model":"m","thinking":null,"skip_during":["deepseek-peek"]}`), "profiles.tester[1].skip_during", `unknown schedule "deepseek-peek"`},
