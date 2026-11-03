@@ -1,9 +1,10 @@
 # modelpick
 
 If you pay for several LLM coding subscriptions (Claude, ChatGPT/Codex,
-OpenCode Go, GitHub Copilot, often more than one account of each), modelpick decides which to
-use right now: for a kind of work you name, it reads each account's live usage
-and answers with the vendor, account, model and thinking level, as JSON.
+OpenCode Go, GitHub Copilot, often more than one account of each), modelpick
+decides which to use right now: for a kind of work you name, it reads each
+account's live usage and answers with the vendor, account, model and thinking
+level, as JSON.
 Whoever calls it (you, a script, an agent launcher) acts on the answer;
 modelpick never starts a coding session itself.
 
@@ -115,8 +116,8 @@ Read this before you use modelpick.
   credentials file, Codex's `auth.json`, your OpenCode Go key file or
   OpenCode's own `auth.json`) **in memory**, only to call that vendor's usage
   endpoint. OpenCode's `auth.json` is read whole, but only its `opencode-go`
-  and `github-copilot` entries are decoded; the other entries, including other providers' refresh
-  tokens, are never decoded, used, kept, logged or sent.
+  and `github-copilot` entries are decoded; the other entries, including other
+  providers' refresh tokens, are never decoded, used, kept, logged or sent.
 - It **stores no credentials**: not in its cache, its output or its logs.
 - It **never writes any vendor file** and never decodes, uses or keeps a
   refresh token. When a usage call is due and a Claude or Codex login has

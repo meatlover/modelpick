@@ -82,8 +82,8 @@ config error or a bad argument.
 thinking values: Claude from a list built into modelpick, Codex from
 `<codex_home>/models_cache.json`, OpenCode Go by running
 `opencode models opencode-go`, GitHub Copilot by running
-`opencode models github-copilot`. It makes no usage call. A listing that fails is
-a row `error: <message>`; the exit code is still 0.
+`opencode models github-copilot`. It makes no usage call. A listing that
+fails is a row `error: <message>`; the exit code is still 0.
 
 ### `modelpick config`
 
@@ -438,6 +438,7 @@ case "$(echo "$out" | jq -r .vendor)" in
   codex)  CODEX_HOME=$(echo "$out" | jq -r .account_ref.codex_home) \
             exec codex -m "$(echo "$out" | jq -r .model)" ;;
   opencode-go) exec opencode -m "$(echo "$out" | jq -r .model)" ;;
+  copilot) exec opencode -m "$(echo "$out" | jq -r .model)" ;;
 esac
 ```
 
@@ -451,6 +452,7 @@ case "$MODELPICK_VENDOR" in
   claude) exec claude --model "$MODELPICK_MODEL" ;;   # CLAUDE_CONFIG_DIR is set or unset for you
   codex)  exec codex -m "$MODELPICK_MODEL" ;;         # CODEX_HOME is set
   opencode-go) exec opencode -m "$MODELPICK_MODEL" ;; # MODELPICK_KEY_FILE / _LINE name the key; unset: opencode uses its own login
+  copilot) exec opencode -m "$MODELPICK_MODEL" ;;     # OpenCode's own GitHub Copilot login
   *) echo "modelpick: no vendor" >&2; exit 1 ;;
 esac
 ```

@@ -65,8 +65,9 @@ list models, may contact OpenCode or GitHub themselves.
 
 These usage endpoints are undocumented, and GitHub's is internal: a
 persistent 403 or 404 from it likely means GitHub changed it, not that your
-login is bad (a 401 means log in again with `opencode auth login`). Whether reading your login this way is
-acceptable under each vendor's terms is your decision; see the README's
+login is bad (a 401 means log in again with `opencode auth login`). Whether
+reading your login this way is acceptable under each vendor's terms is your
+decision; see the README's
 [Terms and credentials](README.md#terms-and-credentials).
 
 ## The local UI

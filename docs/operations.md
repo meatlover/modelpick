@@ -314,11 +314,14 @@ a value. A test checks that every message `doctor` can print has a row.
 | `config <path>: <field>: <problem>` | The config file is invalid; the field is named, for example `profiles.tester[1].skip_during`. | Fix that field; the [configuration guide](configuration.md) has the rules. |
 | `no config file at <path>. Start from the example: …` | There is no config file where modelpick looks. | Create it; see [getting started](getting-started.md#first-config). |
 | `claude not found on PATH`, `codex not found on PATH`, `opencode not found on PATH` | `doctor` cannot find the tool. | Install it or fix `PATH`. `pick` still works without it. |
+| `opencode not found on PATH — models and launching need it` | A Copilot account's `doctor` cannot find `opencode`, which lists its models and launches it. A warning. | Install OpenCode or fix `PATH`. The usage reading does not need it. |
 | `no credential: not found in keychain: <service> or file: <config_dir>/.credentials.json` | No Claude login for that `config_dir`. | Log in with `CLAUDE_CONFIG_DIR=<config_dir> claude`. Check that the path is the one you logged in with; the Keychain name is derived from it. |
 | `no credential: not found: <codex_home>/auth.json` | No Codex login there. | `CODEX_HOME=<codex_home> codex login`. |
 | `no credential: key file <key_file> line <n>` | The OpenCode Go key file has fewer than `key_line` keys. | Add the key, or fix `key_line`. Blank lines and `#` lines do not count. |
 | `no credential: OpenCode login in <path>` | No OpenCode Go login in OpenCode's auth.json. | Run `opencode auth login` and choose OpenCode Go, or use a `key_file`. |
-| `no credential: OpenCode login in <path>: no GitHub Copilot login; run `opencode auth login` and pick GitHub Copilot` | A Copilot account, but no `github-copilot` login in OpenCode's auth.json. | Run `opencode auth login` and pick GitHub Copilot. |
+| ``no credential: OpenCode login in <path>: no GitHub Copilot login; run `opencode auth login` and pick GitHub Copilot`` | A Copilot account, but no `github-copilot` login in OpenCode's auth.json. | Run `opencode auth login` and pick GitHub Copilot. |
+| `credential unreadable (OpenCode login): OpenCode login path unknown`, and `copilot: credential (OpenCode login): OpenCode login path unknown` in the usage line | The auth.json path could not be worked out. The built-in wiring always sets a path, so this only appears from a caller that leaves it empty. | Report it; it is not a login problem. |
+| `copilot: credential (OpenCode login in <path>): <error>` in the usage line | The usage-call form of `credential unreadable` above: the same cause and fix. | As for `credential unreadable` above. |
 | `credential unreadable (<source>): <error>` | The login exists but cannot be read or is not in the expected shape, or the Keychain lookup failed or timed out. | Log in again with the tool. On macOS, look for a Keychain permission prompt. |
 | `token expired — the next usage call asks Claude Code to renew it; if that fails, log in again with /login` | The Claude access token is past its expiry. A warning. | Nothing yet: the next due call renews it. If `renewal failed: <reason>` shows, use `/login` in Claude Code. |
 | `token expired — the next usage call asks Codex to renew it; if that fails, run codex login` | The same for Codex. | Nothing yet. If renewal fails, run `codex login`. |
@@ -338,9 +341,12 @@ a value. A test checks that every message `doctor` can print has a row.
 | `unrecognised window group "<group>"` | Claude reported a window kind modelpick does not know. It is ignored. | Nothing; report it. |
 | `unparseable resets_at; reset time unknown` | Claude sent a reset time modelpick cannot read; that window's reset is unknown. | Nothing; report it if it persists. |
 | `additional_rate_limits present; not parsed in v1` | Codex reported extra limits modelpick does not read yet. | Nothing. |
+| `premium_interactions unlimited` | GitHub reports the Copilot premium allowance as unlimited, so there is no percentage to show. A note on the reading. | Nothing. |
+| `quota_reset_date missing or unparseable; window length unknown` | GitHub's reset date is missing or not a date. The monthly window is kept with its length unknown. A note on the reading. | Nothing; report it if it persists. |
 | `unrecognised status "<status>" on <window>` | OpenCode Go reported a window status modelpick does not know. | Nothing; report it. |
 | `usage endpoint returned HTTP 401; log in to <tool> with this account` | The vendor rejected the login. | Log in again with the tool. |
 | `usage endpoint returned HTTP <n>` | Any other HTTP failure, including a refused redirect (3xx). | Usually transient; the next call after the floor retries. |
+| `copilot: HTTP <n>: the copilot_internal endpoint may have changed` (403 or 404) | GitHub's internal Copilot usage endpoint refused the call. Usually GitHub changed it, not a bad login. Shown after `last usage reading failed:` or `no usage reading; last call at <t> failed:`. | Nothing in your login to fix. Check for a newer modelpick; if it persists, file an issue with the response, credentials removed. |
 | `token expired; open <tool> with this account to refresh it` | The token has expired and no renewal was made for it. | Open the tool with this account. |
 | `token expired and <tool> could not renew it (<reason>); log in again in <tool> with this account` | Renewal failed and there is no older reading to fall back on. | Log in again. |
 | `renewal failed: <reason>` | Renewal failed; an older reading is used. | Log in again if it keeps failing. |
